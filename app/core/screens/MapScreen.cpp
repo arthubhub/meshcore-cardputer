@@ -88,7 +88,7 @@ bool MapScreen::onKey(App& app, const KeyEvent& e) {
       _cy = py;
       _follow = true;
     } else {
-      app.notify("Position inconnue", "Pas encore de fix GPS", 2000);
+      app.notify(tr("Position unknown", "Position inconnue"), tr("No GPS fix yet", "Pas encore de fix GPS"), 2000);
     }
     return true;
   }
@@ -197,7 +197,7 @@ void MapScreen::drawScale(App& app, lgfx::LovyanGFX& g) {
   g.setTextColor(FG);
   g.drawString(buf, x, y - 11);
   // zoom level, top right
-  snprintf(buf, sizeof(buf), "z%d%s", _z, _follow ? "" : " libre");
+  snprintf(buf, sizeof(buf), "z%d%s", _z, _follow ? "" : tr(" free", " libre"));
   tw = g.textWidth(buf);
   g.fillRect(MAP_W - tw - 6, CONTENT_Y + 1, tw + 5, 10, BG);
   g.setTextColor(_follow ? DIM : COLOR_WARN);
@@ -216,12 +216,12 @@ void MapScreen::draw(App& app, lgfx::LovyanGFX& g) {
     g.setFont(&fontSmall);
     g.setTextColor(COLOR_WARN);
     g.setTextDatum(lgfx::top_center);
-    g.drawString("Pas de carte sur la SD (dossier /tiles)", MAP_W / 2, CONTENT_Y + 14);
+    g.drawString(tr("No map on the SD card (/tiles folder)", "Pas de carte sur la SD (dossier /tiles)"), MAP_W / 2, CONTENT_Y + 14);
     g.setTextDatum(lgfx::top_left);
   } else if (missing) {
     g.setFont(&fontSmall);
     g.setTextColor(DIM);
-    g.drawString("hors zone", 4, CONTENT_Y + 1);
+    g.drawString(tr("outside the map", "hors zone"), 4, CONTENT_Y + 1);
   }
   _renderMs = app.now() - t0;
 }

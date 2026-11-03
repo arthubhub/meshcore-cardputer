@@ -122,6 +122,8 @@ static void pollReturnKeys() {
       M5.Display.setTextColor(TFT_WHITE, TFT_BLACK);
       M5.Display.setTextSize(2);
       M5.Display.setCursor(8, 50);
+      M5.Display.print("Keyboard mode...");
+      M5.Display.setCursor(8, 74);
       M5.Display.print("Mode clavier...");
       cpadv::rebootInto(cpadv::Slot::Standalone);
       escCount = 0;

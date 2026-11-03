@@ -27,11 +27,12 @@ bool GpsScreen::onKey(App& app, const KeyEvent& e) {
   GpsService& gps = *app.services().gps;
   if (e.is('a')) {
     if (!gps.state().valid) {
-      app.notify("Pas de position", "Attendre le fix GPS (en extérieur)", 2500);
+      app.notify(tr("No position", "Pas de position"), tr("Wait for a GPS fix (outdoors)", "Attendre le fix GPS (en extérieur)"), 2500);
       return true;
     }
     bool ok = app.services().mesh->sendAdvert(true, true);
-    app.notify(ok ? "Annonce envoyée" : "Annonce impossible", ok ? "Avec ta position GPS" : "Radio indisponible", 2000);
+    app.notify(ok ? tr("Advert sent", "Annonce envoyée") : tr("Cannot advertise", "Annonce impossible"),
+               ok ? tr("With your GPS position", "Avec ta position GPS") : tr("Radio unavailable", "Radio indisponible"), 2000);
     return true;
   }
   if (e.is('b')) {
@@ -39,9 +40,9 @@ bool GpsScreen::onKey(App& app, const KeyEvent& e) {
     return true;
   }
   if (e.is('r')) {
-    if (_confirm.check(app, 0, "Redémarrer le GPS à froid ?")) {
+    if (_confirm.check(app, 0, tr("Cold-restart the GPS?", "Redémarrer le GPS à froid ?"))) {
       gps.coldRestart();
-      app.notify("GPS redémarré", "Le fix peut prendre quelques minutes", 2500);
+      app.notify(tr("GPS restarted", "GPS redémarré"), tr("A fix can take a few minutes", "Le fix peut prendre quelques minutes"), 2500);
     }
     return true;
   }
@@ -58,17 +59,17 @@ void GpsScreen::draw(App& app, lgfx::LovyanGFX& g) {
   const GpsState& s = gps.state();
   const int tz = app.services().settings->get().utcOffsetMinutes;
   char v[8][40];
-  const char* labels[8] = {"État", "Latitude", "Longitude", "Altitude", "HDOP", "Vitesse", "Heure GPS",
-                           "Dernier fix"};
+  const char* labels[8] = {tr("Status", "État"), "Latitude", "Longitude", "Altitude", "HDOP", tr("Speed", "Vitesse"),
+                           tr("GPS time", "Heure GPS"), tr("Last fix", "Dernier fix")};
   uint16_t stateColor = DIM;
   if (!gps.present()) {
-    snprintf(v[0], 40, "aucun signal du module");
+    snprintf(v[0], 40, "%s", tr("no data from the module", "aucun signal du module"));
     stateColor = COLOR_BAD;
   } else if (s.valid) {
     snprintf(v[0], 40, "fix %s \xC2\xB7 %u sat.", s.fixType == 2 ? "2D" : "3D", s.sats);
     stateColor = COLOR_OK;
   } else {
-    snprintf(v[0], 40, "recherche... %u sat.", s.sats);
+    snprintf(v[0], 40, tr("searching... %u sat.", "recherche... %u sat."), s.sats);
     stateColor = COLOR_WARN;
   }
   bool pos = s.valid || s.fixMillis;
@@ -81,13 +82,14 @@ void GpsScreen::draw(App& app, lgfx::LovyanGFX& g) {
     strcpy(v[2], "-");
     strcpy(v[3], "-");
   }
-  const char* quality = s.hdop < 1.5f ? "excellente" : s.hdop < 3 ? "bonne" : s.hdop < 6 ? "moyenne" : "faible";
+  const char* quality = s.hdop < 1.5f ? tr("excellent", "excellente") : s.hdop < 3 ? tr("good", "bonne")
+                      : s.hdop < 6 ? tr("fair", "moyenne") : tr("poor", "faible");
   if (s.sats) snprintf(v[4], 40, "%.1f (%s)", s.hdop, quality);
   else strcpy(v[4], "-");
   if (s.valid && s.speedKmh >= 1.0f) {
     snprintf(v[5], 40, "%.1f km/h  %s %.0f\xC2\xB0", s.speedKmh, geo::compassLabel(s.courseDeg), s.courseDeg);
   } else if (s.valid) {
-    strcpy(v[5], "à l'arrêt");
+    snprintf(v[5], 40, "%s", tr("stationary", "à l'arrêt"));
   } else {
     strcpy(v[5], "-");
   }
@@ -100,11 +102,11 @@ void GpsScreen::draw(App& app, lgfx::LovyanGFX& g) {
   if (s.fixMillis) {
     char ago[12];
     formatAgo((app.now() - s.fixMillis) / 1000, ago, sizeof(ago));
-    snprintf(v[7], 40, "il y a %s", ago);
+    snprintf(v[7], 40, tr("%s ago", "il y a %s"), ago);
   } else if (gps.present()) {
-    snprintf(v[7], 40, "jamais (%u trames)", (unsigned)s.sentences);
+    snprintf(v[7], 40, tr("never (%u sentences)", "jamais (%u trames)"), (unsigned)s.sentences);
   } else {
-    snprintf(v[7], 40, "module muet");
+    snprintf(v[7], 40, "%s", tr("module silent", "module muet"));
   }
   for (int i = 0; i < 8; i++) {
     drawListRow(g, CONTENT_Y + 1 + i * LINE_H, labels[i], v[i], false, i == 0 ? stateColor : FG, true);
@@ -161,8 +163,9 @@ void CompassScreen::draw(App& app, lgfx::LovyanGFX& g) {
     g.setTextDatum(lgfx::middle_center);
     g.setFont(&fontText);
     g.setTextColor(DIM);
-    g.drawString("Aucun contact avec position", SCREEN_W / 2, CONTENT_Y + CONTENT_H / 2 - 8);
-    g.drawString("(il faut qu'il partage sa position)", SCREEN_W / 2, CONTENT_Y + CONTENT_H / 2 + 8);
+    g.drawString(tr("No contact with a position", "Aucun contact avec position"), SCREEN_W / 2, CONTENT_Y + CONTENT_H / 2 - 8);
+    g.drawString(tr("(they must share their position)", "(il faut qu'il partage sa position)"), SCREEN_W / 2,
+                 CONTENT_Y + CONTENT_H / 2 + 8);
     g.setTextDatum(lgfx::top_left);
     return;
   }
@@ -242,8 +245,8 @@ void CompassScreen::draw(App& app, lgfx::LovyanGFX& g) {
   } else {
     g.setFont(&fontText);
     g.setTextColor(COLOR_WARN);
-    g.drawString("En attente", x, y);
-    g.drawString("du fix GPS", x, y + LINE_H);
+    g.drawString(tr("Waiting for", "En attente"), x, y);
+    g.drawString(tr("a GPS fix", "du fix GPS"), x, y + LINE_H);
     y += LINE_H;
   }
   y += LINE_H + 2;
@@ -253,12 +256,12 @@ void CompassScreen::draw(App& app, lgfx::LovyanGFX& g) {
   if (c.lastHeard && clockValid(now) && now >= c.lastHeard) {
     char ago[12];
     formatAgo(now - c.lastHeard, ago, sizeof(ago));
-    snprintf(buf, sizeof(buf), "vu il y a %s", ago);
+    snprintf(buf, sizeof(buf), tr("seen %s ago", "vu il y a %s"), ago);
   } else {
-    snprintf(buf, sizeof(buf), "position ancienne");
+    snprintf(buf, sizeof(buf), "%s", tr("old position", "position ancienne"));
   }
   fitText(g, buf, w, line, sizeof(line));
   g.drawString(line, x, y);
   y += 11;
-  g.drawString(moving ? "haut = ma direction" : "haut = nord", x, y);
+  g.drawString(moving ? tr("up = my heading", "haut = ma direction") : tr("up = north", "haut = nord"), x, y);
 }

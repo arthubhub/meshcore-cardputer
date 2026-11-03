@@ -1,6 +1,7 @@
 # Physical keyboard: raw TCA8418 events decoded by KeyMatrix (same path as on the Cardputer).
 # Grid: row 0 = ` 1..0 - = bksp, row 1 = tab q..p [ ] \, row 2 = fn shift a..l ; ' enter,
 #       row 3 = ctrl opt alt z..m , . / space
+lang fr
 time 1793541600
 
 # m (row 3, col 9) opens Messages, ` (row 0, col 0) goes back
@@ -24,6 +25,7 @@ expect-screen Accueil
 tca 2 3
 expect-screen Réglages
 tca 2 0 down
+tca 3 11
 tca 3 11
 tca 3 12
 tca 2 0 up

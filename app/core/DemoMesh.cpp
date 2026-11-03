@@ -1,4 +1,5 @@
 #include "DemoMesh.h"
+#include "I18n.h"
 #include "RadioPresets.h"
 #include <stdarg.h>
 #include <stdio.h>
@@ -325,34 +326,36 @@ RadioStats DemoMesh::radioStats() {
 // ================================================================ demo bot
 
 namespace {
-const char* const CHATTER[] = {
-  "Quelqu'un capte le relais de Pibrac ?",
-  "Test de portée depuis Tournefeuille, 3 sauts.",
-  "Nouvelle antenne sur le toit, ça porte loin !",
-  "SNR à 8 dB ce matin, top.",
-  "Je passe à Colomiers cet après-midi.",
-  "Qui vient à la rencontre MeshCore samedi ?",
-  "Le relais du parc est revenu en ligne.",
-  "Bonne soirée à tous !",
+// Demo chatter in both UI languages {English, French}
+struct Line { const char* en; const char* fr; };
+const Line CHATTER[] = {
+  {"Can anyone hear the Pibrac repeater?", "Quelqu'un capte le relais de Pibrac ?"},
+  {"Range test from Tournefeuille, 3 hops.", "Test de portée depuis Tournefeuille, 3 sauts."},
+  {"New antenna on the roof, it reaches far!", "Nouvelle antenne sur le toit, ça porte loin !"},
+  {"SNR at 8 dB this morning, great.", "SNR à 8 dB ce matin, top."},
+  {"I'll be in Colomiers this afternoon.", "Je passe à Colomiers cet après-midi."},
+  {"Who's coming to the MeshCore meetup on Saturday?", "Qui vient à la rencontre MeshCore samedi ?"},
+  {"The park repeater is back online.", "Le relais du parc est revenu en ligne."},
+  {"Have a nice evening, everyone!", "Bonne soirée à tous !"},
 };
-const char* const REPLIES[] = {
-  "Reçu 5 sur 5 !",
-  "Bien reçu, le relais de Colomiers marche super.",
-  "Top, je te reçois à 2 sauts.",
-  "Je suis en balade, je te réponds plus tard.",
-  "Ça marche !",
+const Line REPLIES[] = {
+  {"Loud and clear!", "Reçu 5 sur 5 !"},
+  {"Got it, the Colomiers repeater works great.", "Bien reçu, le relais de Colomiers marche super."},
+  {"Great, I'm receiving you over 2 hops.", "Top, je te reçois à 2 sauts."},
+  {"Out for a walk, I'll reply later.", "Je suis en balade, je te réponds plus tard."},
+  {"Sounds good!", "Ça marche !"},
 };
-const char* const ANSWERS[] = {
-  "Bonne question, je regarde ça.",
-  "Je pense que oui !",
-  "Aucune idée, demande sur Public.",
+const Line ANSWERS[] = {
+  {"Good question, let me check.", "Bonne question, je regarde ça."},
+  {"I think so!", "Je pense que oui !"},
+  {"No idea, ask on Public.", "Aucune idée, demande sur Public."},
 };
-const char* const DIRECT[] = {
-  "Tu as bien reçu ma position ?",
-  "On se retrouve au parc vers 18h ?",
-  "Ton Cardputer marche nickel on dirait !",
+const Line DIRECT[] = {
+  {"Did you get my position?", "Tu as bien reçu ma position ?"},
+  {"Meet at the park around 6pm?", "On se retrouve au parc vers 18h ?"},
+  {"Your Cardputer seems to work perfectly!", "Ton Cardputer marche nickel on dirait !"},
 };
-template <size_t N> const char* pick(const char* const (&a)[N], uint32_t r) { return a[r % N]; }
+template <size_t N> const char* pick(const Line (&a)[N], uint32_t r) { return tr(a[r % N].en, a[r % N].fr); }
 
 bool containsAny(std::string t, std::initializer_list<const char*> words) {
   for (auto& c : t) c = (char)tolower((unsigned char)c);
@@ -382,8 +385,9 @@ void DemoMesh::seedDemo() {
   }
   ConvKey bob = keyByName("Bob");
   if (!_store.find(bob)) {
-    receiveChannel("Public", "Chloé", "Salut tout le monde, belle portée aujourd'hui !");
-    receive("Bob", "Bienvenue dans la démo ! Écris-moi, je réponds. (Pas de radio : tout est simulé.)");
+    receiveChannel("Public", "Chloé", tr("Hi everyone, great range today!", "Salut tout le monde, belle portée aujourd'hui !"));
+    receive("Bob", tr("Welcome to the demo! Write to me, I'll answer. (No radio: everything is simulated.)",
+                      "Bienvenue dans la démo ! Écris-moi, je réponds. (Pas de radio : tout est simulé.)"));
   }
 }
 
@@ -391,8 +395,10 @@ void DemoMesh::scheduleReply(const ConvKey& to, const std::string& text) {
   Reply r;
   r.key = to;
   r.at = _sys.millis() + 3000 + rnd() % 4000;
-  if (containsAny(text, {"salut", "bonjour", "coucou", "hello"})) r.text = "Salut ! Ça capte bien chez toi ?";
-  else if (containsAny(text, {"merci", "ok", "parfait"})) r.text = "Avec plaisir !";
+  if (containsAny(text, {"salut", "bonjour", "coucou", "hello", "hi ", "hey"}))
+    r.text = tr("Hi! Is the reception good where you are?", "Salut ! Ça capte bien chez toi ?");
+  else if (containsAny(text, {"merci", "ok", "parfait", "thanks", "thank you", "great"}))
+    r.text = tr("You're welcome!", "Avec plaisir !");
   else if (text.find('?') != std::string::npos) r.text = pick(ANSWERS, rnd());
   else r.text = pick(REPLIES, rnd());
   _replies.push_back(r);

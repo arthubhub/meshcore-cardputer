@@ -1,10 +1,12 @@
 # Settings screen: every setting can be changed, name editing with accents, system screen.
+lang fr
 time 1793541600
 key s
 expect-screen Réglages
 shot 10_settings_top
 
-# Rename the node: erase "Cardputer-Sim", type "Raphaël-CPADV" (ë = Alt+e four times)
+# Rename the node (row 2, under "Language / Langue"): erase "Cardputer-Sim", type "Raphaël-CPADV" (ë = Alt+e four times)
+key .
 key enter
 expect-screen Nom de l'appareil
 key bksp*13

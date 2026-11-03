@@ -1,4 +1,5 @@
 #include "DeviceBackup.h"
+#include "../core/I18n.h"
 #include <CpadvLog.h>
 #include <Arduino.h>
 #include <LittleFS.h>
@@ -28,11 +29,11 @@ bool copy(File& from, File& to, uint32_t len) {
 bool DeviceBackup::available() { return sdcard::mounted(); }
 
 bool DeviceBackup::exportConfig(char* msg, size_t n) {
-  if (!sdcard::mounted()) { snprintf(msg, n, "Pas de carte SD"); return false; }
+  if (!sdcard::mounted()) { snprintf(msg, n, "%s", tr("No SD card", "Pas de carte SD")); return false; }
   if (_flush) _flush();
   sdcard::Lock lock;
   File out = SD.open(BACKUP_PATH, FILE_WRITE);
-  if (!out) { snprintf(msg, n, "Écriture impossible sur la SD"); return false; }
+  if (!out) { snprintf(msg, n, "%s", tr("Cannot write to the SD card", "Écriture impossible sur la SD")); return false; }
   out.write((const uint8_t*)&MAGIC, 4);
   out.write((const uint8_t*)&VERSION, 2);
   int saved = 0;
@@ -48,21 +49,21 @@ bool DeviceBackup::exportConfig(char* msg, size_t n) {
   }
   out.close();
   CPLOG_I("BACKUP", "backup: %d files to SD %s", saved, ok ? "ok" : "FAILED");
-  if (!ok) { snprintf(msg, n, "Erreur d'écriture"); return false; }
-  snprintf(msg, n, "%s (%d fichiers, avec ta clé privée)", BACKUP_PATH + 1, saved);
+  if (!ok) { snprintf(msg, n, "%s", tr("Write error", "Erreur d'écriture")); return false; }
+  snprintf(msg, n, tr("%s (%d files, includes your private key)", "%s (%d fichiers, avec ta clé privée)"), BACKUP_PATH + 1, saved);
   return true;
 }
 
 bool DeviceBackup::importConfig(char* msg, size_t n) {
-  if (!sdcard::mounted()) { snprintf(msg, n, "Pas de carte SD"); return false; }
+  if (!sdcard::mounted()) { snprintf(msg, n, "%s", tr("No SD card", "Pas de carte SD")); return false; }
   sdcard::Lock lock;
   File in = SD.open(BACKUP_PATH, FILE_READ);
-  if (!in) { snprintf(msg, n, "Aucune sauvegarde sur la carte"); return false; }
+  if (!in) { snprintf(msg, n, "%s", tr("No backup on the card", "Aucune sauvegarde sur la carte")); return false; }
   uint32_t magic = 0;
   uint16_t version = 0;
   if (in.read((uint8_t*)&magic, 4) != 4 || in.read((uint8_t*)&version, 2) != 2 || magic != MAGIC || version != VERSION) {
     in.close();
-    snprintf(msg, n, "Fichier de sauvegarde invalide");
+    snprintf(msg, n, "%s", tr("Invalid backup file", "Fichier de sauvegarde invalide"));
     return false;
   }
   int restored = 0;
@@ -78,8 +79,8 @@ bool DeviceBackup::importConfig(char* msg, size_t n) {
   }
   in.close();
   CPLOG_I("BACKUP", "restore: %d files from SD %s", restored, ok ? "ok" : "FAILED");
-  if (!ok) { snprintf(msg, n, "Sauvegarde abîmée (%d fichiers restaurés)", restored); return false; }
+  if (!ok) { snprintf(msg, n, tr("Damaged backup (%d files restored)", "Sauvegarde abîmée (%d fichiers restaurés)"), restored); return false; }
   _restartAt = millis() + 2500;   // let the user read the message, then reload everything
-  snprintf(msg, n, "%d fichiers, redémarrage...", restored);
+  snprintf(msg, n, tr("%d files, restarting...", "%d fichiers, redémarrage..."), restored);
   return true;
 }

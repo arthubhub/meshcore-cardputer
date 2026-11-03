@@ -11,7 +11,7 @@ public:
   void setup(const char* title, const char* initial, size_t maxBytes, DoneFn done, void* ctx);
 
   const char* title() const override { return _title; }
-  const char* help() const override { return "Entrée ok  Fn+` annuler  Alt+e é è ê"; }
+  const char* help() const override { return tr("Enter ok  Fn+` cancel  Alt+e é è ê", "Entrée ok  Fn+` annuler  Alt+e é è ê"); }
   bool wantsText() const override { return true; }
   bool onKey(App& app, const KeyEvent& e) override;
   bool tick(App& app) override;
@@ -29,8 +29,8 @@ private:
 
 class SystemScreen : public Screen {
 public:
-  const char* title() const override { return "Système"; }
-  const char* help() const override { return "; . défiler  ` retour"; }
+  const char* title() const override { return tr("System", "Système"); }
+  const char* help() const override { return tr("; . scroll  ` back", "; . défiler  ` retour"); }
   bool onKey(App& app, const KeyEvent& e) override;
   bool tick(App& app) override;
   void draw(App& app, lgfx::LovyanGFX& g) override;
@@ -42,13 +42,13 @@ private:
 class SettingsScreen : public Screen {
 public:
   SettingsScreen(TextInputScreen& input, SystemScreen& system) : _input(input), _system(system) {}
-  const char* title() const override { return "Réglages"; }
-  const char* help() const override { return ";. choisir  ,/ changer  Entrée: modif."; }
+  const char* title() const override { return tr("Settings", "Réglages"); }
+  const char* help() const override { return tr(";. select  ,/ change  Enter: edit", ";. choisir  ,/ changer  Entrée: modif."); }
   void onEnter(App& app) override;
   bool onKey(App& app, const KeyEvent& e) override;
   void draw(App& app, lgfx::LovyanGFX& g) override;
 
-  enum Item { NAME, RADIO, RADIO_INFO, TX_POWER, TIMEZONE, SCREEN_TIMEOUT, BRIGHTNESS, SOUND, SHARE_LOCATION,
+  enum Item { LANGUAGE, NAME, RADIO, RADIO_INFO, TX_POWER, TIMEZONE, SCREEN_TIMEOUT, BRIGHTNESS, SOUND, SHARE_LOCATION,
               BACKUP, RESTORE, PHONE_MODE, SYSTEM, COUNT };
 
 private:

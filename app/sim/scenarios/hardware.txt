@@ -1,6 +1,7 @@
 # Fake hardware (layer 2): the real drivers run against fake chips and feed the real UI.
 # Keyboard: physical taps on a fake TCA8418 -> Tca8418 driver -> KeyMatrix -> App.
 # GPS: a fake AT6668 module talking at 9600 baud -> GpsLink (baud detection) -> GPS screen.
+lang fr
 name Raphaël
 time 1793541600
 hw keyboard on

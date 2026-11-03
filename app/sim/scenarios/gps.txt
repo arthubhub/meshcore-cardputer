@@ -1,4 +1,5 @@
 # Phase 4: GPS (real NMEA parser on a recorded-like track), advert with position, compass, distances.
+lang fr
 name Raphaël
 time 1793541600
 contact Bob 1 fav pos 43.6047 1.4442

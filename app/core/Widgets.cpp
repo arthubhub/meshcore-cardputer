@@ -1,4 +1,5 @@
 #include "Widgets.h"
+#include "I18n.h"
 #include <string.h>
 #include <stdio.h>
 
@@ -135,7 +136,7 @@ void formatAgo(uint32_t secs, char* out, size_t n) {
   if (secs < 60) snprintf(out, n, "%u s", (unsigned)secs);
   else if (secs < 3600) snprintf(out, n, "%u min", (unsigned)(secs / 60));
   else if (secs < 86400) snprintf(out, n, "%u h", (unsigned)(secs / 3600));
-  else snprintf(out, n, "%u j", (unsigned)(secs / 86400));
+  else snprintf(out, n, tr("%u d", "%u j"), (unsigned)(secs / 86400));
 }
 
 static void civilDate(uint32_t days, int& d, int& m) {

@@ -1,6 +1,7 @@
 #pragma once
 // UI application: screen stack, status bar, key routing, redraw scheduling.
 // Portable: runs unchanged on the Cardputer and in the simulator.
+#include "I18n.h"
 #include "Keys.h"
 #include "Services.h"
 #include "Theme.h"
@@ -12,7 +13,7 @@ public:
   virtual ~Screen() {}
   virtual const char* title() const = 0;
   // Key hint shown on the bottom line (UTF-8, Latin-1 range).
-  virtual const char* help() const { return "` retour"; }
+  virtual const char* help() const { return tr("` back", "` retour"); }
   // true: the screen receives raw characters (text entry), arrows need Fn.
   virtual bool wantsText() const { return false; }
   virtual void onEnter(App&) {}    // pushed (opened)

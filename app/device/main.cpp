@@ -274,9 +274,9 @@ void setup() {
   sys.setYieldHook(meshLoop);   // long renders (map) keep the radio served
   app.begin(&home);
 #if CPADV_DEMO
-  app.notify("Mode démo", "Pas de radio : contacts et GPS simulés", 5000);
+  app.notify(tr("Demo mode", "Mode démo"), tr("No radio: simulated contacts and GPS", "Pas de radio : contacts et GPS simulés"), 5000);
 #else
-  if (!radioReady) app.notify("Radio absente", "Vérifier le Cap LoRa et l'antenne", 8000);
+  if (!radioReady) app.notify(tr("No radio", "Radio absente"), tr("Check the LoRa Cap and its antenna", "Vérifier le Cap LoRa et l'antenne"), 8000);
 #endif
   lastActivity = millis();
   setupConsole();
@@ -336,9 +336,9 @@ void loop() {
     if (pct >= 0 && pct <= 10 && !lowBatteryWarned) {
       lowBatteryWarned = true;
       char t[40];
-      snprintf(t, sizeof(t), "%d %%, pense à recharger", pct);
+      snprintf(t, sizeof(t), tr("%d %%, please recharge", "%d %%, pense à recharger"), pct);
       wakeScreen();
-      app.notify("Batterie faible", t, 5000);
+      app.notify(tr("Low battery", "Batterie faible"), t, 5000);
       sys.playSound(SOUND_FAIL);
     } else if (pct > 20) {
       lowBatteryWarned = false;
@@ -349,7 +349,7 @@ void loop() {
   if (sys.companionBootDue(millis())) {
     meshNode.flush();   // contacts and channels on flash before leaving
     cpadv::rebootInto(cpadv::Slot::Companion);   // only returns on failure
-    app.notify("Échec", "Mode téléphone non installé", 3000);
+    app.notify(tr("Failed", "Échec"), tr("Phone mode not installed", "Mode téléphone non installé"), 3000);
   }
 #endif
 

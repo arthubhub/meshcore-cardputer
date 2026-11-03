@@ -22,6 +22,7 @@
 //   tca <row> <col> [down|up]      raw Cardputer ADV key through the TCA8418 decoding (KeyMatrix),
 //                                  row 0..3 / col 0..13 of the physical keyboard; default = press+release
 //   name <self name>               set this node's name (without going through the settings screen)
+//   lang en|fr                     UI language (English by default, like the firmware)
 //   battery <pct> [charging]
 //   gps fix <sats> | gps nofix | gps none   quick GPS states (none = module silent)
 //   nmea <sentence>                feed one NMEA sentence to the GPS parser ("$GPGGA,...*hh")
@@ -40,7 +41,7 @@
 //   shot <name>                    write <output_dir>/<name>.png
 //   expect-screen <title>          fail (exit 1) if the current screen title differs
 //   expect-unread <n>              fail if the unread counter differs
-//   expect-setting <field> <value> name|preset|tx|tz|timeout|brightness|sound|share (tz in minutes, bools 0/1)
+//   expect-setting <field> <value> name|preset|tx|tz|timeout|brightness|sound|share|lang (tz in minutes, bools 0/1)
 //   expect-convs <n>               number of conversations
 //   expect-msgs <conv> <n>         number of stored messages in a conversation (by name)
 //   expect-last <conv> <state> [text...]  state of the newest message: received|pending|sent|delivered|failed|channel
@@ -340,6 +341,13 @@ int main(int argc, char** argv) {
       else if (what == "cap-p0") got = capP0 && hw.capChip.drives(0, true);
       else if (what == "clock-sets") got = hw.gps.clockSets();
       if (got != want) { fprintf(stderr, "line %d: FAIL hw %s expected %ld, got %ld\n", lineNo, what.c_str(), want, got); g_failures++; }
+    } else if (cmd == "lang") {
+      std::string l; ls >> l;
+      UiSettings s = settings.get();
+      if (l == "en") s.language = LANG_EN;
+      else if (l == "fr") s.language = LANG_FR;
+      else { fprintf(stderr, "line %d: lang en|fr\n", lineNo); g_failures++; continue; }
+      settings.save(s); app.invalidate(); runFor(LOOP_MS);
     } else if (cmd == "name") {
       UiSettings s = settings.get(); std::string n = rest(ls);
       strncpy(s.nodeName, n.c_str(), sizeof(s.nodeName) - 1); s.nodeName[sizeof(s.nodeName) - 1] = 0;
@@ -442,6 +450,7 @@ int main(int argc, char** argv) {
       else if (field == "ble") got = std::to_string(s.ble);
       else if (field == "share") got = std::to_string(s.shareLocation);
       else if (field == "brightness") got = std::to_string(s.brightness);
+      else if (field == "lang") got = s.language == LANG_FR ? "fr" : "en";
       else got = "<unknown field>";
       if (want != got) { fprintf(stderr, "line %d: FAIL setting %s expected '%s', got '%s'\n", lineNo, field.c_str(), want.c_str(), got.c_str()); g_failures++; }
     } else if (cmd == "expect-convs") {
