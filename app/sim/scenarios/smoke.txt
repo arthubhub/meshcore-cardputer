@@ -1,0 +1,40 @@
+# Smoke test: boot, home screen, a few messages, navigation to placeholder screens.
+name Raphaël-CPADV
+time 1793541600
+battery 82
+gps nofix
+shot 01_boot_empty
+expect-screen Accueil
+
+hear Relais-Colomiers 9.5
+hear Heltec-Bob 4.0
+wait 3000
+rxch Public Alice Salut à tous, quelqu'un sur Colomiers ?
+wait 2000
+rx Bob On se retrouve à 18h au parc ?
+wait 1000
+gps fix 7
+ble on
+shot 02_home_messages
+expect-unread 2
+
+# M opens Messages (placeholder until phase 3), ` goes back
+key m
+expect-screen Messages
+shot 03_messages_placeholder
+key `
+expect-screen Accueil
+
+# Fn+` is Esc too
+key s
+expect-screen Réglages
+key fn+`
+expect-screen Accueil
+
+# Upper case letters work as shortcuts too
+key shift+g
+expect-screen GPS
+key esc
+battery 9
+wait 61000
+shot 04_low_battery_later

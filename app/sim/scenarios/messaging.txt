@@ -1,0 +1,139 @@
+# Phase 3: standalone messaging (conversations, chat, ACKs, retries, contacts, channels, persistence).
+name Raphaël
+time 1793541600
+pos 43.6116 1.3346
+contact Bob 1 fav pos 43.6047 1.4442
+contact Relais-Colomiers 0 repeater
+contact Alice 2
+contact Inconnu -1
+expect-contacts 4
+expect-convs 1
+
+# --- An incoming direct message while on the home screen: banner + sound
+wait 1000
+rx Bob Salut ! Tu es dispo ce soir pour le relais ?
+wait 100
+shot 20_home_banner
+expect-unread 1
+expect-sounds 1
+wait 3000
+rxch Public Alice Quelqu'un capte le relais de Colomiers ?
+wait 3000
+expect-unread 2
+shot 21_home_after
+
+# --- Conversation list: Public (newest) then Bob
+key m
+expect-screen Messages
+expect-convs 2
+shot 22_conversations
+
+# --- Open Bob (2nd row), reply with accents, ACK arrives
+key .
+key enter
+expect-screen Bob
+expect-unread 1
+type Oui, rendez-vous 
+key alt+a
+type  18h au caf
+key alt+e
+type  !
+shot 23_chat_typing
+key enter
+expect-last Bob sent Oui, rendez-vous à 18h au café !
+shot 24_chat_sent
+wait 2000
+expect-last Bob delivered
+shot 25_chat_delivered
+
+# --- No ACK: 3 attempts (last one flooded) then failure
+net ack off
+type Tu me re
+key alt+c
+type ois ?
+key enter
+wait 5000
+expect-last Bob sent
+wait 9000
+expect-last Bob failed
+shot 26_chat_failed
+net ack on
+
+# --- A long incoming message wraps; scroll back in history with Fn+;
+rx Bob Je serai au relais vers 18h15, je ramène l'antenne 868 et le câble. Si tu as le Cardputer prends-le, on testera la portée jusqu'à Pibrac.
+wait 500
+shot 27_chat_long
+key fn+;*2
+shot 28_chat_scrolled
+key fn+.*2
+
+# --- Back to the list (Fn+` = Esc in text screens), new message to Alice via N
+key fn+`
+expect-screen Messages
+key n
+expect-screen Écrire à... (4)
+shot 29_pick_contact
+key .*2
+key enter
+expect-screen Alice
+type Coucou Alice
+key enter
+wait 2000
+expect-last Alice delivered
+key fn+`
+
+# --- Join a hashtag channel, write on Public
+key j
+expect-screen Rejoindre un canal
+type colomiers
+key enter
+expect-convs 4
+shot 30_conversations_channels
+key `
+expect-screen Accueil
+
+# --- Contacts: list, favourite, delete with confirmation, details with distance
+key c
+expect-screen Contacts (4)
+shot 31_contacts
+# Inconnu (last row) becomes a favourite: it moves up and stays selected, then D D deletes it
+key .*3
+key f
+key d
+key d
+expect-contacts 3
+key ;
+key enter
+expect-screen Contact
+shot 32_contact_detail
+key `
+key `
+
+# --- Channel message (Public is the 3rd most recent conversation now)
+key m
+key .*2
+key enter
+expect-screen Public
+type Test depuis le Cardputer
+key enter
+wait 500
+shot 33_channel_chat
+key fn+`
+key `
+
+# --- Restart: everything is still there
+reboot
+expect-screen Accueil
+expect-convs 4
+expect-msgs Bob 4
+expect-last Bob received
+expect-last Public channel Test depuis le Cardputer
+expect-unread 0
+shot 34_after_reboot
+
+# --- History is bounded: 70 messages -> the last 64 are kept
+rxburst Bob 70
+expect-msgs Bob 64
+expect-last Bob received message 70
+expect-unread 70
+shot 35_home_many_unread

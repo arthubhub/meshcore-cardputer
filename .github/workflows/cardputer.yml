@@ -1,0 +1,194 @@
+name: Cardputer ADV
+
+# Builds for the standalone Cardputer ADV + Cap LoRa project (MeshCore = submodule meshcore/).
+#  - release:   when a "cardputer-vX.Y.Z" release is published on GitHub, attaches the full-flash images.
+#  - simulator: unit tests of the drivers against fake chips, then every UI scenario twice
+#               (direct keys, and through the fake TCA8418 keyboard), uploads the screenshots.
+#  - firmware:  builds the PlatformIO envs listed in the matrix, reports RAM/flash,
+#               uploads firmware.bin (OTA/update) and firmware-merged.bin (full flash at 0x0).
+#  - dual:      standalone + phone companion in one image (firmware-dual.bin, full flash at 0x0).
+
+on:
+  push:
+    branches: [main]
+  release:
+    types: [published]       # publish a release from the GitHub site with a new cardputer-v* tag
+  pull_request:
+  workflow_dispatch:
+  workflow_call:             # used by meshcore-update.yml to check a MeshCore update before it lands
+    inputs:
+      ref:
+        description: branch to build
+        type: string
+        required: true
+
+jobs:
+  simulator:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref || '' }}
+          submodules: true
+
+      - name: Cache LovyanGFX build
+        uses: actions/cache@v5
+        with:
+          path: |
+            app/sim/build/LovyanGFX
+            app/sim/build/lgfx
+            app/sim/build/liblgfx.a
+          key: sim-lgfx-${{ hashFiles('app/sim/Makefile') }}
+
+      - name: Driver unit tests (fake chips)
+        run: make -C app/sim -j4 test
+
+      - name: Build and run scenarios
+        run: make -C app/sim -j4 run
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: simulator-screenshots
+          path: |
+            app/sim/build/shots/
+            app/sim/build/shots_hw/
+          if-no-files-found: ignore
+
+  firmware:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        environment:
+          - cardputer_adv_companion_ble
+          - cardputer_adv_standalone
+          - cardputer_adv_standalone_map
+          - cardputer_adv_demo
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref || '' }}
+          submodules: true
+
+      - name: Setup Build Environment
+        uses: ./.github/actions/setup-build-environment
+
+      - name: MeshCore version
+        run: |
+          echo "MeshCore $(git -C meshcore describe --tags --always)" | tee -a "$GITHUB_STEP_SUMMARY"
+          python3 tools/sync_meshcore_base.py --check
+
+      - name: Build ${{ matrix.environment }}
+        run: pio run -e ${{ matrix.environment }} | tee build.log
+
+      - name: Merge flash image
+        run: pio run -e ${{ matrix.environment }} -t mergebin
+
+      - name: Memory report
+        run: |
+          RAM=$(grep -E '^RAM:' build.log | tail -1)
+          FLASH=$(grep -E '^Flash:' build.log | tail -1)
+          PCT=$(echo "$RAM" | grep -oE '[0-9]+\.[0-9]+%' | head -1 | tr -d '%')
+          {
+            echo "### ${{ matrix.environment }}"
+            echo '```'
+            echo "$RAM"
+            echo "$FLASH"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "$RAM"; echo "$FLASH"
+          if [ -n "$PCT" ] && awk "BEGIN{exit !($PCT > 70)}"; then
+            echo "::warning title=RAM budget::${{ matrix.environment }} uses ${PCT}% static RAM (budget 70%)"
+            echo "**Warning: static RAM above the 70% budget.**" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: M5Launcher compatibility
+        if: matrix.environment != 'cardputer_adv_companion_ble'
+        run: |
+          python3 tools/launcher_check.py .pio/build/${{ matrix.environment }}/firmware-merged.bin --strict | tee launcher.txt
+          { echo '```'; cat launcher.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Collect binaries
+        run: |
+          mkdir -p out
+          cp .pio/build/${{ matrix.environment }}/firmware.bin out/${{ matrix.environment }}.bin
+          cp .pio/build/${{ matrix.environment }}/firmware-merged.bin out/${{ matrix.environment }}-merged.bin
+          cp build.log out/${{ matrix.environment }}-build.log
+
+      - name: Upload firmware
+        uses: actions/upload-artifact@v7
+        with:
+          name: firmware-${{ matrix.environment }}
+          path: out/
+
+  dual:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref || '' }}
+          submodules: true
+
+      - name: Setup Build Environment
+        uses: ./.github/actions/setup-build-environment
+
+      - name: Build both firmwares (dual image)
+        run: pio run -e cardputer_adv_dual_standalone -e cardputer_adv_dual_companion | tee build.log
+
+      - name: Assemble firmware-dual.bin
+        run: |
+          python3 tools/make_dual.py | tee dual.txt
+          { echo '### cardputer_adv_dual'; echo '```'; grep -E '^(RAM|Flash):' build.log; cat dual.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          mkdir -p out
+          cp .pio/build/firmware-dual.bin out/cardputer_adv_dual-merged.bin
+
+      - name: Upload firmware
+        uses: actions/upload-artifact@v7
+        with:
+          name: firmware-cardputer_adv_dual
+          path: out/
+
+  release:
+    needs: [simulator, firmware, dual]
+    if: startsWith(github.ref, 'refs/tags/cardputer-v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download firmware
+        uses: actions/download-artifact@v8
+        with:
+          pattern: firmware-*
+          merge-multiple: true
+          path: out
+
+      - name: Keep the full-flash images only
+        run: |
+          mkdir -p release
+          for f in out/*-merged.bin; do
+            n=$(basename "$f" -merged.bin)
+            cp "$f" "release/${n}-${GITHUB_REF_NAME#cardputer-}.bin"
+          done
+          ls -la release
+
+      - name: Publish the release
+        uses: softprops/action-gh-release@v3
+        with:
+          name: "Cardputer ${{ github.ref_name }}"
+          prerelease: true
+          append_body: true   # keep the notes written on the release page, add the file list below
+          files: release/*.bin
+          body: |
+            Firmwares pour M5Stack Cardputer ADV. Fichiers à flasher **à l'adresse 0x0**
+            (ESPConnect : https://thelastoutpostworkshop.github.io/ESPConnect/).
+
+            - `cardputer_adv_demo` : **démo sans module LoRa** (contacts et GPS simulés)
+            - `cardputer_adv_standalone` : autonome (Cap LoRa-1262 requis)
+            - `cardputer_adv_standalone_map` : autonome + carte hors ligne sur SD
+            - `cardputer_adv_companion_ble` : pour l'appli MeshCore du téléphone
+            - `cardputer_adv_dual` : **autonome + mode téléphone** dans le même flash
+              (Réglages > Mode téléphone ; retour : touche esc 3 fois)
+
+            Mode d'emploi : app/FLASH.md

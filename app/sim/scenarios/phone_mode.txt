@@ -1,0 +1,27 @@
+# Dual-boot image: Settings > "Mode téléphone" restarts into the MeshCore companion (phone app).
+name Raphaël
+time 1793541600
+key s
+expect-screen Réglages
+# from the top, up wraps to "Système", up again = "Mode téléphone"
+key up
+key up
+shot 95_phone_mode_missing
+# single firmware image: explained, nothing happens
+key enter
+wait 200
+shot 96_phone_mode_not_installed
+expect-companion-boots 0
+wait 4000
+
+# dual-boot image: first Enter asks, second Enter restarts
+dual on
+shot 97_phone_mode_available
+key enter
+wait 200
+shot 98_phone_mode_confirm
+expect-companion-boots 0
+key enter
+wait 200
+expect-companion-boots 1
+shot 99_phone_mode_restart

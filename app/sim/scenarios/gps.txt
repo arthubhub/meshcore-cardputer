@@ -1,0 +1,55 @@
+# Phase 4: GPS (real NMEA parser on a recorded-like track), advert with position, compass, distances.
+name Raphaël
+time 1793541600
+contact Bob 1 fav pos 43.6047 1.4442
+contact Alice 2 pos 43.6170 1.2850
+contact Relais-Colomiers 0 repeater
+
+# --- GPS screen without module, then while searching
+key g
+expect-screen GPS
+gps none
+shot 40_gps_no_module
+nmea $GNRMC,140000.00,V,,,,,,,021126,,,N*60
+nmea $GNGGA,140000.00,,,,,0,03,99.9,,,,,,*47
+expect-gps fix 0
+expect-gps sats 3
+shot 41_gps_searching
+
+# --- Corrupted sentences are rejected
+nmea-bad $GNGGA,140001.00,4336.6960,N,00120.0760,E,1,08,0.9,162.4,M,49.6,M,,*00
+nmea-bad garbage
+
+# --- A 40 s walk east from Colomiers centre (8 s cold start, then 3D fix, 5 km/h)
+nmeafile tracks/colomiers_walk.nmea 1000
+expect-gps fix 1
+expect-gps speed 5.0
+expect-gps sats 12
+shot 42_gps_fix_walking
+
+# --- Advert with position (A), then the compass (B)
+key a
+expect-adverts-pos 1
+key b
+expect-screen Boussole
+shot 43_compass_bob
+key /
+shot 44_compass_alice
+key `
+key `
+
+# --- Contacts show distances, the contact sheet opens the compass too
+key c
+shot 45_contacts_distances
+key enter
+expect-screen Contact
+key b
+expect-screen Boussole
+key `
+key `
+expect-screen Contacts (3)
+key .*2
+key enter
+key b
+expect-screen Contact
+shot 46_no_position_notice

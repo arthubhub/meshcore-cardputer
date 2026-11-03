@@ -1,0 +1,86 @@
+# Settings screen: every setting can be changed, name editing with accents, system screen.
+time 1793541600
+key s
+expect-screen Réglages
+shot 10_settings_top
+
+# Rename the node: erase "Cardputer-Sim", type "Raphaël-CPADV" (ë = Alt+e four times)
+key enter
+expect-screen Nom de l'appareil
+key bksp*13
+type Rapha
+key alt+e*4
+type l-CPADV
+shot 11_text_input
+key enter
+expect-screen Réglages
+expect-setting name Raphaël-CPADV
+
+# Fn+` cancels the text input without saving
+key enter
+type XYZ
+key fn+`
+expect-screen Réglages
+expect-setting name Raphaël-CPADV
+
+# Radio preset (the detail row is skipped by the cursor)
+key .
+key /
+expect-setting preset 1
+shot 12_settings_radio
+key ,
+expect-setting preset 0
+key ,
+expect-setting preset 2
+key /
+expect-setting preset 0
+
+# TX power, time zone, screen timeout, brightness, sound, location sharing
+key .
+key ,*3
+expect-setting tx 19
+key .
+key /
+expect-setting tz 120
+key .
+key enter
+expect-setting timeout 120
+key ,*2
+expect-setting timeout 30
+key .
+key /
+expect-setting brightness 2
+key .
+key enter
+expect-setting sound 0
+key .
+key enter
+expect-setting share 1
+shot 13_settings_bottom
+
+# Backup without SD card: refused; with a card: saved, then restored after a change
+key .
+key enter
+expect-setting name Raphaël-CPADV
+sd on
+key enter
+shot 16_backup_done
+name Autre-Nom
+key .
+key enter
+key enter
+expect-setting name Raphaël-CPADV
+shot 17_restored
+
+# System screen (after "Mode téléphone")
+key .
+key .
+key enter
+expect-screen Système
+wait 5000
+shot 14_system
+key `
+expect-screen Réglages
+key `
+expect-screen Accueil
+shot 15_home_renamed

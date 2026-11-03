@@ -1,0 +1,13 @@
+# Cardputer ADV dual-boot image (8 MB flash, no OTA updates):
+#   app0 = standalone keyboard firmware   (env cardputer_adv_dual_standalone)
+#   app1 = MeshCore companion for the phone app over Bluetooth (env cardputer_adv_dual_companion)
+# Both firmwares share the LittleFS data partition (same radio identity in both modes).
+# Switching = otadata points to the other app + restart (Settings > Mode telephone / esc x3).
+# Flashed as one file by tools/make_dual.py (firmware-dual.bin at 0x0). Not for M5Launcher.
+# Name,   Type, SubType, Offset,   Size,     Flags
+nvs,      data, nvs,     0x9000,   0x5000,
+otadata,  data, ota,     0xE000,   0x2000,
+app0,     app,  ota_0,   0x10000,  0x200000,
+app1,     app,  ota_1,   0x210000, 0x200000,
+spiffs,   data, spiffs,  0x410000, 0x3E0000,
+coredump, data, coredump,0x7F0000, 0x10000,

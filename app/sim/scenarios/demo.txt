@@ -1,0 +1,36 @@
+# Demo firmware (Cardputer without the LoRa Cap): talking characters + fake walking GPS.
+name Raphaël
+time 1793541600
+demo
+wait 500
+shot 60_demo_home
+expect-unread 2
+
+# Reply to Bob: ACK then his answer arrives
+key m
+key .
+key enter
+expect-screen Bob
+type Salut Bob, tout va bien ?
+key enter
+wait 2000
+expect-last Bob delivered
+wait 8000
+expect-last Bob received Salut ! Ça capte bien chez toi ?
+shot 61_demo_chat
+key fn+`
+key `
+
+# The fake GPS gets a fix after 20 s and walks around Colomiers
+wait 15000
+key g
+shot 62_demo_gps
+expect-gps fix 1
+key `
+key c
+shot 63_demo_contacts
+key `
+
+# Life goes on: channel chatter, direct messages, adverts
+wait 300000
+shot 64_demo_home_later

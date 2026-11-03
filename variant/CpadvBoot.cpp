@@ -1,0 +1,67 @@
+#include "CpadvBoot.h"
+#include "CpadvLog.h"
+#include <Arduino.h>
+#include <esp_app_format.h>
+#include <esp_ota_ops.h>
+#include <esp_partition.h>
+
+namespace {
+
+const esp_partition_t* slotPartition(cpadv::Slot s) {
+  return esp_partition_find_first(ESP_PARTITION_TYPE_APP,
+                                  s == cpadv::Slot::Standalone ? ESP_PARTITION_SUBTYPE_APP_OTA_0
+                                                               : ESP_PARTITION_SUBTYPE_APP_OTA_1,
+                                  nullptr);
+}
+
+bool slotHasApp(cpadv::Slot s, esp_app_desc_t* desc) {
+  const esp_partition_t* p = slotPartition(s);
+  return p && esp_ota_get_partition_description(p, desc) == ESP_OK;
+}
+
+}  // namespace
+
+namespace cpadv {
+
+bool dualBootImage() {
+  static int cached = -1;
+  if (cached < 0) {
+    esp_app_desc_t a, b;
+    bool s = slotHasApp(Slot::Standalone, &a);
+    bool c = slotHasApp(Slot::Companion, &b);
+    cached = s && c;
+    if (cached) {
+      CPLOG_I("BOOT", "dual-boot image: app0 standalone (built %s %s), app1 companion (built %s %s), running %s",
+              a.date, a.time, b.date, b.time, runningSlot() == Slot::Standalone ? "standalone" : "companion");
+    } else {
+      CPLOG_I("BOOT", "single firmware image (app0 %s, app1 %s)", s ? "ok" : "none", c ? "ok" : "none");
+    }
+  }
+  return cached == 1;
+}
+
+Slot runningSlot() {
+  const esp_partition_t* p = esp_ota_get_running_partition();
+  return (p && p->subtype == ESP_PARTITION_SUBTYPE_APP_OTA_1) ? Slot::Companion : Slot::Standalone;
+}
+
+bool rebootInto(Slot s) {
+  const char* name = s == Slot::Standalone ? "standalone (keyboard)" : "companion (phone app)";
+  esp_app_desc_t d;
+  if (!slotHasApp(s, &d)) {
+    CPLOG_E("BOOT", "cannot switch to %s: firmware not installed (flash firmware-dual.bin)", name);
+    return false;
+  }
+  esp_err_t err = esp_ota_set_boot_partition(slotPartition(s));
+  if (err != ESP_OK) {
+    CPLOG_E("BOOT", "cannot select the %s firmware: error %d", name, (int)err);
+    return false;
+  }
+  CPLOG_I("BOOT", "restarting into the %s firmware", name);
+  Serial.flush();
+  delay(200);
+  ESP.restart();
+  return true;
+}
+
+}  // namespace cpadv

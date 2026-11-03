@@ -1,0 +1,118 @@
+name: MeshCore update
+
+# Once a week, looks for a new official MeshCore release (companion-vX.Y.Z tag).
+# If there is one:
+#   1. moves the meshcore/ submodule to it on a branch meshcore-update/<tag>
+#      (tools/update_meshcore.py: regenerates meshcore_base.ini, lists the MeshCore files we
+#      depend on that changed),
+#   2. runs the whole Cardputer CI on that branch (6 firmwares, RAM budget, dual image size,
+#      M5Launcher layout, driver unit tests, simulator scenarios),
+#   3. only if everything passed:
+#        - repository variable MESHCORE_AUTO_MERGE = true and same major version
+#            -> merged into main automatically,
+#        - otherwise -> a pull request is opened, to merge after a test on the device.
+# Nothing reaches main when a check fails: the branch stays there, with the build logs.
+#
+# Settings > Actions > General > Workflow permissions: "Read and write" and
+# "Allow GitHub Actions to create and approve pull requests" must be enabled.
+
+on:
+  schedule:
+    - cron: '17 5 * * 1'          # Mondays 05:17 UTC
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'MeshCore release (e.g. companion-v1.18.0), empty = latest'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: meshcore-update
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.update.outputs.changed }}
+      old: ${{ steps.update.outputs.old }}
+      new: ${{ steps.update.outputs.new }}
+      major: ${{ steps.update.outputs.major_change }}
+      branch: ${{ steps.push.outputs.branch }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: true
+          fetch-depth: 0
+
+      - name: Look for a new MeshCore release
+        id: update
+        run: python3 tools/update_meshcore.py ${{ inputs.tag }}
+
+      - name: Push the update branch
+        id: push
+        if: steps.update.outputs.changed == 'true'
+        run: |
+          BRANCH="meshcore-update/${{ steps.update.outputs.new }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$BRANCH"
+          git add meshcore meshcore_base.ini
+          git commit -m "MeshCore ${{ steps.update.outputs.old }} -> ${{ steps.update.outputs.new }}"
+          git push --force origin "$BRANCH"
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+
+  checks:
+    needs: prepare
+    if: needs.prepare.outputs.changed == 'true'
+    uses: ./.github/workflows/cardputer.yml
+    with:
+      ref: ${{ needs.prepare.outputs.branch }}
+
+  publish:
+    needs: [prepare, checks]
+    if: needs.prepare.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      BRANCH: ${{ needs.prepare.outputs.branch }}
+      OLD: ${{ needs.prepare.outputs.old }}
+      NEW: ${{ needs.prepare.outputs.new }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Merge into main (automatic mode, same major version)
+        if: vars.MESHCORE_AUTO_MERGE == 'true' && needs.prepare.outputs.major != 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin "$BRANCH" main
+          git checkout main
+          git merge --no-ff "origin/$BRANCH" -m "Merge MeshCore $NEW (all checks passed)"
+          git push origin main
+          git push origin --delete "$BRANCH"
+          echo "MeshCore $NEW merged into main." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Open a pull request (review mode)
+        if: vars.MESHCORE_AUTO_MERGE != 'true' || needs.prepare.outputs.major == 'true'
+        run: |
+          if gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number' | grep -q .; then
+            echo "Pull request already open for $BRANCH"; exit 0
+          fi
+          gh pr create --base main --head "$BRANCH" \
+            --title "MeshCore $OLD -> $NEW" \
+            --body "Mise à jour automatique de MeshCore vers la release officielle **$NEW**.
+
+          Toutes les vérifications automatiques sont passées : 6 firmwares compilés, budget RAM,
+          taille de l'image double, compatibilité M5Launcher, tests des pilotes, scénarios du simulateur.
+          La liste des fichiers MeshCore modifiés dont dépend notre firmware est dans le résumé du
+          workflow « MeshCore update ».
+
+          **À faire avant de fusionner** : flasher \`firmware-dual\` (artefacts de ce workflow) et
+          suivre les premières sections de app/TESTS.md (logs, clavier, radio, mode téléphone)."

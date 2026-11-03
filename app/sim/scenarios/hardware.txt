@@ -1,0 +1,77 @@
+# Fake hardware (layer 2): the real drivers run against fake chips and feed the real UI.
+# Keyboard: physical taps on a fake TCA8418 -> Tca8418 driver -> KeyMatrix -> App.
+# GPS: a fake AT6668 module talking at 9600 baud -> GpsLink (baud detection) -> GPS screen.
+name Raphaël
+time 1793541600
+hw keyboard on
+hw cap
+expect-hw cap-p0 1
+expect-hw keyboard 1
+
+# --- Keyboard: open Messages and come back, through the chip
+key m
+expect-screen Messages
+key `
+expect-screen Accueil
+
+# --- Power glitch: the keyboard chip loses its configuration, the driver repairs it within 1 s
+hw keyboard reset
+wait 1200
+expect-hw kb-reinits 1
+expect-hw keyboard 1
+key g
+expect-screen GPS
+key `
+
+# --- Keyboard unplugged: no crash, keys lost; plugged back: works again by itself
+hw keyboard absent
+wait 300
+key g
+expect-screen Accueil
+hw keyboard present
+wait 2500
+key g
+expect-screen GPS
+
+# --- GPS module at 9600 baud, silent at first (cold start), no fix
+hw gps baud 9600
+hw gps silent on
+hw gps on
+wait 3000
+expect-hw gps-present 0
+shot 90_hw_gps_silent
+hw gps silent off
+hw gps nofix
+wait 9000
+expect-hw gps-baud 9600
+expect-gps fix 0
+shot 91_hw_gps_searching
+hw gps fix 43.6116 1.3346 9
+wait 2000
+expect-gps fix 1
+expect-gps sats 9
+# the wall clock was already right (scenario "time"): the GPS does not touch it
+expect-hw clock-sets 0
+shot 92_hw_gps_fix
+
+# --- Line noise: every checksum wrong -> the fix ages out, sentences rejected
+hw gps badsum on
+wait 7000
+expect-hw gps-present 0
+hw gps badsum off
+wait 2000
+expect-hw gps-present 1
+
+# --- Type a message through the keyboard chip (Shift for capitals and punctuation)
+contact Bob 1 fav
+key `
+rx Bob Tu me recois ?
+key m
+expect-screen Messages
+key enter
+expect-screen Bob
+type Salut Bob! GPS OK?
+key enter
+wait 3000
+expect-last Bob delivered Salut Bob! GPS OK?
+shot 93_hw_chat_typed

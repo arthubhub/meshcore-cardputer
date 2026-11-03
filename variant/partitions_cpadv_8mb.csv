@@ -1,0 +1,11 @@
+# Cardputer ADV standalone / demo firmware (8 MB flash, no OTA).
+# One 2.5 MB app slot and a large LittleFS data partition (label "spiffs", Arduino default).
+# The data partition is declared larger than 5 MB on purpose: M5Launcher then gives it all the
+# free flash left on the device when the firmware is installed from the SD card (otherwise it
+# would shrink it to 448 KB). See tools/launcher_check.py.
+# Name,   Type, SubType, Offset,   Size,     Flags
+nvs,      data, nvs,     0x9000,   0x5000,
+otadata,  data, ota,     0xE000,   0x2000,
+app0,     app,  ota_0,   0x10000,  0x280000,
+spiffs,   data, spiffs,  0x290000, 0x560000,
+coredump, data, coredump,0x7F0000, 0x10000,

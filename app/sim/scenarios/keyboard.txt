@@ -1,0 +1,45 @@
+# Physical keyboard: raw TCA8418 events decoded by KeyMatrix (same path as on the Cardputer).
+# Grid: row 0 = ` 1..0 - = bksp, row 1 = tab q..p [ ] \, row 2 = fn shift a..l ; ' enter,
+#       row 3 = ctrl opt alt z..m , . / space
+time 1793541600
+
+# m (row 3, col 9) opens Messages, ` (row 0, col 0) goes back
+tca 3 9
+expect-screen Messages
+tca 0 0
+expect-screen Accueil
+
+# Shift + g -> 'G' still opens GPS
+tca 2 1 down
+tca 2 6
+tca 2 1 up
+expect-screen GPS
+# Fn + ` = Esc
+tca 2 0 down
+tca 0 0
+tca 2 0 up
+expect-screen Accueil
+
+# s opens settings; Fn + . (down) then Fn + / (right) changes the radio preset
+tca 2 3
+expect-screen Réglages
+tca 2 0 down
+tca 3 11
+tca 3 12
+tca 2 0 up
+expect-setting preset 1
+
+# Text entry through the matrix: Fn+; (up) back to "Nom", enter, erase, type "ab", shift+c, enter
+tca 2 0 down
+tca 2 11
+tca 2 0 up
+tca 2 13
+expect-screen Nom de l'appareil
+key bksp*13
+tca 2 2
+tca 3 7
+tca 2 1 down
+tca 3 5
+tca 2 1 up
+tca 2 13
+expect-setting name abC
