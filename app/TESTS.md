@@ -1,8 +1,12 @@
 # Tests sur le Cardputer ADV
-
 À faire quand le matériel est disponible. Garder le moniteur série ouvert (115200 bauds) pendant
 chaque test et copier **tout** le log dans la session suivante : les lignes `[CPADV]` disent ce
 que le firmware a détecté.
+
+
+> **Langue de l'interface** : le firmware démarre en anglais. Pour passer en français : touche `s`
+> (Settings), première ligne « Language / Langue », touche `/`. Les noms d'écrans cités ici sont ceux de
+> l'interface en français (*Réglages* = *Settings*, *Mode téléphone* = *Phone mode*).
 
 ## Avant tout
 

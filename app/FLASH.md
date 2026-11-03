@@ -1,5 +1,9 @@
 # Installer le firmware sur le Cardputer ADV
 
+> **Langue de l'interface** : le firmware démarre en anglais. Pour passer en français : touche `s`
+> (Settings), première ligne « Language / Langue », touche `/`. Les noms d'écrans cités ici sont ceux de
+> l'interface en français (*Réglages* = *Settings*, *Mode téléphone* = *Phone mode*).
+
 ## 1. Choisir le bon fichier
 
 | Fichier | Pour qui | Module LoRa |

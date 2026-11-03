@@ -10,8 +10,8 @@ class CompassScreen : public Screen {
 public:
   void setTarget(const ConvKey& key) { _target = key; }
 
-  const char* title() const override { return "Boussole"; }
-  const char* help() const override { return ",/ contact  M écrire  ` retour"; }
+  const char* title() const override { return tr("Compass", "Boussole"); }
+  const char* help() const override { return tr(",/ contact  M write  ` back", ",/ contact  M écrire  ` retour"); }
   bool onKey(App& app, const KeyEvent& e) override;
   bool tick(App& app) override;
   void draw(App& app, lgfx::LovyanGFX& g) override;
@@ -29,7 +29,7 @@ class GpsScreen : public Screen {
 public:
   explicit GpsScreen(CompassScreen& compass) : _compass(compass) {}
   const char* title() const override { return "GPS"; }
-  const char* help() const override { return "A:annonce+pos B:boussole R:redém."; }
+  const char* help() const override { return tr("A:advert+pos B:compass R:restart", "A:annonce+pos B:boussole R:redém."); }
   bool onKey(App& app, const KeyEvent& e) override;
   bool tick(App& app) override;
   void draw(App& app, lgfx::LovyanGFX& g) override;

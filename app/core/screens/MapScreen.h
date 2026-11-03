@@ -6,8 +6,8 @@
 // cache in RAM), own position and contacts as markers, scale bar.
 class MapScreen : public Screen {
 public:
-  const char* title() const override { return "Carte"; }
-  const char* help() const override { return "+- zoom  ;.,/ déplacer  0 me centrer"; }
+  const char* title() const override { return tr("Map", "Carte"); }
+  const char* help() const override { return tr("+- zoom  ;.,/ move  0 centre on me", "+- zoom  ;.,/ déplacer  0 me centrer"); }
   void onEnter(App& app) override;
   bool onKey(App& app, const KeyEvent& e) override;
   bool tick(App& app) override;

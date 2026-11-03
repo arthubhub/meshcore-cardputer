@@ -1,5 +1,8 @@
 # MeshCore for the M5Stack Cardputer ADV
 
+[![English](https://img.shields.io/badge/lang-English-blue.svg)](README.md)
+[![Français](https://img.shields.io/badge/lang-Fran%C3%A7ais-lightgrey.svg)](README.fr.md)
+
 A standalone [MeshCore](https://github.com/meshcore-dev/MeshCore) firmware for the M5Stack Cardputer ADV
 fitted with the Cap LoRa-1262. Your Cardputer becomes a self-contained mesh messenger: you type and read
 messages on its own keyboard and screen, check your position on the built-in GPS, find your contacts with
@@ -9,7 +12,14 @@ If you would rather use the official MeshCore app, the same image also contains 
 firmware. Switching to "phone mode" is a single menu entry, and pressing **esc** three times brings you
 back. Both modes share the same radio identity, so the rest of the mesh sees a single node.
 
-> The user interface is currently in French.
+The interface is in English by default; French is one setting away (*Settings → Language / Langue*).
+
+<table>
+<tr><td align="center" width="33%"><img src="docs/images/readme_en_home.png" alt="Home: latest messages and neighbours" width="100%"><br><sub>Home: latest messages and neighbours</sub></td><td align="center" width="33%"><img src="docs/images/readme_en_chat.png" alt="Chat with delivery receipts" width="100%"><br><sub>Chat with delivery receipts</sub></td><td align="center" width="33%"><img src="docs/images/readme_en_gps.png" alt="GPS status" width="100%"><br><sub>GPS status</sub></td></tr>
+<tr><td align="center" width="33%"><img src="docs/images/readme_en_compass.png" alt="Compass pointing to a contact" width="100%"><br><sub>Compass pointing to a contact</sub></td><td align="center" width="33%"><img src="docs/images/readme_en_map.png" alt="Offline map with contacts" width="100%"><br><sub>Offline map with contacts</sub></td><td align="center" width="33%"><img src="docs/images/readme_en_settings.png" alt="Settings, with the language switch" width="100%"><br><sub>Settings, with the language switch</sub></td></tr>
+</table>
+
+<sub>Screenshots from the PC simulator (`make -C app/sim readme-images`), which runs the same interface code as the device. The map uses synthetic test tiles.</sub>
 
 ## What you need
 
@@ -42,8 +52,8 @@ esptool.py --chip esp32s3 write_flash 0x0 cardputer_adv_dual.bin
 ```
 
 The standalone, map and demo images are also laid out for M5Launcher, which gives them all the free
-flash for message history. A detailed, step-by-step
-guide (in French) is in [`app/FLASH.md`](app/FLASH.md).
+flash for message history. A detailed,
+step-by-step guide (in French) is in [`app/FLASH.md`](app/FLASH.md).
 
 ## Building from source
 

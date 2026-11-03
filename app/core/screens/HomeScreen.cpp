@@ -21,7 +21,8 @@ bool HomeScreen::onKey(App& app, const KeyEvent& e) {
   if (e.is('g')) { app.push(_gps); return true; }
   if (e.is('k')) {
     if (_map) app.push(_map);
-    else app.notify("Carte non incluse", "Firmware sans carte (version _map en option)", 2500);
+    else app.notify(tr("Map not included", "Carte non incluse"),
+                    tr("This build has no map (see the _map build)", "Firmware sans carte (version _map en option)"), 2500);
     return true;
   }
   if (e.is('s')) { app.push(_settings); return true; }
@@ -80,7 +81,7 @@ void HomeScreen::draw(App& app, lgfx::LovyanGFX& g) {
     g.setTextColor(DIM);
     g.drawString(line, MARGIN, y);
     int x = MARGIN + g.textWidth("00:00 ");
-    snprintf(line, sizeof(line), "%s: %s%s", c->name, c->lastOutgoing ? "moi > " : "", c->last);
+    snprintf(line, sizeof(line), "%s: %s%s", c->name, c->lastOutgoing ? tr("me > ", "moi > ") : "", c->last);
     fitText(g, line, SCREEN_W - x - MARGIN - 6, fitted, sizeof(fitted));
     g.setTextColor(c->unread ? FG : DIM);
     g.drawString(fitted, x, y);
@@ -90,19 +91,19 @@ void HomeScreen::draw(App& app, lgfx::LovyanGFX& g) {
   }
   if (shown == 0) {
     g.setTextColor(DIM);
-    g.drawString("Aucun message", MARGIN, y);
+    g.drawString(tr("No messages", "Aucun message"), MARGIN, y);
     y += LINE_H;
   }
 
   // Neighbours heard recently
-  sectionTitle(g, "Voisins", y);
+  sectionTitle(g, tr("Neighbours", "Voisins"), y);
   y += LINE_H;
   NeighbourInfo nb[2];
   int k = mesh.neighbours(nb, 2);
   g.setFont(&fontText);
   if (k == 0) {
     g.setTextColor(DIM);
-    g.drawString("Personne entendu", MARGIN, y);
+    g.drawString(tr("Nobody heard yet", "Personne entendu"), MARGIN, y);
   }
   for (int i = 0; i < k; i++) {
     uint32_t a = nb[i].lastHeardSecs;

@@ -1,4 +1,5 @@
 #pragma once
+#include "I18n.h"
 // Great-circle distance and initial bearing (WGS84 sphere approximation, < 0.5 % error).
 #include <math.h>
 
@@ -21,11 +22,13 @@ inline double bearingDeg(double lat1, double lon1, double lat2, double lon2) {
   return b < 0 ? b + 360 : b;
 }
 
-// French 8-point compass label: N, NE, E, SE, S, SO, O, NO
+// 8-point compass label in the UI language: N, NE, E, SE, S, SW, W, NW (French: SO, O, NO)
 inline const char* compassLabel(double deg) {
-  static const char* const L[] = {"N", "NE", "E", "SE", "S", "SO", "O", "NO"};
+  static const char* const EN[] = {"N", "NE", "E", "SE", "S", "SW", "W", "NW"};
+  static const char* const FR[] = {"N", "NE", "E", "SE", "S", "SO", "O", "NO"};
   int i = (int)((deg + 22.5) / 45.0) % 8;
-  return L[i < 0 ? i + 8 : i];
+  if (i < 0) i += 8;
+  return i18n::french() ? FR[i] : EN[i];
 }
 
 }  // namespace geo

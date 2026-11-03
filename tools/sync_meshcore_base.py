@@ -13,6 +13,7 @@ Run it after every MeshCore version change.
 """
 import configparser
 import os
+import re
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -20,10 +21,21 @@ SRC = os.path.join(ROOT, "meshcore", "platformio.ini")
 OUT = os.path.join(ROOT, "meshcore_base.ini")
 SECTIONS = ["arduino_base", "esp32_base", "sensor_base"]
 
-# Paths of MeshCore's platformio.ini are relative to its own folder.
+# Paths of MeshCore's platformio.ini are relative to its own folder (and its sources to meshcore/src).
+# Source filters are relative to MeshCore's src/ there, to our project root (src_dir = .) here.
+def _filters(v):
+    out = []
+    for line in v.split("\n"):
+        line = line.strip()
+        line = re.sub(r"([+-])<(?!\$)", lambda m: m.group(1) + "<meshcore/src/", line)
+        out.append(line)
+    return "\n".join(out)
+
+
 REWRITE = {
     "extra_scripts": lambda v: " ".join("meshcore/" + p if not p.startswith(("/", "pre:", "post:")) else p
                                          for p in v.split()),
+    "build_src_filter": _filters,
 }
 
 

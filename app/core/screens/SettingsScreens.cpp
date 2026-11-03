@@ -80,7 +80,7 @@ void TextInputScreen::draw(App&, lgfx::LovyanGFX& g) {
   g.setTextDatum(lgfx::top_right);
   g.drawString(info, SCREEN_W - MARGIN, boxY + boxH + 3);
   g.setTextDatum(lgfx::top_left);
-  g.drawString("Accents : Alt+e, Alt+a, Alt+c...", MARGIN, boxY + boxH + 3);
+  g.drawString(tr("Accents: Alt+e, Alt+a, Alt+c...", "Accents : Alt+e, Alt+a, Alt+c..."), MARGIN, boxY + boxH + 3);
 }
 
 // ---------------------------------------------------------------- SystemScreen
@@ -105,13 +105,15 @@ void SystemScreen::draw(App& app, lgfx::LovyanGFX& g) {
   RadioStats rs = app.services().mesh->radioStats();
   uint32_t up = sys.millis() / 1000;
   char v[SYSTEM_ROWS][40];
-  const char* labels[SYSTEM_ROWS] = {"Version", "Mémoire libre", "Mémoire min", "Allumé depuis",
-                                     "Batterie", "Paquets reçus", "Paquets émis", "Erreurs radio",
-                                     "Dernier RSSI", "Dernier SNR", "Radio", "Carte SD"};
+  const char* labels[SYSTEM_ROWS] = {"Version", tr("Free memory", "Mémoire libre"), tr("Lowest memory", "Mémoire min"),
+                                     tr("Uptime", "Allumé depuis"), tr("Battery", "Batterie"),
+                                     tr("Packets received", "Paquets reçus"), tr("Packets sent", "Paquets émis"),
+                                     tr("Radio errors", "Erreurs radio"), tr("Last RSSI", "Dernier RSSI"),
+                                     tr("Last SNR", "Dernier SNR"), "Radio", tr("SD card", "Carte SD")};
   snprintf(v[0], 40, "%s", sys.firmwareVersion());
-  snprintf(v[1], 40, "%u Ko", (unsigned)(sys.freeHeap() / 1024));
-  snprintf(v[2], 40, "%u Ko", (unsigned)(sys.minFreeHeap() / 1024));
-  snprintf(v[3], 40, "%uj %02uh%02um%02us", (unsigned)(up / 86400), (unsigned)(up / 3600 % 24),
+  snprintf(v[1], 40, tr("%u KB", "%u Ko"), (unsigned)(sys.freeHeap() / 1024));
+  snprintf(v[2], 40, tr("%u KB", "%u Ko"), (unsigned)(sys.minFreeHeap() / 1024));
+  snprintf(v[3], 40, tr("%ud %02uh%02um%02us", "%uj %02uh%02um%02us"), (unsigned)(up / 86400), (unsigned)(up / 3600 % 24),
            (unsigned)(up / 60 % 60), (unsigned)(up % 60));
   int pct = sys.status().batteryPercent;
   if (pct >= 0) snprintf(v[4], 40, "%d %% (%u mV)", pct, (unsigned)sys.batteryMilliVolts());
@@ -124,8 +126,8 @@ void SystemScreen::draw(App& app, lgfx::LovyanGFX& g) {
   snprintf(v[10], 40, "%.3f SF%u", rs.freqMHz, rs.spreadingFactor);
   BackupService* bk = app.services().backup;
   TileSource* tl = app.services().tiles;
-  if (!bk || !bk->available()) snprintf(v[11], 40, "absente");
-  else snprintf(v[11], 40, "ok%s", tl ? (tl->available() ? ", carte ok" : ", sans carte") : "");
+  if (!bk || !bk->available()) snprintf(v[11], 40, "%s", tr("missing", "absente"));
+  else snprintf(v[11], 40, "ok%s", tl ? (tl->available() ? tr(", map ok", ", carte ok") : tr(", no map", ", sans carte")) : "");
 
   _list.clamp(SYSTEM_ROWS, LIST_VISIBLE_ROWS);
   for (int i = 0; i < LIST_VISIBLE_ROWS && _list.top + i < SYSTEM_ROWS; i++) {
@@ -140,10 +142,26 @@ void SystemScreen::draw(App& app, lgfx::LovyanGFX& g) {
 namespace {
 const uint16_t TIMEOUTS[] = {15, 30, 60, 120, 300, 0};
 constexpr int TIMEOUT_COUNT = sizeof(TIMEOUTS) / sizeof(TIMEOUTS[0]);
-const char* const LABELS[SettingsScreen::COUNT] = {
-  "Nom", "Réglage radio", "  Détail", "Puissance émission", "Fuseau horaire",
-  "Veille écran", "Luminosité", "Son", "Partager position", "Sauvegarder sur SD", "Restaurer depuis SD", "Mode téléphone", "Système",
-};
+// Row labels in the UI language. "Language / Langue" stays bilingual so it can be found in either.
+const char* label(int item) {
+  switch (item) {
+    case SettingsScreen::LANGUAGE: return "Language / Langue";
+    case SettingsScreen::NAME: return tr("Name", "Nom");
+    case SettingsScreen::RADIO: return tr("Radio preset", "Réglage radio");
+    case SettingsScreen::RADIO_INFO: return tr("  Details", "  Détail");
+    case SettingsScreen::TX_POWER: return tr("TX power", "Puissance émission");
+    case SettingsScreen::TIMEZONE: return tr("Time zone", "Fuseau horaire");
+    case SettingsScreen::SCREEN_TIMEOUT: return tr("Screen timeout", "Veille écran");
+    case SettingsScreen::BRIGHTNESS: return tr("Brightness", "Luminosité");
+    case SettingsScreen::SOUND: return tr("Sound", "Son");
+    case SettingsScreen::SHARE_LOCATION: return tr("Share location", "Partager position");
+    case SettingsScreen::BACKUP: return tr("Back up to SD", "Sauvegarder sur SD");
+    case SettingsScreen::RESTORE: return tr("Restore from SD", "Restaurer depuis SD");
+    case SettingsScreen::PHONE_MODE: return tr("Phone mode", "Mode téléphone");
+    case SettingsScreen::SYSTEM: return tr("System", "Système");
+    default: return "";
+  }
+}
 }  // namespace
 
 void SettingsScreen::onEnter(App&) {}
@@ -186,6 +204,10 @@ void SettingsScreen::change(App& app, int item, int delta) {
     case BRIGHTNESS: s.brightness = (s.brightness + delta + 3) % 3; break;
     case SOUND: s.sound = !s.sound; break;
     case SHARE_LOCATION: s.shareLocation = !s.shareLocation; break;
+    case LANGUAGE:
+      s.language = (uint8_t)((s.language + delta + LANG_COUNT) % LANG_COUNT);
+      i18n::set(s.language);   // immediately, for the redraw that follows
+      break;
     default: return;
   }
   app.services().settings->save(s);
@@ -205,7 +227,7 @@ bool SettingsScreen::onKey(App& app, const KeyEvent& e) {
     case KeyCode::Right: change(app, _list.sel, +1); return true;
     case KeyCode::Enter:
       if (_list.sel == NAME) {
-        _input.setup("Nom de l'appareil", app.services().settings->get().nodeName,
+        _input.setup(tr("Device name", "Nom de l'appareil"), app.services().settings->get().nodeName,
                      sizeof(UiSettings::nodeName) - 1, onNameDone, this);
         app.push(&_input);
       } else if (_list.sel == SYSTEM) {
@@ -213,23 +235,23 @@ bool SettingsScreen::onKey(App& app, const KeyEvent& e) {
       } else if (_list.sel == PHONE_MODE) {
         SystemService* sys = app.services().sys;
         if (!sys->companionInstalled()) {
-          app.notify("Mode téléphone absent", "Flasher firmware-dual.bin", 3500);
+          app.notify(tr("Phone mode not installed", "Mode téléphone absent"), tr("Flash firmware-dual.bin", "Flasher firmware-dual.bin"), 3500);
           return true;
         }
         // Restarts the device into the phone firmware: ask twice
         if (!(_confirmItem == PHONE_MODE && (int32_t)(app.now() - _confirmUntil) < 0)) {
           _confirmItem = PHONE_MODE;
           _confirmUntil = app.now() + 3000;
-          app.notify("Passer en mode téléphone ?", "Entrée encore pour redémarrer", 3000);
+          app.notify(tr("Switch to phone mode?", "Passer en mode téléphone ?"), tr("Enter again to restart", "Entrée encore pour redémarrer"), 3000);
           return true;
         }
         _confirmItem = -1;
-        app.notify("Mode téléphone", "Retour : touche esc 3 fois", 5000);
+        app.notify(tr("Phone mode", "Mode téléphone"), tr("To come back: press esc 3 times", "Retour : touche esc 3 fois"), 5000);
         sys->requestCompanionBoot();
       } else if (_list.sel == BACKUP || _list.sel == RESTORE) {
         BackupService* b = app.services().backup;
         if (!b || !b->available()) {
-          app.notify("Pas de carte SD", "Insérer une carte microSD (FAT32)", 2500);
+          app.notify(tr("No SD card", "Pas de carte SD"), tr("Insert a microSD card (FAT32)", "Insérer une carte microSD (FAT32)"), 2500);
           return true;
         }
         bool restore = _list.sel == RESTORE;
@@ -237,13 +259,14 @@ bool SettingsScreen::onKey(App& app, const KeyEvent& e) {
         if (restore && !(_confirmItem == RESTORE && (int32_t)(app.now() - _confirmUntil) < 0)) {
           _confirmItem = RESTORE;
           _confirmUntil = app.now() + 3000;
-          app.notify("Remplacer la configuration ?", "Entrée encore pour confirmer", 3000);
+          app.notify(tr("Replace the configuration?", "Remplacer la configuration ?"), tr("Enter again to confirm", "Entrée encore pour confirmer"), 3000);
           return true;
         }
         _confirmItem = -1;
         char msg[64];
         bool ok = restore ? b->importConfig(msg, sizeof(msg)) : b->exportConfig(msg, sizeof(msg));
-        app.notify(ok ? (restore ? "Configuration restaurée" : "Sauvegarde faite") : "Échec", msg, 3500);
+        app.notify(ok ? (restore ? tr("Configuration restored", "Configuration restaurée") : tr("Backup done", "Sauvegarde faite"))
+                      : tr("Failed", "Échec"), msg, 3500);
       } else {
         change(app, _list.sel, +1);
       }
@@ -258,6 +281,7 @@ void SettingsScreen::formatValue(App& app, int item, char* out, size_t n) {
   const RadioPreset& p = RADIO_PRESETS[s.radioPreset < RADIO_PRESET_COUNT ? s.radioPreset : 0];
   out[0] = 0;
   switch (item) {
+    case LANGUAGE: snprintf(out, n, "< %s >", i18n::name(s.language)); break;
     case NAME: snprintf(out, n, "%s", s.nodeName); break;
     case RADIO: snprintf(out, n, "< %s >", p.name); break;
     case RADIO_INFO: snprintf(out, n, "%.3f BW%g SF%u", p.freqMHz, p.bwKHz, p.sf); break;
@@ -267,24 +291,24 @@ void SettingsScreen::formatValue(App& app, int item, char* out, size_t n) {
       else snprintf(out, n, "< UTC%+d >", s.utcOffsetMinutes / 60);
       break;
     case SCREEN_TIMEOUT:
-      if (s.screenTimeoutSecs == 0) snprintf(out, n, "< jamais >");
+      if (s.screenTimeoutSecs == 0) snprintf(out, n, "< %s >", tr("never", "jamais"));
       else if (s.screenTimeoutSecs < 60) snprintf(out, n, "< %u s >", s.screenTimeoutSecs);
       else snprintf(out, n, "< %u min >", s.screenTimeoutSecs / 60);
       break;
     case BRIGHTNESS: {
-      static const char* const L[] = {"faible", "moyenne", "forte"};
+      const char* L[] = {tr("low", "faible"), tr("medium", "moyenne"), tr("high", "forte")};
       snprintf(out, n, "< %s >", L[s.brightness < 3 ? s.brightness : 1]);
       break;
     }
-    case SOUND: snprintf(out, n, "%s", s.sound ? "oui" : "non"); break;
-    case SHARE_LOCATION: snprintf(out, n, "%s", s.shareLocation ? "oui" : "non"); break;
+    case SOUND: snprintf(out, n, "%s", s.sound ? tr("yes", "oui") : tr("no", "non")); break;
+    case SHARE_LOCATION: snprintf(out, n, "%s", s.shareLocation ? tr("yes", "oui") : tr("no", "non")); break;
     case BACKUP:
     case RESTORE: {
       BackupService* b = app.services().backup;
-      snprintf(out, n, "%s", b && b->available() ? ">" : "(pas de SD)");
+      snprintf(out, n, "%s", b && b->available() ? ">" : tr("(no SD)", "(pas de SD)"));
       break;
     }
-    case PHONE_MODE: snprintf(out, n, "%s", app.services().sys->companionInstalled() ? "Bluetooth >" : "(non installé)"); break;
+    case PHONE_MODE: snprintf(out, n, "%s", app.services().sys->companionInstalled() ? "Bluetooth >" : tr("(not installed)", "(non installé)")); break;
     case SYSTEM: snprintf(out, n, ">"); break;
   }
 }
@@ -298,7 +322,7 @@ void SettingsScreen::draw(App& app, lgfx::LovyanGFX& g) {
     BackupService* b = app.services().backup;
     bool info = (k == RADIO_INFO) || ((k == BACKUP || k == RESTORE) && !(b && b->available())) ||
                 (k == PHONE_MODE && !app.services().sys->companionInstalled());
-    drawListRow(g, CONTENT_Y + 1 + i * LINE_H, LABELS[k], value, k == _list.sel,
+    drawListRow(g, CONTENT_Y + 1 + i * LINE_H, label(k), value, k == _list.sel,
                 info ? DIM : ACCENT, info);
   }
   drawScrollbar(g, _list.top, LIST_VISIBLE_ROWS, COUNT);

@@ -5,6 +5,7 @@
 using namespace theme;
 
 void App::begin(Screen* root) {
+  i18n::set(_svc.settings->get().language);
   _depth = 0;
   push(root);
 }
@@ -57,13 +58,13 @@ bool App::pollEvents() {
         break;
       case MeshEvent::FAILED: {
         char t[64];
-        snprintf(t, sizeof(t), "Échec d'envoi : %s", ev.title);
-        notify(t, "Pas d'accusé de réception", 3500);
+        snprintf(t, sizeof(t), tr("Not delivered: %s", "Échec d'envoi : %s"), ev.title);
+        notify(t, tr("No acknowledgement received", "Pas d'accusé de réception"), 3500);
         _svc.sys->playSound(SOUND_FAIL);
         break;
       }
       case MeshEvent::CONTACT_NEW:
-        notify("Nouveau contact", ev.title, 2000);
+        notify(tr("New contact", "Nouveau contact"), ev.title, 2000);
         break;
       default:
         break;
@@ -73,6 +74,7 @@ bool App::pollEvents() {
 }
 
 bool App::loop() {
+  i18n::set(_svc.settings->get().language);   // follows the setting (cheap)
   pollEvents();
   if (_bannerUntil && !bannerVisible()) { _bannerUntil = 0; _dirty = true; }
   Screen* s = top();

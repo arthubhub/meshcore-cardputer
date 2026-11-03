@@ -22,7 +22,7 @@ public:
   const ConvKey& key() const { return _key; }
 
   const char* title() const override { return _title; }
-  const char* help() const override { return "Entrée:envoi Fn+;.:défiler Fn+`:retour"; }
+  const char* help() const override { return tr("Enter:send Fn+;.:scroll Fn+`:back", "Entrée:envoi Fn+;.:défiler Fn+`:retour"); }
   bool wantsText() const override { return true; }
   void onEnter(App& app) override;
   void onResume(App& app) override { reload(app); }
@@ -93,8 +93,8 @@ public:
   void show(const ConvKey& key) { _key = key; }
   void setCompass(CompassScreen* compass) { _compass = compass; }
 
-  const char* title() const override { return "Contact"; }
-  const char* help() const override { return "M:écrire F:favori X:chemin B:boussole"; }
+  const char* title() const override { return tr("Contact", "Contact"); }
+  const char* help() const override { return tr("M:write F:fav. X:path B:compass", "M:écrire F:favori X:chemin B:boussole"); }
   bool onKey(App& app, const KeyEvent& e) override;
   bool tick(App& app) override;
   void draw(App& app, lgfx::LovyanGFX& g) override;
@@ -112,7 +112,7 @@ public:
     : _chat(chat), _contacts(contacts), _input(input) {}
 
   const char* title() const override { return "Messages"; }
-  const char* help() const override { return "Entrée:ouvrir N:nouv. J:canal D:suppr."; }
+  const char* help() const override { return tr("Enter:open N:new J:channel D:delete", "Entrée:ouvrir N:nouv. J:canal D:suppr."); }
   void onEnter(App& app) override { _list = ListState(); _selKey = ConvKey(); }
   bool onKey(App& app, const KeyEvent& e) override;
   bool onEvent(App& app, const MeshEvent& ev) override;

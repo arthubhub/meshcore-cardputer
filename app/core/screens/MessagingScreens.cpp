@@ -12,26 +12,26 @@ int utcOffset(App& app) { return app.services().settings->get().utcOffsetMinutes
 uint32_t nowUnix(App& app) { return app.services().sys->status().unixTime; }
 
 void hopsLabel(int8_t hops, char* out, size_t n) {
-  if (hops < 0) snprintf(out, n, "chemin ?");
+  if (hops < 0) snprintf(out, n, "%s", tr("path ?", "chemin ?"));
   else if (hops == 0) snprintf(out, n, "direct");
-  else snprintf(out, n, "%d saut%s", hops, hops > 1 ? "s" : "");
+  else snprintf(out, n, tr("%d hop%s", "%d saut%s"), hops, hops > 1 ? "s" : "");
 }
 
 const char* typePrefix(uint8_t type) {
   switch (type) {
     case CONTACT_REPEATER: return "[R] ";
-    case CONTACT_ROOM: return "[S] ";
-    case CONTACT_SENSOR: return "[C] ";
+    case CONTACT_ROOM: return tr("[Rm] ", "[S] ");
+    case CONTACT_SENSOR: return tr("[Sn] ", "[C] ");
     default: return "";
   }
 }
 
 const char* typeName(uint8_t type) {
   switch (type) {
-    case CONTACT_CHAT: return "Personne";
-    case CONTACT_REPEATER: return "Répéteur";
-    case CONTACT_ROOM: return "Salon";
-    case CONTACT_SENSOR: return "Capteur";
+    case CONTACT_CHAT: return tr("Person", "Personne");
+    case CONTACT_REPEATER: return tr("Repeater", "Répéteur");
+    case CONTACT_ROOM: return tr("Room", "Salon");
+    case CONTACT_SENSOR: return tr("Sensor", "Capteur");
     default: return "?";
   }
 }
@@ -54,7 +54,7 @@ bool ConfirmPress::check(App& app, int t, const char* what) {
   }
   target = t;
   until = app.now() + 3000;
-  app.notify(what, "Appuyer encore sur D pour confirmer", 3000);
+  app.notify(what, tr("Press D again to confirm", "Appuyer encore sur D pour confirmer"), 3000);
   return false;
 }
 
@@ -94,7 +94,7 @@ bool ChatScreen::onKey(App& app, const KeyEvent& e) {
         _draft[0] = 0;
         _scroll = 0;
       } else {
-        app.notify("Envoi impossible", "Radio occupée ou contact inconnu", 2500);
+        app.notify(tr("Cannot send", "Envoi impossible"), tr("Radio busy or unknown contact", "Radio occupée ou contact inconnu"), 2500);
       }
       reload(app);
       return true;
@@ -179,8 +179,37 @@ void ChatScreen::layout(lgfx::LovyanGFX& g) {
 }
 
 void ChatScreen::drawBubble(App& app, lgfx::LovyanGFX& g, const StoredMsg& m, const Layout& l, int y) {
-  const int x = m.outgoing ? SCREEN_W - 6 - l.width : 3;
-  g.fillRoundRect(x, y, l.width, l.height, 4, m.outgoing ? BUBBLE_OUT : BUBBLE_IN);
+  // Meta line first: time, then delivery status (outgoing) or reception quality (incoming).
+  // Its width depends on the language and the hop count, so the bubble grows to fit it.
+  char when[12], meta[48];
+  formatWhen(m.ts, nowUnix(app), utcOffset(app), when, sizeof(when));
+  uint16_t statusColor = DIM;
+  if (m.outgoing) {
+    const char* st = "";
+    switch (m.state) {
+      case MSG_PENDING: st = tr("sending...", "envoi..."); break;
+      case MSG_SENT_FLOOD:
+      case MSG_SENT_DIRECT: st = m.attempt > 1 ? tr("resent", "renvoyé") : tr("sent", "envoyé"); break;
+      case MSG_DELIVERED: st = tr("delivered", "reçu"); statusColor = COLOR_OK; break;
+      case MSG_FAILED: st = tr("failed", "échec"); statusColor = COLOR_BAD; break;
+      case MSG_CHANNEL_SENT: st = tr("sent", "envoyé"); break;
+    }
+    snprintf(meta, sizeof(meta), "%s \xC2\xB7 %s", when, st);
+  } else if (m.hops == 0xFF) {
+    snprintf(meta, sizeof(meta), "%s", when);
+  } else {
+    char hops[16];
+    hopsLabel(m.hops, hops, sizeof(hops));
+    snprintf(meta, sizeof(meta), "%s \xC2\xB7 %s \xC2\xB7 %.1f dB", when, hops, m.snrX4 / 4.0f);
+  }
+  g.setFont(&fontSmall);
+  int width = l.width;
+  int metaW = g.textWidth(meta) + 8;
+  if (metaW > width) width = metaW;
+  if (width > SCREEN_W - 9) width = SCREEN_W - 9;
+
+  const int x = m.outgoing ? SCREEN_W - 6 - width : 3;
+  g.fillRoundRect(x, y, width, l.height, 4, m.outgoing ? BUBBLE_OUT : BUBBLE_IN);
   int ty = y + 2;
   if (!m.outgoing && m.sender[0]) {
     g.setFont(&fontBold);
@@ -198,32 +227,10 @@ void ChatScreen::drawBubble(App& app, lgfx::LovyanGFX& g, const StoredMsg& m, co
     ty += LINE_H;
   }
 
-  // Meta line: time, then delivery status (outgoing) or reception quality (incoming)
-  char when[12], meta[48];
-  formatWhen(m.ts, nowUnix(app), utcOffset(app), when, sizeof(when));
-  uint16_t statusColor = DIM;
-  if (m.outgoing) {
-    const char* st = "";
-    switch (m.state) {
-      case MSG_PENDING: st = "envoi..."; break;
-      case MSG_SENT_FLOOD:
-      case MSG_SENT_DIRECT: st = m.attempt > 1 ? "renvoyé" : "envoyé"; break;
-      case MSG_DELIVERED: st = "reçu"; statusColor = COLOR_OK; break;
-      case MSG_FAILED: st = "échec"; statusColor = COLOR_BAD; break;
-      case MSG_CHANNEL_SENT: st = "envoyé"; break;
-    }
-    snprintf(meta, sizeof(meta), "%s \xC2\xB7 %s", when, st);
-  } else if (m.hops == 0xFF) {
-    snprintf(meta, sizeof(meta), "%s", when);
-  } else {
-    char hops[16];
-    hopsLabel(m.hops, hops, sizeof(hops));
-    snprintf(meta, sizeof(meta), "%s \xC2\xB7 %s \xC2\xB7 %.1f dB", when, hops, m.snrX4 / 4.0f);
-  }
   g.setFont(&fontSmall);
   g.setTextColor(statusColor);
   g.setTextDatum(lgfx::top_right);
-  g.drawString(meta, x + l.width - 4, ty);
+  g.drawString(meta, x + width - 4, ty);
   g.setTextDatum(lgfx::top_left);
 }
 
@@ -247,7 +254,7 @@ void ChatScreen::drawCompose(App&, lgfx::LovyanGFX& g) {
   }
   if (!len) {
     g.setTextColor(DIM);
-    g.drawString("Écrire un message...", 6, y + 2);
+    g.drawString(tr("Write a message...", "Écrire un message..."), 6, y + 2);
     if (_cursorOn) g.fillRect(5, y + 3, 2, LINE_H - 1, FG);
     return;
   }
@@ -267,7 +274,7 @@ void ChatScreen::draw(App& app, lgfx::LovyanGFX& g) {
   const int top = CONTENT_Y;
   int y = CONTENT_Y + CONTENT_H - COMPOSE_H - 2;
   if (_n == 0) {
-    emptyState(g, "Pas encore de message", "Tape ton texte puis Entrée");
+    emptyState(g, tr("No messages yet", "Pas encore de message"), tr("Type your text, then Enter", "Tape ton texte puis Entrée"));
   }
   for (int i = _n - 1; i >= 0 && y > top; i--) {
     y -= _lay[i].height;
@@ -282,7 +289,8 @@ void ChatScreen::draw(App& app, lgfx::LovyanGFX& g) {
     g.setTextColor(COLOR_WARN);
     g.setTextDatum(lgfx::top_right);
     char b[24];
-    snprintf(b, sizeof(b), "%d plus récent%s", _scroll, _scroll > 1 ? "s" : "");
+    if (i18n::french()) snprintf(b, sizeof(b), "%d plus récent%s", _scroll, _scroll > 1 ? "s" : "");
+    else snprintf(b, sizeof(b), "%d newer", _scroll);
     g.drawString(b, SCREEN_W - 6, CONTENT_Y + CONTENT_H - COMPOSE_H - 11);
     g.setTextDatum(lgfx::top_left);
   }
@@ -292,7 +300,8 @@ void ChatScreen::draw(App& app, lgfx::LovyanGFX& g) {
 // =============================================================== ContactsScreen
 
 const char* ContactsScreen::help() const {
-  return _pick ? "Entrée:écrire  ;.:choisir  `:retour" : "M:écrire F:favori D:suppr. A:s'annoncer";
+  return _pick ? tr("Enter:write  ;.:select  `:back", "Entrée:écrire  ;.:choisir  `:retour")
+               : tr("M:write F:fav. D:delete A:advertise", "M:écrire F:favori D:suppr. A:s'annoncer");
 }
 
 void ContactsScreen::onEnter(App&) {
@@ -340,7 +349,8 @@ bool ContactsScreen::onKey(App& app, const KeyEvent& e) {
   }
   if (e.is('a')) {
     bool ok = mesh.sendAdvert(true, app.services().settings->get().shareLocation);
-    app.notify(ok ? "Annonce envoyée" : "Annonce impossible", ok ? "Les autres nœuds vont te voir" : "Radio indisponible",
+    app.notify(ok ? tr("Advert sent", "Annonce envoyée") : tr("Cannot advertise", "Annonce impossible"),
+               ok ? tr("Other nodes will see you", "Les autres nœuds vont te voir") : tr("Radio unavailable", "Radio indisponible"),
                2000);
     return true;
   }
@@ -353,14 +363,14 @@ bool ContactsScreen::onKey(App& app, const KeyEvent& e) {
   if (e.is('f')) {
     _selKey = c.key;   // keep the cursor on this contact when it moves in the list
     mesh.setFavourite(c.key, !c.favourite);
-    app.notify(c.name, c.favourite ? "Retiré des favoris" : "Ajouté aux favoris", 1500);
+    app.notify(c.name, c.favourite ? tr("Removed from favourites", "Retiré des favoris") : tr("Added to favourites", "Ajouté aux favoris"), 1500);
     return true;
   }
   if (e.is('d')) {
-    if (_confirm.check(app, _list.sel, "Supprimer ce contact ?")) {
+    if (_confirm.check(app, _list.sel, tr("Delete this contact?", "Supprimer ce contact ?"))) {
       _selKey = ConvKey();
       mesh.removeContact(c.key);
-      app.notify(c.name, "Contact supprimé", 1500);
+      app.notify(c.name, tr("Contact deleted", "Contact supprimé"), 1500);
       _list.clamp(mesh.contactCount(), LIST_VISIBLE_ROWS);
     }
     return true;
@@ -375,9 +385,9 @@ bool ContactsScreen::onEvent(App&, const MeshEvent&) {
 void ContactsScreen::draw(App& app, lgfx::LovyanGFX& g) {
   MeshService& mesh = *app.services().mesh;
   int n = mesh.contactCount();
-  snprintf(_title, sizeof(_title), _pick ? "Écrire à... (%d)" : "Contacts (%d)", n);
+  snprintf(_title, sizeof(_title), _pick ? tr("Write to... (%d)", "Écrire à... (%d)") : "Contacts (%d)", n);
   if (n == 0) {
-    emptyState(g, "Aucun contact pour l'instant", "A : s'annoncer sur le réseau");
+    emptyState(g, tr("No contacts yet", "Aucun contact pour l'instant"), tr("A: advertise on the network", "A : s'annoncer sur le réseau"));
     return;
   }
   syncSelection(mesh);
@@ -425,7 +435,7 @@ bool ContactDetailScreen::onKey(App& app, const KeyEvent& e) {
   }
   if (e.is('b') && _compass) {
     if (!c.hasPos) {
-      app.notify(c.name, "Position inconnue (il ne la partage pas)", 2500);
+      app.notify(c.name, tr("Position unknown (not shared)", "Position inconnue (il ne la partage pas)"), 2500);
       return true;
     }
     _compass->setTarget(c.key);
@@ -434,7 +444,7 @@ bool ContactDetailScreen::onKey(App& app, const KeyEvent& e) {
   }
   if (e.is('x')) {
     mesh.resetPath(c.key);
-    app.notify(c.name, "Chemin réinitialisé (prochain envoi en flood)", 2500);
+    app.notify(c.name, tr("Path reset (next message floods)", "Chemin réinitialisé (prochain envoi en flood)"), 2500);
     return true;
   }
   return false;
@@ -448,35 +458,36 @@ bool ContactDetailScreen::tick(App& app) {
 void ContactDetailScreen::draw(App& app, lgfx::LovyanGFX& g) {
   ContactView c;
   if (!app.services().mesh->findContact(_key, c)) {
-    emptyState(g, "Contact introuvable", "` pour revenir");
+    emptyState(g, tr("Contact not found", "Contact introuvable"), tr("` to go back", "` pour revenir"));
     return;
   }
   DeviceStatus st = app.services().sys->status();
   char v[7][48];
-  const char* labels[7] = {"Nom", "Type", "Clé", "Chemin", "Entendu", "Position", "Distance"};
+  const char* labels[7] = {tr("Name", "Nom"), "Type", tr("Key", "Clé"), tr("Path", "Chemin"), tr("Heard", "Entendu"),
+                           "Position", "Distance"};
   snprintf(v[0], 48, "%s%s", c.favourite ? "* " : "", c.name);
   snprintf(v[1], 48, "%s", typeName(c.type));
   snprintf(v[2], 48, "%02x%02x%02x%02x%02x%02x..", c.pubKey[0], c.pubKey[1], c.pubKey[2], c.pubKey[3], c.pubKey[4],
            c.pubKey[5]);
-  if (c.hops < 0) snprintf(v[3], 48, "inconnu (flood)");
+  if (c.hops < 0) snprintf(v[3], 48, "%s", tr("unknown (flood)", "inconnu (flood)"));
   else hopsLabel(c.hops, v[3], 48);
   if (c.lastHeard && clockValid(st.unixTime) && st.unixTime >= c.lastHeard) {
     char ago[12];
     formatAgo(st.unixTime - c.lastHeard, ago, sizeof(ago));
-    snprintf(v[4], 48, "il y a %s", ago);
+    snprintf(v[4], 48, tr("%s ago", "il y a %s"), ago);
   } else {
-    snprintf(v[4], 48, "jamais");
+    snprintf(v[4], 48, "%s", tr("never", "jamais"));
   }
   double lat = c.latE6 / 1e6, lon = c.lonE6 / 1e6;
   if (c.hasPos) snprintf(v[5], 48, "%.5f, %.5f", lat, lon);
-  else snprintf(v[5], 48, "inconnue");
+  else snprintf(v[5], 48, "%s", tr("unknown", "inconnue"));
   if (c.hasPos && st.hasPosition) {
     double d = geo::distanceM(st.lat, st.lon, lat, lon);
     double b = geo::bearingDeg(st.lat, st.lon, lat, lon);
     if (d < 1000) snprintf(v[6], 48, "%.0f m  %s (%.0f\xC2\xB0)", d, geo::compassLabel(b), b);
     else snprintf(v[6], 48, "%.1f km  %s (%.0f\xC2\xB0)", d / 1000, geo::compassLabel(b), b);
   } else {
-    snprintf(v[6], 48, c.hasPos ? "ma position ?" : "-");
+    snprintf(v[6], 48, "%s", c.hasPos ? tr("my position?", "ma position ?") : "-");
   }
   for (int i = 0; i < 7; i++) {
     drawListRow(g, CONTENT_Y + 1 + i * LINE_H, labels[i], v[i], false, i == 0 ? ACCENT : FG, true);
@@ -491,7 +502,7 @@ void ConversationsScreen::onJoinDone(App& app, const char* text, void*) {
   else snprintf(name, sizeof(name), "#%s", text);
   if (strlen(name) < 2) return;
   bool ok = app.services().mesh->joinChannel(name);
-  app.notify(name, ok ? "Canal ajouté" : "Impossible (trop de canaux ?)", 2000);
+  app.notify(name, ok ? tr("Channel added", "Canal ajouté") : tr("Failed (too many channels?)", "Impossible (trop de canaux ?)"), 2000);
 }
 
 void ConversationsScreen::syncSelection(MessageStore& st) {
@@ -529,7 +540,7 @@ bool ConversationsScreen::onKey(App& app, const KeyEvent& e) {
     return true;
   }
   if (e.is('j')) {
-    _input.setup("Rejoindre un canal", "#", 30, onJoinDone, this);
+    _input.setup(tr("Join a channel", "Rejoindre un canal"), "#", 30, onJoinDone, this);
     app.push(&_input);
     return true;
   }
@@ -537,7 +548,7 @@ bool ConversationsScreen::onKey(App& app, const KeyEvent& e) {
     const ConvMeta* c = st.at(_list.sel);
     if (!c) return true;
     bool channel = c->key.kind == ConvKey::CHANNEL;
-    if (_confirm.check(app, _list.sel, channel ? "Quitter ce canal ?" : "Effacer cette conversation ?")) {
+    if (_confirm.check(app, _list.sel, channel ? tr("Leave this channel?", "Quitter ce canal ?") : tr("Delete this conversation?", "Effacer cette conversation ?"))) {
       ConvKey k = c->key;
       if (channel) mesh.leaveChannel(k);
       else st.remove(k);
@@ -556,7 +567,7 @@ void ConversationsScreen::draw(App& app, lgfx::LovyanGFX& g) {
   MessageStore& st = app.services().mesh->messages();
   int n = st.count();
   if (n == 0) {
-    emptyState(g, "Aucune conversation", "N : écrire   J : rejoindre un canal");
+    emptyState(g, tr("No conversations", "Aucune conversation"), tr("N: write   J: join a channel", "N : écrire   J : rejoindre un canal"));
     return;
   }
   syncSelection(st);
@@ -597,8 +608,8 @@ void ConversationsScreen::draw(App& app, lgfx::LovyanGFX& g) {
       g.drawString(buf, SCREEN_W - 8 - badgeW / 2, y + LINE_H + 2);
       g.setTextDatum(lgfx::top_left);
     }
-    if (c->total) snprintf(buf, sizeof(buf), "%s%s", c->lastOutgoing ? "Moi : " : "", c->last);
-    else snprintf(buf, sizeof(buf), "(aucun message)");
+    if (c->total) snprintf(buf, sizeof(buf), "%s%s", c->lastOutgoing ? tr("Me: ", "Moi : ") : "", c->last);
+    else snprintf(buf, sizeof(buf), "%s", tr("(no messages)", "(aucun message)"));
     g.setFont(&fontText);
     g.setTextColor(c->unread ? FG : DIM);
     fitText(g, buf, SCREEN_W - 14 - badgeW, line, sizeof(line));

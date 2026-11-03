@@ -16,9 +16,10 @@ class HomeScreen : public Screen {
 public:
   HomeScreen(Screen* messages, Screen* contacts, Screen* gps, Screen* map, Screen* settings)
     : _messages(messages), _contacts(contacts), _gps(gps), _map(map), _settings(settings) {}
-  const char* title() const override { return "Accueil"; }
+  const char* title() const override { return tr("Home", "Accueil"); }
   const char* help() const override {
-    return _map ? "M:msg C:contacts G:gps K:carte S:régl." : "M:messages C:contacts G:gps S:réglages";
+    return _map ? tr("M:msg C:contacts G:gps K:map S:settings", "M:msg C:contacts G:gps K:carte S:régl.")
+                : tr("M:messages C:contacts G:gps S:settings", "M:messages C:contacts G:gps S:réglages");
   }
   bool onKey(App& app, const KeyEvent& e) override;
   bool tick(App& app) override;

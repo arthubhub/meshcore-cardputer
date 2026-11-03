@@ -127,6 +127,7 @@ struct UiSettings {
   bool ble = false;                 // unused by the standalone firmware (Bluetooth = companion firmware)
   bool shareLocation = false;       // include the GPS position in adverts
   uint8_t brightness = 1;           // 0 low, 1 medium, 2 high
+  uint8_t language = 0;             // LANG_EN / LANG_FR (core/I18n.h); English by default
 };
 
 class SettingsService {

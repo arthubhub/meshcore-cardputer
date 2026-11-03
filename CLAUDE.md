@@ -9,8 +9,11 @@ with the official BLE companion ("phone mode") shipped in the same flash image (
 ## People and communication
 - **The developer** (the person talking to the agent) is a developer: technical language is fine. Reply in
   the language the developer writes in. Be concise and factual (build output, test counts, sizes, file:line).
-- **End users** of the firmware are not developers. Everything they see stays plain and jargon-free, in French:
-  UI strings (`app/core/screens`), notifications, `app/FLASH.md`, `app/TESTS.md`, `tools/tiles/README.md`.
+- **End users** of the firmware are not developers. Everything they see stays plain and jargon-free.
+  The UI is bilingual: **English by default**, French in Settings > "Language / Langue". Every user-visible
+  string goes through `tr("English", "Français")` (`core/I18n.h`, setting `UiSettings::language`); a string
+  without both versions is a bug. User docs: `README.md` (English) and `README.fr.md` (French), kept in sync,
+  with language badges at the top; `app/FLASH.md`, `app/TESTS.md`, `tools/tiles/README.md` are in French.
 - The developer tests on real hardware; the agent cannot. Never claim something works on the device: state
   what was verified (unit tests, simulator, build) and what remains to be checked on hardware.
 
@@ -25,7 +28,7 @@ with the official BLE companion ("phone mode") shipped in the same flash image (
 | --- | --- |
 | `meshcore/` | official MeshCore (submodule). **Read-only.** Changes to MeshCore go upstream (meshcore-dev) |
 | `meshcore_base.ini` | MeshCore's shared PlatformIO sections, **generated** by `tools/sync_meshcore_base.py` |
-| `platformio.ini` | our envs. `src_dir = meshcore/src`; our code via `build_src_filter` (`+<../../variant>`, `+<../../app/...>`); official companion via `+<../examples/companion_radio/...>` |
+| `platformio.ini` | our envs. `src_dir = .` (project root) and `-I meshcore/src`; sources selected by `build_src_filter` (`+<meshcore/src/...>`, `+<variant/>`, `+<app/...>`, official companion `+<meshcore/examples/companion_radio/...>`). Never point a filter outside `src_dir` (`../`): PlatformIO would then put those objects in `.pio/build/<folder>`, shared by every env, and mix their build flags |
 | `variant/` | board support: `CardputerBoard`, companion display, `CpadvLog` (serial log), `CpadvHal` (Arduino HAL), `CpadvBoot` (dual boot), partition tables |
 | `app/core/` | portable UI, portable drivers (`drivers/`), HAL interfaces (`hal/Hal.h`); shared by firmware and simulator |
 | `app/device/` | firmware-only glue: `main.cpp`, `CardputerMesh` (BaseChatMesh), services, SD, serial console |
@@ -80,7 +83,13 @@ electrical behaviour of the TCA8418 / PI4IOE / GPS, battery, real heap fragmenta
 ## Simulator (app/sim/)
 - Builds the portable UI for Linux with g++ and LovyanGFX (no SDL, no PlatformIO).
 - Scenario scripts (`scenarios/*.txt`): keys, incoming messages, GPS, battery, PNG screenshots (x3),
-  `expect-*` assertions. Command reference at the top of `main_sim.cpp`.
+  `expect-*` assertions. Command reference at the top of `main_sim.cpp`. The simulator starts in English
+  like the firmware; most scenarios begin with `lang fr` (their assertions use French titles),
+  `english.txt` covers the English UI and the language switch. A new screen gets checked in both languages
+  (look for truncated text: French strings are usually longer).
+- README screenshots: `make -C app/sim readme-images` runs `scenarios/readme_en.txt` / `readme_fr.txt` and copies
+  the PNGs, recompressed by `tools/png_compress.py` (the simulator writes them uncompressed), to `docs/images/`.
+  Regenerate them after any visible UI change and look at them before committing.
 - Fake hardware (`HwRig`): `hw keyboard|gps|cap ...` runs the real drivers against the fake chips.
   `make run` replays every scenario a second time with `SIM_HW=1` (keys go through the fake TCA8418,
   screenshots in `build/shots_hw/`). `CORE_LOG=0` silences the driver logs.

@@ -108,8 +108,8 @@ void SimSystem::playSound(SoundKind kind) {
 bool SimSettings::save(const UiSettings& n) {
   s = n;
   saves++;
-  printf("[SIM] settings saved: name='%s' preset=%u tx=%d tz=%d timeout=%u sound=%d ble=%d\n", s.nodeName,
-         s.radioPreset, s.txPowerDbm, s.utcOffsetMinutes, s.screenTimeoutSecs, s.sound, s.ble);
+  printf("[SIM] settings saved: name='%s' preset=%u tx=%d tz=%d timeout=%u sound=%d ble=%d lang=%u\n", s.nodeName,
+         s.radioPreset, s.txPowerDbm, s.utcOffsetMinutes, s.screenTimeoutSecs, s.sound, s.ble, s.language);
   return true;
 }
 

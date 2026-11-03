@@ -1,4 +1,5 @@
 # Smoke test: boot, home screen, a few messages, navigation to placeholder screens.
+lang fr
 name Raphaël-CPADV
 time 1793541600
 battery 82

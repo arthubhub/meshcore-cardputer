@@ -1,6 +1,7 @@
 # Cardputer UI simulator - plain make + g++, no PlatformIO, no SDL needed.
 #   make          build build/cardputer_sim (downloads LovyanGFX once)
 #   make run      run every scenario in scenarios/, screenshots in build/shots/
+#   make readme-images   screenshots of the README (scenarios/readme_*.txt) -> ../../docs/images/
 #   make test     unit tests of the drivers against fake chips (tests/, fakes/), no LovyanGFX needed
 #   make clean
 LGFX_VERSION ?= 1.2.7
@@ -93,10 +94,24 @@ run: $(BUILD)/cardputer_sim $(TILES_STAMP)
 	@mkdir -p $(BUILD)/shots_hw
 	@set -e; for s in $(SCENARIOS); do echo "== [fake hardware keyboard] $$s"; SIM_HW=1 $(BUILD)/cardputer_sim $$s $(BUILD)/shots_hw; done
 
+README_DIR := ../../docs/images
+readme-images: $(BUILD)/cardputer_sim $(TILES_STAMP)
+	@mkdir -p $(BUILD)/shots $(README_DIR)
+	@set -e; for s in scenarios/readme_*.txt; do echo "== $$s"; $(BUILD)/cardputer_sim $$s $(BUILD)/shots; done
+	cp $(BUILD)/shots/readme_*.png $(README_DIR)/
+	python3 ../../tools/png_compress.py $(README_DIR)/readme_*.png
+
 clean:
 	rm -rf $(BUILD)/core $(BUILD)/test_core $(BUILD)/sim $(BUILD)/cardputer_sim $(BUILD)/unit_tests $(BUILD)/shots
 
-distclean:
+distREADME_DIR := ../../docs/images
+readme-images: $(BUILD)/cardputer_sim $(TILES_STAMP)
+	@mkdir -p $(BUILD)/shots $(README_DIR)
+	@set -e; for s in scenarios/readme_*.txt; do echo "== $$s"; $(BUILD)/cardputer_sim $$s $(BUILD)/shots; done
+	cp $(BUILD)/shots/readme_*.png $(README_DIR)/
+	python3 ../../tools/png_compress.py $(README_DIR)/readme_*.png
+
+clean:
 	rm -rf $(BUILD)
 
-.PHONY: all run test clean distclean
+.PHONY: all run test readme-images clean distclean
