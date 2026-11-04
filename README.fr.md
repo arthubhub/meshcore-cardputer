@@ -111,7 +111,8 @@ platformio.ini       les variantes de firmware que nous compilons
 variant/             support de la carte : écran, journal série, bascule de mode, tables de partitions
 app/                 l'interface clavier, les pilotes portables et le simulateur PC
 boards/              définition de la carte pour PlatformIO
-tools/               assemblage de l'image double, conversion des cartes, mise à jour de MeshCore
+tools/               assemblage de l'image double, conversion des cartes, mise à jour de MeshCore, feuille de route
+docs/                feuille de route et captures du README
 ```
 
 Aucune ligne de notre code ne se trouve dans MeshCore, et MeshCore lui-même n'est jamais modifié. Les
@@ -152,6 +153,13 @@ Les cartes sont stockées sur la microSD sous forme de tuiles brutes que le Card
 décodage. Le convertisseur de `tools/tiles/` les fabrique à partir d'un fichier MBTiles (exporté depuis
 QGIS, par exemple) ou d'un serveur de tuiles dont les conditions autorisent l'usage hors ligne, ce qui
 n'est pas le cas des serveurs publics d'OpenStreetMap. Voir [`tools/tiles/README.md`](tools/tiles/README.md).
+
+## Feuille de route
+
+La suite du projet, avec une priorité et une taille estimée pour chaque élément, se trouve dans
+[`docs/ROADMAP.md`](docs/ROADMAP.md) (en anglais) : recherche de signal, tests de portée, synchronisation entre
+le mode téléphone et le mode clavier, économies d'énergie, etc. Chaque version publiée liste aussi les
+éléments terminés depuis la précédente.
 
 ## Remerciements
 

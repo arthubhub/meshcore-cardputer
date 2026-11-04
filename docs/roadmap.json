@@ -1,0 +1,803 @@
+{
+  "title": "Cardputer Mesh Roadmap",
+  "updated": "2026-11-04",
+  "categories": [
+    {
+      "prefix": "VALIDATION",
+      "name": "Validation & bugs"
+    },
+    {
+      "prefix": "RELEASE",
+      "name": "Release & CI"
+    },
+    {
+      "prefix": "SYNC",
+      "name": "Companion sync"
+    },
+    {
+      "prefix": "RADIO",
+      "name": "Radio tools"
+    },
+    {
+      "prefix": "MESSAGING",
+      "name": "Messaging"
+    },
+    {
+      "prefix": "MAP",
+      "name": "GPS & map"
+    },
+    {
+      "prefix": "CONNECTIVITY",
+      "name": "Connectivity"
+    },
+    {
+      "prefix": "POWER",
+      "name": "Power"
+    },
+    {
+      "prefix": "UX",
+      "name": "UX"
+    },
+    {
+      "prefix": "SECURITY",
+      "name": "Security"
+    },
+    {
+      "prefix": "HARDWARE",
+      "name": "Hardware extras"
+    }
+  ],
+  "statuses": [
+    {
+      "key": "in-progress",
+      "name": "In progress"
+    },
+    {
+      "key": "next",
+      "name": "Next up"
+    },
+    {
+      "key": "backlog",
+      "name": "Backlog"
+    },
+    {
+      "key": "done",
+      "name": "Done"
+    }
+  ],
+  "priorities": [
+    "P0 blocks the rest",
+    "P1 high value",
+    "P2 worth doing",
+    "P3 idea"
+  ],
+  "sizes": {
+    "S": "under a day",
+    "M": "a few days",
+    "L": "one to two weeks",
+    "XL": "a re-architecture"
+  },
+  "items": [
+    {
+      "id": "VALIDATION-1",
+      "title": "Validate phases 1–7 on a real Cardputer",
+      "category": "Validation & bugs",
+      "priority": 0,
+      "size": "M",
+      "status": "next",
+      "requested": false,
+      "depends_on": [],
+      "details": "Radio TX/RX with a second node, keyboard rows (console 'keys on'), GPS fix outdoors ('gps raw on'), dual-boot switch both ways, SD backup/restore. Nothing hardware-related is confirmed yet: every other item builds on this. Checklist: app/TESTS.md."
+    },
+    {
+      "id": "VALIDATION-2",
+      "title": "Crash report after a reboot",
+      "category": "Validation & bugs",
+      "priority": 1,
+      "size": "M",
+      "status": "backlog",
+      "requested": false,
+      "depends_on": [],
+      "details": "The image already has a coredump partition. After a panic or watchdog reset, print the faulting task and backtrace summary in the boot banner, offer a console 'crash' command, and show a one-line notice on screen so testers know to send the log."
+    },
+    {
+      "id": "VALIDATION-3",
+      "title": "MessageStore robustness tests",
+      "category": "Validation & bugs",
+      "priority": 2,
+      "size": "M",
+      "status": "backlog",
+      "requested": false,
+      "depends_on": [],
+      "details": "Unit tests for a full LittleFS, a write interrupted by power loss, a corrupted index and the conversation cap set by setCapacity. The store is shared by device and simulator, so a fake storage can inject the faults."
+    },
+    {
+      "id": "VALIDATION-4",
+      "title": "Large-font glyphs on the compass",
+      "category": "Validation & bugs",
+      "priority": 2,
+      "size": "S",
+      "status": "backlog",
+      "requested": false,
+      "depends_on": [],
+      "details": "In the compass screenshot the distance unit 'm' renders as a solid block in the big font ('597 ▀'). Check the glyph table of the display font and add a test scenario at short distances."
+    },
+    {
+      "id": "VALIDATION-5",
+      "title": "Serial diagnostics: boot-log replay, status line, console",
+      "category": "Validation & bugs",
+      "priority": 1,
+      "size": "M",
+      "status": "done",
+      "requested": false,
+      "depends_on": [],
+      "details": "Delivered in v0.7.0."
+    },
+    {
+      "id": "RELEASE-1",
+      "title": "Checksums and English file list on releases",
+      "category": "Release & CI",
+      "priority": 1,
+      "size": "S",
+      "status": "backlog",
+      "requested": false,
+      "depends_on": [
+        "RELEASE-6"
+      ],
+      "details": "Attach SHA-256 sums and an English description of each file to every release."
+    },
+    {
+      "id": "RELEASE-2",
+      "title": "Contribute the Cardputer ADV variant to MeshCore",
+      "category": "Release & CI",
+      "priority": 2,
+      "size": "M",
+      "status": "backlog",
+      "requested": false,
+      "depends_on": [
+        "VALIDATION-1"
+      ],
+      "details": "Propose the board files and the scaled companion display to meshcore-dev, so official companion and repeater builds exist for the Cardputer ADV and are maintained upstream."
+    },
+    {
+      "id": "RELEASE-3",
+      "title": "List the firmware in M5Burner and M5Launcher",
+      "category": "Release & CI",
+      "priority": 2,
+      "size": "S",
+      "status": "backlog",
+      "requested": false,
+      "depends_on": [
+        "VALIDATION-1"
+      ],
+      "details": "Where Cardputer owners look first. Publish the standalone and demo images with screenshots."
+    },
+    {
+      "id": "RELEASE-4",
+      "title": "SHA-256 checksums on releases",
+      "category": "Release & CI",
+      "priority": 3,
+      "size": "L",
+      "status": "backlog",
+      "requested": false,
+      "depends_on": [],
+      "details": "Attach a SHA256SUMS file to every release so users can check a download before flashing. (The English file list and the roadmap summary are already added to the release notes.)"
+    },
+    {
+      "id": "RELEASE-5",
+      "title": "Static analysis in CI",
+      "category": "Release & CI",
+      "priority": 3,
+      "size": "S",
+      "status": "backlog",
+      "requested": false,
+      "depends_on": [],
+      "details": "cppcheck or clang-tidy on variant/ and app/ (never on meshcore/)."
+    },
+    {
+      "id": "RELEASE-6",
+      "title": "Release job skipped unless the tag starts with cardputer-v",
+      "category": "Release & CI",
+      "priority": 0,
+      "size": "S",
+      "status": "next",
+      "requested": false,
+      "depends_on": [],
+      "details": "v0.7.0 was published under the tag 'v0.7.0' and the release job was skipped without any warning: it only runs for tags starting with 'cardputer-v'. Run it on every published release instead, and name the files from github.event.release.tag_name."
+    },
+    {
+      "id": "RELEASE-7",
+      "title": "Firmware version taken from the git tag",
+      "category": "Release & CI",
+      "priority": 1,
+      "size": "S",
+      "status": "next",
+      "requested": false,
+      "depends_on": [],
+      "details": "CPADV_VERSION is edited by hand in platformio.ini and can disagree with the release tag. A small pre-build script can define it from 'git describe --tags' (fallback: short commit hash)."
+    },
+    {
+      "id": "RELEASE-8",
+      "title": "Sanitizer build of the simulator in CI",
+      "category": "Release & CI",
+      "priority": 2,
+      "size": "S",
+      "status": "backlog",
+      "requested": false,
+      "depends_on": [],
+      "details": "Build app/sim with -fsanitize=address,undefined and run every scenario. One demo-scenario failure was seen once and never reproduced: uninitialised memory is the usual suspect."
+    },
+    {
+      "id": "RELEASE-9",
+      "title": "Driver test pyramid with emulated chips",
+      "category": "Release & CI",
+      "priority": 1,
+      "size": "L",
+      "status": "done",
+      "requested": false,
+      "depends_on": [],
+      "details": "Keyboard, GPS and IO-expander drivers tested against fake chips; every scenario replayed through the emulated keyboard."
+    },
+    {
+      "id": "RELEASE-10",
+      "title": "Independent repository, MeshCore as a pinned submodule",
+      "category": "Release & CI",
+      "priority": 1,
+      "size": "M",
+      "status": "done",
+      "requested": false,
+      "depends_on": [],
+      "details": "companion-v1.18.0, weekly update workflow with full checks before anything lands on main."
+    },
+    {
+      "id": "SYNC-1",
+      "title": "Share contacts and channels between both modes",
+      "category": "Companion sync",
+      "priority": 1,
+      "size": "M",
+      "status": "next",
+      "requested": true,
+      "depends_on": [
+        "VALIDATION-1"
+      ],
+      "details": "The two firmwares already share the radio identity but keep separate contacts and channels. When switching mode, convert the standalone files (/contacts.cp, /channels.cp) to and from the companion DataStore format, merging by public key with the most recent advert winning. Unit-test the converter on the PC with real file samples."
+    },
+    {
+      "id": "SYNC-2",
+      "title": "Share name, radio preset and TX power",
+      "category": "Companion sync",
+      "priority": 1,
+      "size": "S",
+      "status": "backlog",
+      "requested": true,
+      "depends_on": [
+        "SYNC-1"
+      ],
+      "details": "Changing the node name or the radio preset in one mode should hold in the other. Read and write the companion's prefs file from the standalone settings at switch time."
+    },
+    {
+      "id": "SYNC-3",
+      "title": "Hand over messages received in phone mode",
+      "category": "Companion sync",
+      "priority": 2,
+      "size": "M",
+      "status": "backlog",
+      "requested": true,
+      "depends_on": [
+        "SYNC-1"
+      ],
+      "details": "Messages that arrive in phone mode while the phone is away sit in the companion's offline queue. Import them into the standalone history on the next switch so nothing is missed."
+    },
+    {
+      "id": "SYNC-4",
+      "title": "Keyboard navigation in phone mode",
+      "category": "Companion sync",
+      "priority": 2,
+      "size": "M",
+      "status": "backlog",
+      "requested": false,
+      "depends_on": [],
+      "details": "The companion UI is driven by the G0 button alone. Map arrow keys and Enter to its button events from the variant code (no change to MeshCore), so the stock screens can be browsed comfortably."
+    },
+    {
+      "id": "SYNC-5",
+      "title": "One firmware: keyboard UI and phone app at the same time",
+      "category": "Companion sync",
+      "priority": 3,
+      "size": "XL",
+      "status": "backlog",
+      "requested": true,
+      "depends_on": [
+        "SYNC-1"
+      ],
+      "details": "The long-term answer to syncing: run the keyboard UI on top of the companion's MyMesh with BLE active, so contacts and messages are naturally shared. Large refactor; revisit once SYNC-1/2/3 show what users actually need."
+    },
+    {
+      "id": "SYNC-6",
+      "title": "Second way out of phone mode",
+      "category": "Companion sync",
+      "priority": 1,
+      "size": "S",
+      "status": "next",
+      "requested": false,
+      "depends_on": [],
+      "details": "Today the only way back from the companion is esc ×3 on the keyboard. If the keyboard chip fails, only a reflash returns. Add a serial command in CardputerBoard::loop ('boot standalone') and a long press on G0 after boot (not at power-on: G0 is the download-mode strap)."
+    },
+    {
+      "id": "SYNC-7",
+      "title": "Dual-boot image: keyboard mode + phone mode",
+      "category": "Companion sync",
+      "priority": 1,
+      "size": "L",
+      "status": "done",
+      "requested": false,
+      "depends_on": [],
+      "details": "Settings › Phone mode, back with esc ×3; shared radio identity."
+    },
+    {
+      "id": "RADIO-1",
+      "title": "Signal finder (fox hunt)",
+      "category": "Radio tools",
+      "priority": 1,
+      "size": "M",
+      "status": "backlog",
+      "requested": true,
+      "depends_on": [
+        "VALIDATION-1"
+      ],
+      "details": "Pick a contact or repeater; show the RSSI/SNR of every packet heard from it as a big gauge with peak hold and a 60-second history, plus a beep whose pitch follows the signal. A 'ping' key provokes a reply (direct message ACK or trace) so a quiet node can still be located. Works best with a directional antenna; walking with the gauge finds the source."
+    },
+    {
+      "id": "RADIO-2",
+      "title": "Signal finder: estimate the source on the map",
+      "category": "Radio tools",
+      "priority": 2,
+      "size": "L",
+      "status": "backlog",
+      "requested": true,
+      "depends_on": [
+        "RADIO-1",
+        "MAP-1"
+      ],
+      "details": "While hunting, log RSSI with the GPS position and draw coloured dots on the offline map; estimate the likely source area from the strongest readings. Builds on the map and GPS already in place."
+    },
+    {
+      "id": "RADIO-3",
+      "title": "Range test mode with GPS logging",
+      "category": "Radio tools",
+      "priority": 1,
+      "size": "M",
+      "status": "backlog",
+      "requested": false,
+      "depends_on": [
+        "VALIDATION-1"
+      ],
+      "details": "Send periodic pings to a chosen node, log ACK/no-ACK, RSSI, SNR and position to the SD card (CSV + GPX), and show coverage dots on the map. Useful to every mesh community planning repeaters."
+    },
+    {
+      "id": "RADIO-4",
+      "title": "Airtime and duty-cycle meter",
+      "category": "Radio tools",
+      "priority": 2,
+      "size": "S",
+      "status": "backlog",
+      "requested": false,
+      "depends_on": [],
+      "details": "EU 868 MHz sub-bands have 1 % or 10 % duty-cycle limits. Track transmit time per hour, show it in System, and warn before range tests or repeating exceed it."
+    },
+    {
+      "id": "RADIO-5",
+      "title": "Noise floor and channel scanner",
+      "category": "Radio tools",
+      "priority": 2,
+      "size": "M",
+      "status": "backlog",
+      "requested": false,
+      "depends_on": [],
+      "details": "Sweep the band with the SX1262's instantaneous RSSI and draw a waterfall. Shows interference near the mesh frequency and helps pick a quieter preset."
+    },
+    {
+      "id": "RADIO-6",
+      "title": "Packet sniffer log",
+      "category": "Radio tools",
+      "priority": 2,
+      "size": "M",
+      "status": "backlog",
+      "requested": false,
+      "depends_on": [],
+      "details": "A screen listing every packet heard (type, route, hops, SNR, sender prefix), with optional logging to SD. A debugging tool for the mesh and for this firmware."
+    },
+    {
+      "id": "RADIO-7",
+      "title": "Temporary repeater mode",
+      "category": "Radio tools",
+      "priority": 3,
+      "size": "M",
+      "status": "backlog",
+      "requested": false,
+      "depends_on": [
+        "RADIO-4"
+      ],
+      "details": "Forward packets while enabled (for an event or a hike), with a clear status-bar marker and the duty-cycle meter. Needs care: repeating rules and airtime."
+    },
+    {
+      "id": "MESSAGING-1",
+      "title": "Show my contact as a QR code",
+      "category": "Messaging",
+      "priority": 1,
+      "size": "M",
+      "status": "backlog",
+      "requested": false,
+      "depends_on": [],
+      "details": "Draw the node's contact (name, public key, type) as a QR code that the MeshCore phone app can scan, so people add the Cardputer in seconds. Confirm the exact URI format used by the official app first."
+    },
+    {
+      "id": "MESSAGING-2",
+      "title": "Share a private channel as QR or text",
+      "category": "Messaging",
+      "priority": 2,
+      "size": "S",
+      "status": "backlog",
+      "requested": false,
+      "depends_on": [
+        "MESSAGING-1"
+      ],
+      "details": "Show a joined channel's name and key as a QR code or copyable text, to invite people without reading out a key."
+    },
+    {
+      "id": "MESSAGING-3",
+      "title": "Quick replies",
+      "category": "Messaging",
+      "priority": 2,
+      "size": "S",
+      "status": "backlog",
+      "requested": false,
+      "depends_on": [],
+      "details": "Fn+1…9 inserts editable canned messages ('On my way', 'OK', 'Call me'), stored in settings. Fast answers with gloves or while walking."
+    },
+    {
+      "id": "MESSAGING-4",
+      "title": "Repeater and room server administration",
+      "category": "Messaging",
+      "priority": 2,
+      "size": "L",
+      "status": "backlog",
+      "requested": false,
+      "depends_on": [
+        "VALIDATION-1"
+      ],
+      "details": "Log in to a repeater or room server, read its status, neighbours and telemetry, change its name or advert interval, reboot it. Makes the Cardputer a field tool for mesh operators."
+    },
+    {
+      "id": "MESSAGING-5",
+      "title": "Trace route",
+      "category": "Messaging",
+      "priority": 2,
+      "size": "M",
+      "status": "backlog",
+      "requested": false,
+      "depends_on": [],
+      "details": "Send a trace to a contact and show each hop with its SNR, so a weak link in a path is visible."
+    },
+    {
+      "id": "MESSAGING-6",
+      "title": "Unread messages on the RGB LED",
+      "category": "Messaging",
+      "priority": 2,
+      "size": "S",
+      "status": "backlog",
+      "requested": false,
+      "depends_on": [
+        "VALIDATION-1"
+      ],
+      "details": "The Cardputer ADV has an RGB LED: blink it for unread direct messages while the screen is off. Pins to confirm on the hardware (power switch and data line)."
+    },
+    {
+      "id": "MESSAGING-7",
+      "title": "Search and export conversations",
+      "category": "Messaging",
+      "priority": 3,
+      "size": "M",
+      "status": "backlog",
+      "requested": false,
+      "depends_on": [],
+      "details": "Search text across conversations; export one conversation to a text file on the SD card."
+    },
+    {
+      "id": "MESSAGING-8",
+      "title": "Emoji and other scripts",
+      "category": "Messaging",
+      "priority": 3,
+      "size": "M",
+      "status": "backlog",
+      "requested": false,
+      "depends_on": [],
+      "details": "Messages from phones often contain emoji. Show a readable fallback glyph instead of nothing, and widen the font coverage within the flash budget."
+    },
+    {
+      "id": "MAP-1",
+      "title": "GPS track recording (GPX)",
+      "category": "GPS & map",
+      "priority": 2,
+      "size": "M",
+      "status": "backlog",
+      "requested": false,
+      "depends_on": [],
+      "details": "Record the track to the SD card as GPX and draw it as a breadcrumb on the map. Also the base for range tests and signal hunting."
+    },
+    {
+      "id": "MAP-2",
+      "title": "Navigate to a contact or waypoint",
+      "category": "GPS & map",
+      "priority": 2,
+      "size": "S",
+      "status": "backlog",
+      "requested": false,
+      "depends_on": [],
+      "details": "Draw a line from my position to the selected contact on the map, with distance and bearing, and switch to the compass in one key."
+    },
+    {
+      "id": "MAP-3",
+      "title": "Automatic position sharing",
+      "category": "GPS & map",
+      "priority": 2,
+      "size": "S",
+      "status": "backlog",
+      "requested": false,
+      "depends_on": [
+        "RADIO-4"
+      ],
+      "details": "While moving, send an advert with position every N minutes (setting), so friends see you on their maps without pressing anything."
+    },
+    {
+      "id": "MAP-4",
+      "title": "Compressed map tiles",
+      "category": "GPS & map",
+      "priority": 2,
+      "size": "M",
+      "status": "backlog",
+      "requested": false,
+      "depends_on": [],
+      "details": "Tiles are raw RGB565, 128 KB each: four 100 km zones at zoom 10–13 already take 2.7 GB. A simple run-length or palette encoding decodable row by row would cut size and SD copy time several times."
+    },
+    {
+      "id": "MAP-5",
+      "title": "Heading while standing still",
+      "category": "GPS & map",
+      "priority": 3,
+      "size": "M",
+      "status": "backlog",
+      "requested": false,
+      "depends_on": [],
+      "details": "The BMI270 has no magnetometer, so the compass only knows your heading while moving. Support an external magnetometer on the Grove port for a true compass."
+    },
+    {
+      "id": "CONNECTIVITY-1",
+      "title": "Wi-Fi access point with a web chat",
+      "category": "Connectivity",
+      "priority": 2,
+      "size": "L",
+      "status": "backlog",
+      "requested": true,
+      "depends_on": [
+        "VALIDATION-1"
+      ],
+      "details": "The Cardputer opens a Wi-Fi network with a captive portal; anyone nearby reads and sends mesh messages from a browser (Public channel and direct messages, guest name), with a password and rate limit. Main risk: RAM without PSRAM (Wi-Fi stack ~50 KB plus a web server); measure before committing."
+    },
+    {
+      "id": "CONNECTIVITY-2",
+      "title": "Update the firmware from the SD card",
+      "category": "Connectivity",
+      "priority": 2,
+      "size": "M",
+      "status": "backlog",
+      "requested": false,
+      "depends_on": [],
+      "details": "Settings › Update: pick a .bin on the SD card and flash the matching app slot (in the dual image, app0 or app1), with a hash check before switching. No computer needed in the field."
+    },
+    {
+      "id": "CONNECTIVITY-3",
+      "title": "Phone mode over Wi-Fi",
+      "category": "Connectivity",
+      "priority": 3,
+      "size": "S",
+      "status": "backlog",
+      "requested": false,
+      "depends_on": [],
+      "details": "MeshCore already has a Wi-Fi TCP interface for the companion. A build of phone mode using it lets desktop clients connect without Bluetooth."
+    },
+    {
+      "id": "CONNECTIVITY-4",
+      "title": "MeshCore app over USB in keyboard mode",
+      "category": "Connectivity",
+      "priority": 3,
+      "size": "L",
+      "status": "backlog",
+      "requested": false,
+      "depends_on": [
+        "SYNC-5"
+      ],
+      "details": "Speak the companion protocol on the USB serial port while the keyboard UI runs, so meshcore-cli or the web app can be used at a desk. Easier once SYNC-5 exists."
+    },
+    {
+      "id": "POWER-1",
+      "title": "Light sleep with radio and keyboard wake-up",
+      "category": "Power",
+      "priority": 1,
+      "size": "L",
+      "status": "backlog",
+      "requested": false,
+      "depends_on": [
+        "VALIDATION-1"
+      ],
+      "details": "With the screen off, put the ESP32-S3 in light sleep and wake on LoRa DIO1, the keyboard INT line or G0. The largest battery gain available; measure current before and after with a USB meter."
+    },
+    {
+      "id": "POWER-2",
+      "title": "Safe shutdown on critical battery",
+      "category": "Power",
+      "priority": 1,
+      "size": "S",
+      "status": "backlog",
+      "requested": false,
+      "depends_on": [],
+      "details": "Below a critical voltage, flush contacts and messages and enter deep sleep before the brown-out reset can corrupt LittleFS."
+    },
+    {
+      "id": "POWER-3",
+      "title": "Power profiles",
+      "category": "Power",
+      "priority": 2,
+      "size": "M",
+      "status": "backlog",
+      "requested": false,
+      "depends_on": [
+        "POWER-1"
+      ],
+      "details": "Eco / normal / performance: TX power, screen timeout, brightness and GPS duty cycle (GPS off between fixes) in one setting."
+    },
+    {
+      "id": "POWER-4",
+      "title": "Battery time remaining",
+      "category": "Power",
+      "priority": 3,
+      "size": "S",
+      "status": "backlog",
+      "requested": false,
+      "depends_on": [],
+      "details": "A calibrated discharge curve for the 1500 mAh cell, charging state and an estimate of time left in System."
+    },
+    {
+      "id": "UX-1",
+      "title": "First-boot setup",
+      "category": "UX",
+      "priority": 1,
+      "size": "M",
+      "status": "next",
+      "requested": false,
+      "depends_on": [],
+      "details": "On the very first start: language, node name, region preset (the legal frequency for the user's country) and time zone, in four short screens. Today a new user lands in English with the EU preset whatever their country."
+    },
+    {
+      "id": "UX-2",
+      "title": "Keyboard shortcuts screen",
+      "category": "UX",
+      "priority": 2,
+      "size": "S",
+      "status": "backlog",
+      "requested": false,
+      "depends_on": [],
+      "details": "Fn+H shows every shortcut of the current screen and the navigation convention (; . , / and `)."
+    },
+    {
+      "id": "UX-3",
+      "title": "Screenshots from the device over USB",
+      "category": "UX",
+      "priority": 2,
+      "size": "S",
+      "status": "backlog",
+      "requested": false,
+      "depends_on": [],
+      "details": "A console command streams the framebuffer, and a small script turns it into a PNG. Real-device screenshots for docs and bug reports."
+    },
+    {
+      "id": "UX-4",
+      "title": "Larger text option",
+      "category": "UX",
+      "priority": 3,
+      "size": "M",
+      "status": "backlog",
+      "requested": false,
+      "depends_on": [],
+      "details": "A bigger font for messages and lists, for readability outdoors or for older users."
+    },
+    {
+      "id": "UX-5",
+      "title": "More interface languages",
+      "category": "UX",
+      "priority": 3,
+      "size": "M",
+      "status": "backlog",
+      "requested": false,
+      "depends_on": [],
+      "details": "tr(en, fr) is fine for two languages. A third (German, Spanish) calls for a table-based string catalogue."
+    },
+    {
+      "id": "UX-6",
+      "title": "Automatic daylight saving time",
+      "category": "UX",
+      "priority": 2,
+      "size": "S",
+      "status": "backlog",
+      "requested": false,
+      "depends_on": [],
+      "details": "The time zone is a fixed offset (UTC+1 / +2 by hand). Add EU and US DST rules selected from the time-zone setting, so message times are right all year."
+    },
+    {
+      "id": "UX-7",
+      "title": "English and French interface",
+      "category": "UX",
+      "priority": 1,
+      "size": "M",
+      "status": "done",
+      "requested": false,
+      "depends_on": [],
+      "details": "English by default, French in Settings › Language / Langue."
+    },
+    {
+      "id": "SECURITY-1",
+      "title": "Encrypt the SD backup",
+      "category": "Security",
+      "priority": 1,
+      "size": "M",
+      "status": "backlog",
+      "requested": false,
+      "depends_on": [],
+      "details": "cardputer_backup.bin holds the private key in clear: anyone with the card can impersonate the node. Encrypt it with a passphrase typed on the keyboard."
+    },
+    {
+      "id": "SECURITY-2",
+      "title": "Review private-key import/export flags",
+      "category": "Security",
+      "priority": 2,
+      "size": "S",
+      "status": "backlog",
+      "requested": false,
+      "depends_on": [],
+      "details": "MeshCore's base settings enable ENABLE_PRIVATE_KEY_IMPORT/EXPORT. Decide whether release builds keep them, and document the choice."
+    },
+    {
+      "id": "SECURITY-3",
+      "title": "Lock screen with PIN",
+      "category": "Security",
+      "priority": 3,
+      "size": "M",
+      "status": "backlog",
+      "requested": false,
+      "depends_on": [],
+      "details": "Optional PIN after screen-off to protect messages and contacts on a lost device."
+    },
+    {
+      "id": "HARDWARE-1",
+      "title": "Use the IMU",
+      "category": "Hardware extras",
+      "priority": 3,
+      "size": "S",
+      "status": "backlog",
+      "requested": false,
+      "depends_on": [],
+      "details": "BMI270: raise or shake to wake the screen, and a step counter during range tests."
+    },
+    {
+      "id": "HARDWARE-2",
+      "title": "Grove sensors in telemetry",
+      "category": "Hardware extras",
+      "priority": 3,
+      "size": "M",
+      "status": "backlog",
+      "requested": false,
+      "depends_on": [],
+      "details": "Start MeshCore's sensor manager on the Grove port in keyboard mode, so temperature or pressure sensors appear in telemetry like on the companion."
+    }
+  ]
+}
