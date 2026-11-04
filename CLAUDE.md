@@ -39,7 +39,7 @@ with the official BLE companion ("phone mode") shipped in the same flash image (
   - a small fix or chore: `fix/<ID>-<short-name>`, `chore/<ID>-<short-name>`;
   - MeshCore updates (automatic): `meshcore-update/<tag>`.
 - Release notes get a roadmap summary automatically (`tools/roadmap.py --release-summary --since <previous tag>`):
-  items completed since the previous `cardputer-v*` tag, items in progress and next up, open counts.
+  items completed since the previous release tag, items in progress and next up, open counts.
 - The interactive board (claude.ai artifact "Cardputer Mesh Roadmap") is a planning view only; when it and the
   JSON disagree, the JSON wins.
 
@@ -121,7 +121,8 @@ electrical behaviour of the TCA8418 / PI4IOE / GPS, battery, real heap fragmenta
   (`HTTPClientError`): rely on CI, or ask the developer to allow those domains.
 - CI (`.github/workflows/cardputer.yml`): unit tests and scenarios (screenshots as artifacts), the 4
   single-image envs (firmware.bin + firmware-merged.bin, RAM report, launcher check), the dual image.
-  Releases on `cardputer-v*` tags. Read the status with `gh run list` once the GitHub repository exists.
+  Releases: any published GitHub release (tag `vX.Y.Z`; `cardputer-vX.Y.Z` still accepted), files named
+  `<env>-vX.Y.Z.bin`, title and pre-release flag kept as set on GitHub. Read the status with `gh run list` once the GitHub repository exists.
 
 ## Updating MeshCore
 - An official release is a `companion-vX.Y.Z` tag. MeshCore's `main` tracks the latest release; their
@@ -169,14 +170,14 @@ Text-entry screens: raw characters; arrows and Esc through Fn. See `core/Keys.h`
 
 ## Status
 0. Foundation, CI, simulator — done.
-1. Hardware bring-up (variant, radio, PI4IOE, display, companion BLE) — builds; hardware validation pending.
-2. TCA8418 keyboard + UI skeleton — builds, simulator OK; hardware validation pending.
-3. Standalone messaging, LittleFS persistence, sound — builds, simulator OK; hardware validation pending.
-4. GPS and compass — builds, simulator OK; hardware validation pending.
+1. Hardware bring-up (variant, radio, PI4IOE, display, companion BLE) — validated on hardware 2026-11-05.
+2. TCA8418 keyboard + UI skeleton — validated on hardware 2026-11-05.
+3. Standalone messaging, LittleFS persistence, sound — validated on hardware 2026-11-05.
+4. GPS and compass — validated on hardware 2026-11-05 (fix outdoors, clock from GPS).
 5. Offline maps (RGB565 tiles on SD), optional — `cardputer_adv_standalone_map`, `tools/tiles/make_tiles.py`.
 6. Polish — demo firmware, SD backup/restore, brightness, 80 MHz CPU with the screen off, battery warning, releases.
 7. Diagnostics and test pyramid — serial log and console, portable drivers with fake chips, dual boot.
-   All PC tests pass; hardware validation pending (first sections of `app/TESTS.md`).
+   All PC tests pass; validated on hardware 2026-11-05 (roadmap VALIDATION-1).
 8. Independent repository with MeshCore as a pinned submodule (companion-v1.18.0) — done 2026-11-03. The 6 envs
    build with the same sizes as the former fork (within a few bytes) and the simulator results are identical.
 9. English/French UI, README in both languages with simulator screenshots, roadmap in `docs/` — done 2026-11-04.

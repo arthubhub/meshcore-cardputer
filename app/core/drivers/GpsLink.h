@@ -12,6 +12,7 @@ public:
   static constexpr uint32_t BAUD_TRY_MS = 2500;
   static constexpr uint32_t SILENT_MS = 5000;     // no sentence for this long = module lost
   static constexpr int BYTES_PER_LOOP = 512;      // never starve the radio
+  static constexpr uint32_t FIX_LOG_WAIT_MS = 2000;  // wait this long for GGA before logging an RMC-only fix
 
   GpsLink(UartPort& uart, WallClock* clock) : _uart(uart), _clock(clock) {}
 
@@ -44,6 +45,8 @@ private:
   uint32_t _lastClockSync = 0;
   bool _clockSynced = false;
   bool _hadFix = false;
+  bool _fixLogged = false;         // the current fix was announced in the log
+  uint32_t _fixSinceMs = 0;
   uint32_t _bytes = 0, _clockSets = 0;
   bool _rawEcho = false;
   char _raw[100];

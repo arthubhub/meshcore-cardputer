@@ -4,7 +4,7 @@
 
 What the MeshCore firmware for the M5Stack Cardputer ADV + Cap LoRa-1262 could do next, feature by feature, with a priority and a size for each item. This file is generated: change [`roadmap.json`](roadmap.json), then run `python3 tools/roadmap.py`.
 
-Last updated 2026-11-04 · 57 open items · 5 done.
+Last updated 2026-11-05 · 54 open items · 9 done.
 
 ## How to read it
 
@@ -18,8 +18,8 @@ Last updated 2026-11-04 · 57 open items · 5 done.
 
 | Category | In progress | Next up | Backlog | Done |
 |---|---|---|---|---|
-| Validation & bugs | · | 1 | 3 | 1 |
-| Release & CI | · | 2 | 6 | 2 |
+| Validation & bugs | · | · | 3 | 4 |
+| Release & CI | · | 1 | 5 | 3 |
 | Companion sync | · | 2 | 4 | 1 |
 | Radio tools | · | · | 7 | · |
 | Messaging | · | · | 8 | · |
@@ -36,8 +36,6 @@ _Nothing here yet._
 
 ## Next up
 
-- **[RELEASE-6](#release-6)** Release job skipped unless the tag starts with cardputer-v · P0 · S
-- **[VALIDATION-1](#validation-1)** Validate phases 1–7 on a real Cardputer · P0 · M
 - **[RELEASE-7](#release-7)** Firmware version taken from the git tag · P1 · S
 - **[SYNC-6](#sync-6)** Second way out of phone mode · P1 · S
 - **[SYNC-1](#sync-1)** Share contacts and channels between both modes · P1 · M
@@ -49,17 +47,13 @@ _Nothing here yet._
 
 | ID | Item | Priority | Size | Status | Depends on |
 |---|---|---|---|---|---|
-| [VALIDATION-1](#validation-1) | Validate phases 1–7 on a real Cardputer | P0 | M | Next up | · |
 | [VALIDATION-2](#validation-2) | Crash report after a reboot | P1 | M | Backlog | · |
 | [VALIDATION-3](#validation-3) | MessageStore robustness tests | P2 | M | Backlog | · |
 | [VALIDATION-4](#validation-4) | Large-font glyphs on the compass | P2 | S | Backlog | · |
+| [VALIDATION-1](#validation-1) | Validate phases 1–7 on a real Cardputer | P0 | M | Done | · |
 | [VALIDATION-5](#validation-5) | Serial diagnostics: boot-log replay, status line, console | P1 | M | Done | · |
-
-#### VALIDATION-1
-
-**Validate phases 1–7 on a real Cardputer** · P0 · M · Next up
-
-Radio TX/RX with a second node, keyboard rows (console 'keys on'), GPS fix outdoors ('gps raw on'), dual-boot switch both ways, SD backup/restore. Nothing hardware-related is confirmed yet: every other item builds on this. Checklist: app/TESTS.md.
+| [VALIDATION-6](#validation-6) | No framework error when a conversation file does not exist yet | P2 | S | Done | VALIDATION-1 |
+| [VALIDATION-7](#validation-7) | GPS fix log line shows the real satellite count | P2 | S | Done | VALIDATION-1 |
 
 #### VALIDATION-2
 
@@ -79,32 +73,43 @@ Unit tests for a full LittleFS, a write interrupted by power loss, a corrupted i
 
 In the compass screenshot the distance unit 'm' renders as a solid block in the big font ('597 ▀'). Check the glyph table of the display font and add a test scenario at short distances.
 
+#### VALIDATION-1
+
+**Validate phases 1–7 on a real Cardputer** · P0 · M · Done
+
+Validated by the project owner on a Cardputer ADV + Cap LoRa-1262 on 2026-11-05 (dual image, standalone slot): everything checked works. The serial log shows the internal I2C bus with all four chips (0x18 ES8311, 0x34 TCA8418, 0x43 PI4IOE, 0x69 IMU), the Cap detected and its antenna switch on, SX1262 up at 869.618 MHz SF8 BW62.5 22 dBm, identity and 28 contacts loaded, adverts sent (with GPS position), keyboard events and no error, GPS NMEA at 115200 baud with a fix of 4–8 satellites and the clock set from it, SD mounted with map tiles, settings saved, SD backup restored then a clean reboot. Heap stays flat (min ~194 KB) and boot takes about 1 s. Checklist: app/TESTS.md.
+
 #### VALIDATION-5
 
 **Serial diagnostics: boot-log replay, status line, console** · P1 · M · Done
 
 Delivered in v0.7.0.
 
+#### VALIDATION-6
+
+**No framework error when a conversation file does not exist yet** · P2 · S · Done · after VALIDATION-1
+
+Seen on the device (2026-11-05): '[E][vfs_api.cpp:105] open(): /littlefs/mc89ee25ae8528 does not exist' when the first message of a channel was sent. Not a compatibility problem: MessageStore::ensure() probes the ring file of a new conversation on purpose, and LittleFsStorage::read opened it without checking it exists, so the Arduino file layer printed an error. read() now checks exists() first, like write() and remove().
+
+#### VALIDATION-7
+
+**GPS fix log line shows the real satellite count** · P2 · S · Done · after VALIDATION-1
+
+Seen on the device (2026-11-05): 'fix 48.86838, 2.19656, 0 sats, hdop 99.9' while the status line showed 7 satellites. The module sends RMC (position) before GGA (satellites, hdop) and the line was printed in between. GpsLink now announces the fix once GGA confirms it, or after 2 s as 'position only' when GGA still reports no satellites (weak signal indoors); a fix that vanishes before being announced logs nothing. Three unit tests reproduce the device sequence.
+
 ### Release & CI
 
 | ID | Item | Priority | Size | Status | Depends on |
 |---|---|---|---|---|---|
-| [RELEASE-1](#release-1) | Checksums and English file list on releases | P1 | S | Backlog | RELEASE-6 |
 | [RELEASE-2](#release-2) | Contribute the Cardputer ADV variant to MeshCore | P2 | M | Backlog | VALIDATION-1 |
 | [RELEASE-3](#release-3) | List the firmware in M5Burner and M5Launcher | P2 | S | Backlog | VALIDATION-1 |
 | [RELEASE-4](#release-4) | SHA-256 checksums on releases | P3 | L | Backlog | · |
 | [RELEASE-5](#release-5) | Static analysis in CI | P3 | S | Backlog | · |
-| [RELEASE-6](#release-6) | Release job skipped unless the tag starts with cardputer-v | P0 | S | Next up | · |
 | [RELEASE-7](#release-7) | Firmware version taken from the git tag | P1 | S | Next up | · |
 | [RELEASE-8](#release-8) | Sanitizer build of the simulator in CI | P2 | S | Backlog | · |
+| [RELEASE-6](#release-6) | Release job runs on every published release | P0 | S | Done | · |
 | [RELEASE-9](#release-9) | Driver test pyramid with emulated chips | P1 | L | Done | · |
 | [RELEASE-10](#release-10) | Independent repository, MeshCore as a pinned submodule | P1 | M | Done | · |
-
-#### RELEASE-1
-
-**Checksums and English file list on releases** · P1 · S · Backlog · after RELEASE-6
-
-Attach SHA-256 sums and an English description of each file to every release.
 
 #### RELEASE-2
 
@@ -130,23 +135,23 @@ Attach a SHA256SUMS file to every release so users can check a download before f
 
 cppcheck or clang-tidy on variant/ and app/ (never on meshcore/).
 
-#### RELEASE-6
-
-**Release job skipped unless the tag starts with cardputer-v** · P0 · S · Next up
-
-v0.7.0 was published under the tag 'v0.7.0' and the release job was skipped without any warning: it only runs for tags starting with 'cardputer-v'. Run it on every published release instead, and name the files from github.event.release.tag_name.
-
 #### RELEASE-7
 
 **Firmware version taken from the git tag** · P1 · S · Next up
 
-CPADV_VERSION is edited by hand in platformio.ini and can disagree with the release tag. A small pre-build script can define it from 'git describe --tags' (fallback: short commit hash).
+CPADV_VERSION is edited by hand in platformio.ini and can disagree with the release tag. A small pre-build script can define it from 'git describe --tags' (fallback: short commit hash). Same problem seen on the device (2026-11-05): the dual-boot log shows both slots as 'built Mar  5 2024 12:12:53', because that date comes from the app descriptor of the prebuilt Arduino framework, not from our build. Log our own version and build date for each slot instead.
 
 #### RELEASE-8
 
 **Sanitizer build of the simulator in CI** · P2 · S · Backlog
 
 Build app/sim with -fsanitize=address,undefined and run every scenario. One demo-scenario failure was seen once and never reproduced: uninitialised memory is the usual suspect.
+
+#### RELEASE-6
+
+**Release job runs on every published release** · P0 · S · Done
+
+v0.7.0 was published under the tag 'v0.7.0' and the release job was skipped without any warning: it only ran for tags starting with 'cardputer-v'. It now runs on every published release and names the files from github.event.release.tag_name (<env>-vX.Y.Z.bin, a 'cardputer-' prefix is dropped); a tag that is not vX.Y.Z prints a warning instead of being skipped. The title and the pre-release box set on GitHub are kept (they used to be overwritten). Known limit: re-running the job appends the notes a second time.
 
 #### RELEASE-9
 

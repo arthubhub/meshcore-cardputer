@@ -353,6 +353,55 @@ TEST(gps_fix_lost_and_silence_detected) {
   CHECK(logHas("module silent"));
 }
 
+// Real modules send RMC before GGA, and the driver may run in between (VALIDATION-7):
+// the "fix" line must wait for GGA, otherwise it prints "0 sats, hdop 99.9".
+TEST(gps_fix_log_waits_for_satellite_count) {
+  g_coreLogCapture.clear();
+  GpsRig g;
+  g.gps.begin(g.t);
+  g.run(2, false);                       // locked at 115200, no fix yet
+  g.uart.send("GNRMC,000005.00,A,4336.69600,N,00120.07600,E,0.10,0.0,010126,,,A");
+  for (int i = 0; i < 10; i++) { g.gps.loop(g.t); g.t += 10; }
+  CHECK(g.gps.state().valid);
+  CHECK(!logHas("fix 43"));              // position known, satellite count not yet
+  g.uart.send("GNGGA,000005.00,4336.69600,N,00120.07600,E,1,07,1.2,150.0,M,49.6,M,,");
+  for (int i = 0; i < 10; i++) { g.gps.loop(g.t); g.t += 10; }
+  CHECK(logHas("fix 43.61160, 1.33460, 7 sats, hdop 1.2"));
+  CHECK(!logHas("0 sats"));
+}
+
+// Indoors the module can report a position (RMC) while GGA still says "no satellites".
+TEST(gps_fix_log_position_only) {
+  g_coreLogCapture.clear();
+  GpsRig g;
+  g.gps.begin(g.t);
+  g.run(2, false);
+  for (int s = 0; s < 3; s++) {
+    g.uart.send("GNRMC,000005.00,A,4336.69600,N,00120.07600,E,0.10,0.0,010126,,,A");
+    g.uart.send("GNGGA,000005.00,,,,,0,00,99.9,,,,,,");
+    for (int i = 0; i < 100; i++) { g.gps.loop(g.t); g.t += 10; }
+  }
+  CHECK(g.gps.state().valid);
+  CHECK(logHas("fix 43.61160, 1.33460 (position only"));
+  CHECK(!logHas("0 sats"));
+  g.run(2, false);
+  CHECK(logHas("fix lost"));
+}
+
+// A fix that flickers away before it was ever logged does not print a lone "fix lost".
+TEST(gps_fix_flicker_not_logged) {
+  g_coreLogCapture.clear();
+  GpsRig g;
+  g.gps.begin(g.t);
+  g.run(2, false);
+  g.uart.send("GNRMC,000005.00,A,4336.69600,N,00120.07600,E,0.10,0.0,010126,,,A");
+  for (int i = 0; i < 10; i++) { g.gps.loop(g.t); g.t += 10; }
+  g.run(1, false);
+  CHECK(!g.gps.state().valid);
+  CHECK(!logHas("fix 43"));
+  CHECK(!logHas("fix lost"));
+}
+
 TEST(gps_sets_clock_quickly) {
   GpsRig g;
   g.clock.t = 1000;   // RTC not set at boot

@@ -24,8 +24,9 @@ leurs contacts et messages sont séparés. Ce fichier ne s'installe pas avec M5L
 
 ## 2. Télécharger
 
-- **Versions publiées** : page *Releases* du dépôt GitHub (`Rafem44/MeshCore`), dernière version
-  `cardputer-v...`. Un seul fichier `.bin` par firmware, à flasher tel quel.
+- **Versions publiées** : page *Releases* du dépôt GitHub (`arthubhub/meshcore-cardputer`). Un seul
+  fichier `.bin` par firmware, terminé par le numéro de version (`cardputer_adv_dual-v0.8.0.bin`),
+  à flasher tel quel.
 - **Dernière compilation** (il faut être connecté à GitHub) : onglet *Actions* → dernière exécution
   « Cardputer ADV » verte → *Artifacts* → `firmware-<nom>` → prendre le fichier `...-merged.bin`.
 
