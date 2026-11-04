@@ -26,6 +26,7 @@ void GpsLink::coldRestart() {
   _parser.reset();
   _lastSentences = 0;
   _hadFix = false;
+  _fixLogged = false;
   CORE_LOGI("GPS", "cold restart sent ($PCAS10,2)");
 }
 
@@ -72,10 +73,22 @@ void GpsLink::loop(uint32_t nowMs) {
     CORE_LOGW("GPS", "no NMEA for %lu s (module silent)", (unsigned long)(SILENT_MS / 1000));
   }
 
+  // Modules send RMC (position) before GGA (satellites, hdop): announce the fix once GGA confirms it,
+  // or as "position only" when GGA still reports no satellites (weak signal indoors).
   if (s.valid != _hadFix) {
     _hadFix = s.valid;
-    if (s.valid) CORE_LOGI("GPS", "fix %.5f, %.5f, %u sats, hdop %.1f", s.lat, s.lon, s.sats, s.hdop);
-    else CORE_LOGI("GPS", "fix lost");
+    _fixSinceMs = nowMs;
+    if (!s.valid && _fixLogged) CORE_LOGI("GPS", "fix lost");
+    _fixLogged = false;   // a fix that vanished before being announced stays silent
+  }
+  if (s.valid && !_fixLogged) {
+    if (s.ggaFix) {
+      CORE_LOGI("GPS", "fix %.5f, %.5f, %u sats, hdop %.1f", s.lat, s.lon, s.sats, s.hdop);
+      _fixLogged = true;
+    } else if (nowMs - _fixSinceMs >= FIX_LOG_WAIT_MS) {
+      CORE_LOGI("GPS", "fix %.5f, %.5f (position only: the module reports no satellites in use yet)", s.lat, s.lon);
+      _fixLogged = true;
+    }
   }
 
   // Keep the wall clock on GPS time (message timestamps, "seen x min ago").

@@ -89,6 +89,7 @@ bool NmeaParser::parse(uint32_t nowMs) {
   if (!strcmp(type, "GGA") && n >= 10) {
     int quality = atoi(f[6]);
     _ggaFix = quality > 0;
+    _s.ggaFix = _ggaFix;
     _s.sats = (uint8_t)atoi(f[7]);
     if (*f[8]) _s.hdop = (float)atof(f[8]);
     if (_ggaFix) {

@@ -4,6 +4,9 @@
 #include <LittleFS.h>
 
 bool LittleFsStorage::read(const char* path, uint32_t off, void* buf, uint32_t len) {
+  // A missing file is a normal answer (e.g. MessageStore probes the ring file of a new conversation).
+  // exists() first: open() on a missing file prints a framework error line on the serial log.
+  if (!LittleFS.exists(path)) return false;
   File f = LittleFS.open(path, "r");
   if (!f) return false;
   bool ok = f.seek(off) && f.read((uint8_t*)buf, len) == len;

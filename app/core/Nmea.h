@@ -6,7 +6,8 @@
 #include <stddef.h>
 
 struct GpsState {
-  bool valid = false;         // position fix (GGA quality > 0 and RMC status A)
+  bool valid = false;         // position fix (GGA quality > 0 or RMC status A)
+  bool ggaFix = false;        // GGA confirms the fix: sats and hdop describe it (RMC alone leaves them stale)
   double lat = 0, lon = 0;    // degrees
   float altM = 0;             // altitude above mean sea level
   uint8_t sats = 0;           // satellites used

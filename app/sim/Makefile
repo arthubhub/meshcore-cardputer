@@ -3,7 +3,7 @@
 #   make run      run every scenario in scenarios/, screenshots in build/shots/
 #   make readme-images   screenshots of the README (scenarios/readme_*.txt) -> ../../docs/images/
 #   make test     unit tests of the drivers against fake chips (tests/, fakes/), no LovyanGFX needed
-#   make clean
+#   make clean      remove the build outputs (keeps LovyanGFX); make distclean removes everything
 LGFX_VERSION ?= 1.2.7
 BUILD        ?= build
 LGFX_DIR     ?= $(BUILD)/LovyanGFX
@@ -104,14 +104,7 @@ readme-images: $(BUILD)/cardputer_sim $(TILES_STAMP)
 clean:
 	rm -rf $(BUILD)/core $(BUILD)/test_core $(BUILD)/sim $(BUILD)/cardputer_sim $(BUILD)/unit_tests $(BUILD)/shots
 
-distREADME_DIR := ../../docs/images
-readme-images: $(BUILD)/cardputer_sim $(TILES_STAMP)
-	@mkdir -p $(BUILD)/shots $(README_DIR)
-	@set -e; for s in scenarios/readme_*.txt; do echo "== $$s"; $(BUILD)/cardputer_sim $$s $(BUILD)/shots; done
-	cp $(BUILD)/shots/readme_*.png $(README_DIR)/
-	python3 ../../tools/png_compress.py $(README_DIR)/readme_*.png
-
-clean:
+distclean:
 	rm -rf $(BUILD)
 
 .PHONY: all run test readme-images clean distclean

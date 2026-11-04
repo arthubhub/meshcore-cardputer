@@ -1,6 +1,6 @@
 {
   "title": "Cardputer Mesh Roadmap",
-  "updated": "2026-11-04",
+  "updated": "2026-11-05",
   "categories": [
     {
       "prefix": "VALIDATION",
@@ -84,10 +84,10 @@
       "category": "Validation & bugs",
       "priority": 0,
       "size": "M",
-      "status": "next",
+      "status": "done",
       "requested": false,
       "depends_on": [],
-      "details": "Radio TX/RX with a second node, keyboard rows (console 'keys on'), GPS fix outdoors ('gps raw on'), dual-boot switch both ways, SD backup/restore. Nothing hardware-related is confirmed yet: every other item builds on this. Checklist: app/TESTS.md."
+      "details": "Validated by the project owner on a Cardputer ADV + Cap LoRa-1262 on 2026-11-05 (dual image, standalone slot): everything checked works. The serial log shows the internal I2C bus with all four chips (0x18 ES8311, 0x34 TCA8418, 0x43 PI4IOE, 0x69 IMU), the Cap detected and its antenna switch on, SX1262 up at 869.618 MHz SF8 BW62.5 22 dBm, identity and 28 contacts loaded, adverts sent (with GPS position), keyboard events and no error, GPS NMEA at 115200 baud with a fix of 4–8 satellites and the clock set from it, SD mounted with map tiles, settings saved, SD backup restored then a clean reboot. Heap stays flat (min ~194 KB) and boot takes about 1 s. Checklist: app/TESTS.md."
     },
     {
       "id": "VALIDATION-2",
@@ -134,17 +134,30 @@
       "details": "Delivered in v0.7.0."
     },
     {
-      "id": "RELEASE-1",
-      "title": "Checksums and English file list on releases",
-      "category": "Release & CI",
-      "priority": 1,
+      "id": "VALIDATION-6",
+      "title": "No framework error when a conversation file does not exist yet",
+      "category": "Validation & bugs",
+      "priority": 2,
       "size": "S",
-      "status": "backlog",
+      "status": "done",
       "requested": false,
       "depends_on": [
-        "RELEASE-6"
+        "VALIDATION-1"
       ],
-      "details": "Attach SHA-256 sums and an English description of each file to every release."
+      "details": "Seen on the device (2026-11-05): '[E][vfs_api.cpp:105] open(): /littlefs/mc89ee25ae8528 does not exist' when the first message of a channel was sent. Not a compatibility problem: MessageStore::ensure() probes the ring file of a new conversation on purpose, and LittleFsStorage::read opened it without checking it exists, so the Arduino file layer printed an error. read() now checks exists() first, like write() and remove()."
+    },
+    {
+      "id": "VALIDATION-7",
+      "title": "GPS fix log line shows the real satellite count",
+      "category": "Validation & bugs",
+      "priority": 2,
+      "size": "S",
+      "status": "done",
+      "requested": false,
+      "depends_on": [
+        "VALIDATION-1"
+      ],
+      "details": "Seen on the device (2026-11-05): 'fix 48.86838, 2.19656, 0 sats, hdop 99.9' while the status line showed 7 satellites. The module sends RMC (position) before GGA (satellites, hdop) and the line was printed in between. GpsLink now announces the fix once GGA confirms it, or after 2 s as 'position only' when GGA still reports no satellites (weak signal indoors); a fix that vanishes before being announced logs nothing. Three unit tests reproduce the device sequence."
     },
     {
       "id": "RELEASE-2",
@@ -196,14 +209,14 @@
     },
     {
       "id": "RELEASE-6",
-      "title": "Release job skipped unless the tag starts with cardputer-v",
+      "title": "Release job runs on every published release",
       "category": "Release & CI",
       "priority": 0,
       "size": "S",
-      "status": "next",
+      "status": "done",
       "requested": false,
       "depends_on": [],
-      "details": "v0.7.0 was published under the tag 'v0.7.0' and the release job was skipped without any warning: it only runs for tags starting with 'cardputer-v'. Run it on every published release instead, and name the files from github.event.release.tag_name."
+      "details": "v0.7.0 was published under the tag 'v0.7.0' and the release job was skipped without any warning: it only ran for tags starting with 'cardputer-v'. It now runs on every published release and names the files from github.event.release.tag_name (<env>-vX.Y.Z.bin, a 'cardputer-' prefix is dropped); a tag that is not vX.Y.Z prints a warning instead of being skipped. The title and the pre-release box set on GitHub are kept (they used to be overwritten). Known limit: re-running the job appends the notes a second time."
     },
     {
       "id": "RELEASE-7",
@@ -214,7 +227,7 @@
       "status": "next",
       "requested": false,
       "depends_on": [],
-      "details": "CPADV_VERSION is edited by hand in platformio.ini and can disagree with the release tag. A small pre-build script can define it from 'git describe --tags' (fallback: short commit hash)."
+      "details": "CPADV_VERSION is edited by hand in platformio.ini and can disagree with the release tag. A small pre-build script can define it from 'git describe --tags' (fallback: short commit hash). Same problem seen on the device (2026-11-05): the dual-boot log shows both slots as 'built Mar  5 2024 12:12:53', because that date comes from the app descriptor of the prebuilt Arduino framework, not from our build. Log our own version and build date for each slot instead."
     },
     {
       "id": "RELEASE-8",

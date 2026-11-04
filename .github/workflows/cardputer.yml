@@ -1,7 +1,8 @@
 name: Cardputer ADV
 
 # Builds for the standalone Cardputer ADV + Cap LoRa project (MeshCore = submodule meshcore/).
-#  - release:   when a "cardputer-vX.Y.Z" release is published on GitHub, attaches the full-flash images.
+#  - release:   when any release is published on GitHub (tag vX.Y.Z recommended, cardputer-vX.Y.Z still
+#               accepted), attaches the full-flash images and adds the file list + roadmap summary.
 #  - simulator: unit tests of the drivers against fake chips, then every UI scenario twice
 #               (direct keys, and through the fake TCA8418 keyboard), uploads the screenshots.
 #  - firmware:  builds the PlatformIO envs listed in the matrix, reports RAM/flash,
@@ -12,7 +13,7 @@ on:
   push:
     branches: [main]
   release:
-    types: [published]       # publish a release from the GitHub site with a new cardputer-v* tag
+    types: [published]       # publish a release from the GitHub site with a new tag, e.g. v0.8.0
   pull_request:
   workflow_dispatch:
   workflow_call:             # used by meshcore-update.yml to check a MeshCore update before it lands
@@ -155,11 +156,22 @@ jobs:
 
   release:
     needs: [simulator, firmware, dual]
-    if: startsWith(github.ref, 'refs/tags/cardputer-v')
+    # Every published release, whatever its tag (v0.7.0 used to be skipped silently: RELEASE-6).
+    # A workflow_call run keeps its caller's event name, so the MeshCore update check never publishes.
+    if: github.event_name == 'release'
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      TAG: ${{ github.event.release.tag_name }}
     steps:
+      - name: Check the tag name
+        run: |
+          echo "Release tag: $TAG"
+          if ! [[ "$TAG" =~ ^(cardputer-)?v[0-9]+\.[0-9]+\.[0-9]+([-.+].*)?$ ]]; then
+            echo "::warning::Tag '$TAG' is not vX.Y.Z; files will be named after it anyway"
+          fi
+
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0       # tags and history: the roadmap summary compares with the previous release
@@ -174,15 +186,17 @@ jobs:
       - name: Keep the full-flash images only
         run: |
           mkdir -p release
+          VERSION="${TAG#cardputer-}"
+          VERSION="${VERSION//\//-}"      # a '/' in the tag cannot go in a file name
           for f in out/*-merged.bin; do
             n=$(basename "$f" -merged.bin)
-            cp "$f" "release/${n}-${GITHUB_REF_NAME#cardputer-}.bin"
+            cp "$f" "release/${n}-${VERSION}.bin"
           done
           ls -la release
 
       - name: Release notes (file list + roadmap summary)
         run: |
-          PREV=$(git describe --tags --abbrev=0 --match 'cardputer-v*' "${GITHUB_REF_NAME}^" 2>/dev/null || true)
+          PREV=$(git describe --tags --abbrev=0 --match 'v[0-9]*' --match 'cardputer-v[0-9]*' "${TAG}^" 2>/dev/null || true)
           {
             echo "## Files"
             echo
@@ -207,8 +221,8 @@ jobs:
       - name: Publish the release
         uses: softprops/action-gh-release@v3
         with:
-          name: "Cardputer ${{ github.ref_name }}"
-          prerelease: true
+          tag_name: ${{ github.event.release.tag_name }}
+          # no name / prerelease: the title and the pre-release box set on GitHub are kept as they are
           append_body: true   # keep the notes written on the release page, add files + roadmap below
           files: release/*.bin
           body_path: release-notes.md
