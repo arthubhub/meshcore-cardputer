@@ -123,6 +123,14 @@ electrical behaviour of the TCA8418 / PI4IOE / GPS, battery, real heap fragmenta
   single-image envs (firmware.bin + firmware-merged.bin, RAM report, launcher check), the dual image.
   Releases: any published GitHub release (tag `vX.Y.Z`; `cardputer-vX.Y.Z` still accepted), files named
   `<env>-vX.Y.Z.bin`, title and pre-release flag kept as set on GitHub. Read the status with `gh run list` once the GitHub repository exists.
+- Versions come from git, never from `platformio.ini` (`tools/version.py`, applied to every env by
+  `tools/pio_version.py`): `v0.8.0` on a release tag, `v0.8.0-3-g97fb867` three commits later, `-dirty` with
+  uncommitted changes, `-demo` for the demo env (`custom_cpadv_version_suffix`). `CPADV_VERSION=...` in the
+  environment overrides it. The script generates `$BUILD_DIR/generated/CpadvVersion.inc` (`.inc`, not `.h`:
+  PlatformIO wipes `.pio/build` when the list of `.h`/`.cpp` files under `src_dir = .` changes) and writes the
+  version, env name and build date into the image's app descriptor, which the serial banner, the dual-boot line
+  (`app0 ... / app1 ...`, warning when they differ), `tools/make_dual.py` and `esptool.py image_info` show.
+  Settings › System › Version shows it too. CI checks out with `fetch-depth: 0` so the tags are there.
 
 ## Updating MeshCore
 - An official release is a `companion-vX.Y.Z` tag. MeshCore's `main` tracks the latest release; their

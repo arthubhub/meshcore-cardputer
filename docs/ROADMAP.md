@@ -4,7 +4,7 @@
 
 What the MeshCore firmware for the M5Stack Cardputer ADV + Cap LoRa-1262 could do next, feature by feature, with a priority and a size for each item. This file is generated: change [`roadmap.json`](roadmap.json), then run `python3 tools/roadmap.py`.
 
-Last updated 2026-11-05 · 54 open items · 9 done.
+Last updated 2026-11-05 · 53 open items · 10 done.
 
 ## How to read it
 
@@ -19,7 +19,7 @@ Last updated 2026-11-05 · 54 open items · 9 done.
 | Category | In progress | Next up | Backlog | Done |
 |---|---|---|---|---|
 | Validation & bugs | · | · | 3 | 4 |
-| Release & CI | · | 1 | 5 | 3 |
+| Release & CI | · | · | 5 | 4 |
 | Companion sync | · | 2 | 4 | 1 |
 | Radio tools | · | · | 7 | · |
 | Messaging | · | · | 8 | · |
@@ -36,7 +36,6 @@ _Nothing here yet._
 
 ## Next up
 
-- **[RELEASE-7](#release-7)** Firmware version taken from the git tag · P1 · S
 - **[SYNC-6](#sync-6)** Second way out of phone mode · P1 · S
 - **[SYNC-1](#sync-1)** Share contacts and channels between both modes · P1 · M
 - **[UX-1](#ux-1)** First-boot setup · P1 · M
@@ -105,9 +104,9 @@ Seen on the device (2026-11-05): 'fix 48.86838, 2.19656, 0 sats, hdop 99.9' whil
 | [RELEASE-3](#release-3) | List the firmware in M5Burner and M5Launcher | P2 | S | Backlog | VALIDATION-1 |
 | [RELEASE-4](#release-4) | SHA-256 checksums on releases | P3 | L | Backlog | · |
 | [RELEASE-5](#release-5) | Static analysis in CI | P3 | S | Backlog | · |
-| [RELEASE-7](#release-7) | Firmware version taken from the git tag | P1 | S | Next up | · |
 | [RELEASE-8](#release-8) | Sanitizer build of the simulator in CI | P2 | S | Backlog | · |
 | [RELEASE-6](#release-6) | Release job runs on every published release | P0 | S | Done | · |
+| [RELEASE-7](#release-7) | Firmware version taken from the git tag | P1 | S | Done | · |
 | [RELEASE-9](#release-9) | Driver test pyramid with emulated chips | P1 | L | Done | · |
 | [RELEASE-10](#release-10) | Independent repository, MeshCore as a pinned submodule | P1 | M | Done | · |
 
@@ -135,12 +134,6 @@ Attach a SHA256SUMS file to every release so users can check a download before f
 
 cppcheck or clang-tidy on variant/ and app/ (never on meshcore/).
 
-#### RELEASE-7
-
-**Firmware version taken from the git tag** · P1 · S · Next up
-
-CPADV_VERSION is edited by hand in platformio.ini and can disagree with the release tag. A small pre-build script can define it from 'git describe --tags' (fallback: short commit hash). Same problem seen on the device (2026-11-05): the dual-boot log shows both slots as 'built Mar  5 2024 12:12:53', because that date comes from the app descriptor of the prebuilt Arduino framework, not from our build. Log our own version and build date for each slot instead.
-
 #### RELEASE-8
 
 **Sanitizer build of the simulator in CI** · P2 · S · Backlog
@@ -152,6 +145,12 @@ Build app/sim with -fsanitize=address,undefined and run every scenario. One demo
 **Release job runs on every published release** · P0 · S · Done
 
 v0.7.0 was published under the tag 'v0.7.0' and the release job was skipped without any warning: it only ran for tags starting with 'cardputer-v'. It now runs on every published release and names the files from github.event.release.tag_name (<env>-vX.Y.Z.bin, a 'cardputer-' prefix is dropped); a tag that is not vX.Y.Z prints a warning instead of being skipped. The title and the pre-release box set on GitHub are kept (they used to be overwritten). Known limit: re-running the job appends the notes a second time.
+
+#### RELEASE-7
+
+**Firmware version taken from the git tag** · P1 · S · Done
+
+The version used to be typed by hand in platformio.ini (0.6.1, already behind the cardputer-v0.7.0 tag; none for the companion), and the device showed both dual-boot slots as 'built Mar  5 2024' because the app descriptor came from the prebuilt Arduino framework. tools/version.py now derives the version from git (v0.8.0 on a tag, v0.8.0-3-g97fb867 after it, -dirty with local changes, -demo for the demo env, CPADV_VERSION overrides), and tools/pio_version.py applies it to every env: a generated CpadvVersion.inc (only its includers recompile) and the real version, env name and build date written into the app descriptor before esptool builds the image. The serial banner, Settings › System, the dual-boot line (with a warning when the slots differ), tools/make_dual.py and esptool image_info all show it. CI fetches the tags and self-tests the rules.
 
 #### RELEASE-9
 

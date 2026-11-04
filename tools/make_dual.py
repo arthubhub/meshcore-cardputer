@@ -37,6 +37,15 @@ def read(path):
         return f.read()
 
 
+def app_version(img):
+    """Version, date and time from the app descriptor (offset 0x20 of an ESP32 app image), or None.
+    Written by tools/pio_version.py; older builds carry the Arduino framework's own descriptor."""
+    if len(img) < 0x20 + 112 or img[0x20:0x24] != bytes.fromhex("3254cdab"):
+        return None
+    field = lambda off, n: img[0x20 + off:0x20 + off + n].split(b"\0")[0].decode(errors="replace")
+    return field(16, 32), field(96, 16), field(80, 16)
+
+
 def find_boot_app0():
     candidates = [
         os.path.expanduser("~/.platformio/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin"),
@@ -106,8 +115,14 @@ def main():
         put(ota_off, read(b0)[:ota_size], "otadata (boot app0 = standalone)")
     else:
         print(f"  0x{ota_off:06X}  (blank otadata: boots app0)")
-    put(app0_off, app0, f"app0 standalone  ({100 * len(app0) // app0_size}% of {app0_size // 1024} KB)")
-    put(app1_off, app1, f"app1 companion   ({100 * len(app1) // app1_size}% of {app1_size // 1024} KB)")
+    v0, v1 = app_version(app0), app_version(app1)
+    def label(v):
+        return f"{v[0]}, built {v[1]} {v[2]}" if v else "version unknown"
+    put(app0_off, app0, f"app0 standalone  ({100 * len(app0) // app0_size}% of {app0_size // 1024} KB) {label(v0)}")
+    put(app1_off, app1, f"app1 companion   ({100 * len(app1) // app1_size}% of {app1_size // 1024} KB) {label(v1)}")
+    if not v0 or not v1 or v0[0] != v1[0]:
+        print(f"WARNING: the two slots come from different builds ({v0[0] if v0 else '?'} / {v1[0] if v1 else '?'}):"
+              f" rebuild both envs before flashing")
 
     output = args.output or os.path.join(args.build_dir, "firmware-dual.bin")
     with open(output, "wb") as f:

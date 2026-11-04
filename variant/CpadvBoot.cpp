@@ -4,6 +4,7 @@
 #include <esp_app_format.h>
 #include <esp_ota_ops.h>
 #include <esp_partition.h>
+#include <string.h>
 
 namespace {
 
@@ -31,8 +32,14 @@ bool dualBootImage() {
     bool c = slotHasApp(Slot::Companion, &b);
     cached = s && c;
     if (cached) {
-      CPLOG_I("BOOT", "dual-boot image: app0 standalone (built %s %s), app1 companion (built %s %s), running %s",
-              a.date, a.time, b.date, b.time, runningSlot() == Slot::Standalone ? "standalone" : "companion");
+      // The descriptors carry our version and build date (written by tools/pio_version.py).
+      CPLOG_I("BOOT", "dual-boot image: app0 standalone %s (built %s %s), app1 companion %s (built %s %s), running %s",
+              a.version, a.date, a.time, b.version, b.date, b.time,
+              runningSlot() == Slot::Standalone ? "standalone" : "companion");
+      if (strncmp(a.version, b.version, sizeof(a.version)) != 0) {
+        CPLOG_W("BOOT", "app0 and app1 come from different builds (%s / %s): rebuild both and run tools/make_dual.py",
+                a.version, b.version);
+      }
     } else {
       CPLOG_I("BOOT", "single firmware image (app0 %s, app1 %s)", s ? "ok" : "none", c ? "ok" : "none");
     }

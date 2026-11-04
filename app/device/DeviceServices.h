@@ -1,10 +1,7 @@
 #pragma once
 // Cardputer implementations of the UI services (core/Services.h).
 #include "../core/Services.h"
-
-#ifndef CPADV_VERSION
-  #define CPADV_VERSION "0.2.0"
-#endif
+#include <CpadvVersion.inc>   // CPADV_VERSION, generated from git by tools/pio_version.py
 
 // Settings stored in LittleFS (/cpadv_settings.bin), applied to the radio on save.
 class DeviceSettings : public SettingsService {
