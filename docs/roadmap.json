@@ -224,10 +224,10 @@
       "category": "Release & CI",
       "priority": 1,
       "size": "S",
-      "status": "next",
+      "status": "done",
       "requested": false,
       "depends_on": [],
-      "details": "CPADV_VERSION is edited by hand in platformio.ini and can disagree with the release tag. A small pre-build script can define it from 'git describe --tags' (fallback: short commit hash). Same problem seen on the device (2026-11-05): the dual-boot log shows both slots as 'built Mar  5 2024 12:12:53', because that date comes from the app descriptor of the prebuilt Arduino framework, not from our build. Log our own version and build date for each slot instead."
+      "details": "The version used to be typed by hand in platformio.ini (0.6.1, already behind the cardputer-v0.7.0 tag; none for the companion), and the device showed both dual-boot slots as 'built Mar  5 2024' because the app descriptor came from the prebuilt Arduino framework. tools/version.py now derives the version from git (v0.8.0 on a tag, v0.8.0-3-g97fb867 after it, -dirty with local changes, -demo for the demo env, CPADV_VERSION overrides), and tools/pio_version.py applies it to every env: a generated CpadvVersion.inc (only its includers recompile) and the real version, env name and build date written into the app descriptor before esptool builds the image. The serial banner, Settings › System, the dual-boot line (with a warning when the slots differ), tools/make_dual.py and esptool image_info all show it. CI fetches the tags and self-tests the rules."
     },
     {
       "id": "RELEASE-8",

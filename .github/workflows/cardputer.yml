@@ -44,6 +44,9 @@ jobs:
       - name: Roadmap is valid and docs/ROADMAP.md up to date
         run: python3 tools/roadmap.py --check
 
+      - name: Version rules (tools/version.py)
+        run: python3 tools/version.py --self-test
+
       - name: Driver unit tests (fake chips)
         run: make -C app/sim -j4 test
 
@@ -75,13 +78,14 @@ jobs:
         with:
           ref: ${{ inputs.ref || '' }}
           submodules: true
+          fetch-depth: 0       # tags: the firmware version comes from git describe (tools/version.py)
 
       - name: Setup Build Environment
         uses: ./.github/actions/setup-build-environment
 
-      - name: MeshCore version
+      - name: Firmware and MeshCore versions
         run: |
-          echo "MeshCore $(git -C meshcore describe --tags --always)" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "Firmware $(python3 tools/version.py), MeshCore $(python3 tools/version.py --meshcore)" | tee -a "$GITHUB_STEP_SUMMARY"
           python3 tools/sync_meshcore_base.py --check
 
       - name: Build ${{ matrix.environment }}
@@ -134,6 +138,7 @@ jobs:
         with:
           ref: ${{ inputs.ref || '' }}
           submodules: true
+          fetch-depth: 0       # tags: the firmware version comes from git describe (tools/version.py)
 
       - name: Setup Build Environment
         uses: ./.github/actions/setup-build-environment
