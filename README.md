@@ -105,7 +105,8 @@ platformio.ini       the firmware variants we build
 variant/             board support: display, serial logging, dual-boot switching, partition tables
 app/                 the keyboard interface, the portable drivers and the PC simulator
 boards/              PlatformIO board definition
-tools/               dual-image builder, offline-map converter, MeshCore update scripts
+tools/               dual-image builder, offline-map converter, MeshCore update and roadmap scripts
+docs/                roadmap and README screenshots
 ```
 
 None of our code lives inside MeshCore, and MeshCore itself is never modified. This keeps upgrades
@@ -142,6 +143,12 @@ Maps are stored on the microSD card as raw tiles the Cardputer can draw without 
 in `tools/tiles/` builds them from an MBTiles file (for instance one exported from QGIS) or from a tile
 server whose terms allow offline use. Note that the public OpenStreetMap tile servers do not. See
 [`tools/tiles/README.md`](tools/tiles/README.md).
+
+## Roadmap
+
+What comes next, with a priority and a size for every item, is in [`docs/ROADMAP.md`](docs/ROADMAP.md):
+signal finding, range tests, syncing phone mode with keyboard mode, power saving and more. Each release
+also lists the items completed since the previous one.
 
 ## Credits
 

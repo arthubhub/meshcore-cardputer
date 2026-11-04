@@ -23,6 +23,26 @@ with the official BLE companion ("phone mode") shipped in the same flash image (
   and summarise them.
 - Never push unless asked. Never commit inside `meshcore/`.
 
+## Roadmap and branches
+- `docs/roadmap.json` is the source of truth for planned work; `docs/ROADMAP.md` is GENERATED from it by
+  `python3 tools/roadmap.py` (CI runs `--check` and fails if the Markdown is stale or the JSON invalid).
+  Never edit ROADMAP.md by hand; commit both files together.
+- Item ids are `<CATEGORY>-<number>` in full words, never abbreviations: VALIDATION, RELEASE, SYNC, RADIO,
+  MESSAGING, MAP, CONNECTIVITY, POWER, UX, SECURITY, HARDWARE (the prefix must match the item's category).
+  A new item takes the next free number of its category; numbers are never reused.
+- Statuses: `backlog` → `next` → `in-progress` → `done`. Moving an item = changing its `status`. When work on an
+  item merges into `main`, set it to `done` in the same merge.
+- Branch names start with the item id:
+  - a feature: `feat/<ID>/base` is the feature's integration branch (merged into `main`), sub-branches
+    `feat/<ID>/<part>` merge into it (e.g. `feat/RADIO-1/base`, `feat/RADIO-1/gauge`, `feat/RADIO-1/ping`);
+    never name a branch plain `feat/<ID>`: git cannot have both `feat/X` and `feat/X/...`;
+  - a small fix or chore: `fix/<ID>-<short-name>`, `chore/<ID>-<short-name>`;
+  - MeshCore updates (automatic): `meshcore-update/<tag>`.
+- Release notes get a roadmap summary automatically (`tools/roadmap.py --release-summary --since <previous tag>`):
+  items completed since the previous `cardputer-v*` tag, items in progress and next up, open counts.
+- The interactive board (claude.ai artifact "Cardputer Mesh Roadmap") is a planning view only; when it and the
+  JSON disagree, the JSON wins.
+
 ## Layout
 | Path | Content |
 | --- | --- |
@@ -34,7 +54,8 @@ with the official BLE companion ("phone mode") shipped in the same flash image (
 | `app/device/` | firmware-only glue: `main.cpp`, `CardputerMesh` (BaseChatMesh), services, SD, serial console |
 | `app/sim/` | PC simulator, fake chips (`fakes/`), unit tests (`tests/`), scenarios (`scenarios/`) |
 | `boards/` | `m5stack_cardputer_adv.json` |
-| `tools/` | `make_dual.py`, `launcher_check.py`, `tiles/`, `update_meshcore.py`, `sync_meshcore_base.py` |
+| `tools/` | `make_dual.py`, `launcher_check.py`, `tiles/`, `update_meshcore.py`, `sync_meshcore_base.py`, `roadmap.py`, `png_compress.py` |
+| `docs/` | `roadmap.json` (source) + `ROADMAP.md` (generated), README screenshots in `images/` |
 
 ## Architecture rules
 - Never modify `meshcore/`. Board-specific code goes in `variant/`, application code in `app/`.
@@ -158,6 +179,8 @@ Text-entry screens: raw characters; arrows and Esc through Fn. See `core/Keys.h`
    All PC tests pass; hardware validation pending (first sections of `app/TESTS.md`).
 8. Independent repository with MeshCore as a pinned submodule (companion-v1.18.0) — done 2026-11-03. The 6 envs
    build with the same sizes as the former fork (within a few bytes) and the simulator results are identical.
+9. English/French UI, README in both languages with simulator screenshots, roadmap in `docs/` — done 2026-11-04.
+From here on, planned work lives in `docs/roadmap.json` (see "Roadmap and branches").
 
 ## References
 Existing ports, to study rather than copy: sosprz/meshcore-cardputer-adv, hdcasey/meshcore-cardputer-adv.

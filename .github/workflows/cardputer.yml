@@ -40,6 +40,9 @@ jobs:
             app/sim/build/liblgfx.a
           key: sim-lgfx-${{ hashFiles('app/sim/Makefile') }}
 
+      - name: Roadmap is valid and docs/ROADMAP.md up to date
+        run: python3 tools/roadmap.py --check
+
       - name: Driver unit tests (fake chips)
         run: make -C app/sim -j4 test
 
@@ -157,6 +160,10 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0       # tags and history: the roadmap summary compares with the previous release
+
       - name: Download firmware
         uses: actions/download-artifact@v8
         with:
@@ -173,22 +180,35 @@ jobs:
           done
           ls -la release
 
+      - name: Release notes (file list + roadmap summary)
+        run: |
+          PREV=$(git describe --tags --abbrev=0 --match 'cardputer-v*' "${GITHUB_REF_NAME}^" 2>/dev/null || true)
+          {
+            echo "## Files"
+            echo
+            echo "Every file is a full image: flash it at address **0x0**"
+            echo "(for instance with ESPConnect: https://thelastoutpostworkshop.github.io/ESPConnect/)."
+            echo
+            echo "| File | What you get |"
+            echo "| --- | --- |"
+            echo "| \`cardputer_adv_dual\` | **recommended**: keyboard messenger with offline maps, plus phone mode (Settings › Phone mode; back with esc ×3) |"
+            echo "| \`cardputer_adv_standalone\` | keyboard messenger only |"
+            echo "| \`cardputer_adv_standalone_map\` | keyboard messenger with offline maps |"
+            echo "| \`cardputer_adv_companion_ble\` | phone mode only (official MeshCore companion) |"
+            echo "| \`cardputer_adv_demo\` | the whole interface without the LoRa Cap (simulated contacts and GPS) |"
+            echo
+            echo "Step-by-step guide: app/FLASH.md"
+            echo
+            if [ -n "$PREV" ]; then python3 tools/roadmap.py --release-summary --since "$PREV"; else python3 tools/roadmap.py --release-summary; fi
+          } > release-notes.md
+          cat release-notes.md
+          cat release-notes.md >> "$GITHUB_STEP_SUMMARY"
+
       - name: Publish the release
         uses: softprops/action-gh-release@v3
         with:
           name: "Cardputer ${{ github.ref_name }}"
           prerelease: true
-          append_body: true   # keep the notes written on the release page, add the file list below
+          append_body: true   # keep the notes written on the release page, add files + roadmap below
           files: release/*.bin
-          body: |
-            Firmwares pour M5Stack Cardputer ADV. Fichiers à flasher **à l'adresse 0x0**
-            (ESPConnect : https://thelastoutpostworkshop.github.io/ESPConnect/).
-
-            - `cardputer_adv_demo` : **démo sans module LoRa** (contacts et GPS simulés)
-            - `cardputer_adv_standalone` : autonome (Cap LoRa-1262 requis)
-            - `cardputer_adv_standalone_map` : autonome + carte hors ligne sur SD
-            - `cardputer_adv_companion_ble` : pour l'appli MeshCore du téléphone
-            - `cardputer_adv_dual` : **autonome + mode téléphone** dans le même flash
-              (Réglages > Mode téléphone ; retour : touche esc 3 fois)
-
-            Mode d'emploi : app/FLASH.md
+          body_path: release-notes.md
