@@ -4,7 +4,7 @@
 
 What the MeshCore firmware for the M5Stack Cardputer ADV + Cap LoRa-1262 could do next, feature by feature, with a priority and a size for each item. This file is generated: change [`roadmap.json`](roadmap.json), then run `python3 tools/roadmap.py`.
 
-Last updated 2026-11-05 · 58 open items · 9 done.
+Last updated 2026-11-05 · 57 open items · 10 done.
 
 ## How to read it
 
@@ -18,7 +18,7 @@ Last updated 2026-11-05 · 58 open items · 9 done.
 
 | Category | In progress | Next up | Backlog | Done |
 |---|---|---|---|---|
-| Validation & bugs | 3 | · | 3 | 3 |
+| Validation & bugs | 2 | · | 3 | 4 |
 | Release & CI | · | · | 5 | 4 |
 | Companion sync | · | 2 | 5 | 1 |
 | Radio tools | · | · | 7 | · |
@@ -33,7 +33,6 @@ Last updated 2026-11-05 · 58 open items · 9 done.
 ## In progress
 
 - **[VALIDATION-8](#validation-8)** Phone mode and keyboard mode erased each other's data · P0 · M
-- **[VALIDATION-9](#validation-9)** Keyboard mode fails to read most received packets · P0 · M
 - **[VALIDATION-6](#validation-6)** No framework error when a conversation file does not exist yet · P2 · S
 
 ## Next up
@@ -53,10 +52,10 @@ Last updated 2026-11-05 · 58 open items · 9 done.
 | [VALIDATION-4](#validation-4) | Large-font glyphs on the compass | P2 | S | Backlog | · |
 | [VALIDATION-6](#validation-6) | No framework error when a conversation file does not exist yet | P2 | S | In progress | VALIDATION-1 |
 | [VALIDATION-8](#validation-8) | Phone mode and keyboard mode erased each other's data | P0 | M | In progress | VALIDATION-1 |
-| [VALIDATION-9](#validation-9) | Keyboard mode fails to read most received packets | P0 | M | In progress | VALIDATION-1 |
 | [VALIDATION-1](#validation-1) | Validate phases 1–7 on a real Cardputer | P0 | M | Done | · |
 | [VALIDATION-5](#validation-5) | Serial diagnostics: boot-log replay, status line, console | P1 | M | Done | · |
 | [VALIDATION-7](#validation-7) | GPS fix log line shows the real satellite count | P2 | S | Done | VALIDATION-1 |
+| [VALIDATION-9](#validation-9) | Keyboard mode received fewer packets than phone mode | P0 | M | Done | VALIDATION-1 |
 
 #### VALIDATION-2
 
@@ -80,19 +79,13 @@ In the compass screenshot the distance unit 'm' renders as a solid block in the 
 
 **No framework error when a conversation file does not exist yet** · P2 · S · In progress · after VALIDATION-1
 
-Seen on the device (2026-11-05): '[E][vfs_api.cpp:105] open(): /littlefs/... does not exist' for every missing file. The first fix (exists() before open() in LittleFsStorage::read) did not work on the device: the framework's LittleFSImpl::exists() itself calls open(), which prints the error. Fixed at the root by cpadv::DataFs (variant/CpadvDataFs): its file layer answers exists() with stat(), and openIfExists() is used for every optional file (settings, contacts, channels, backup, message rings). To confirm on the device: no 'does not exist' line in keyboard mode.
+Seen on the device (2026-11-05): '[E][vfs_api.cpp:105] open(): /littlefs/... does not exist' for every missing file. The first fix (exists() before open() in LittleFsStorage::read) did not work on the device: the framework's LittleFSImpl::exists() itself calls open(), which prints the error. Fixed at the root by cpadv::DataFs (variant/CpadvDataFs): its file layer answers exists() with stat(), and openIfExists() is used for every optional file (settings, contacts, channels, backup, message rings). To confirm on the device: no 'does not exist' line in keyboard mode. 2026-11-05: keyboard mode confirmed clean on the device. Phone mode still printed 'contacts3 / channels2 does not exist' (MeshCore opens them without checking): DataFs now also answers a read of a missing file quietly (QuietVfsImpl::open). To confirm: no such line in phone mode either.
 
 #### VALIDATION-8
 
 **Phone mode and keyboard mode erased each other's data** · P0 · M · In progress · after VALIDATION-1
 
-Seen on the device (2026-11-05): switching to phone mode logged 'SPIFFS: mount failed', a 34 s boot (format) and a new identity; switching back logged 'Corrupted dir pair', a format and another new identity, with contacts and settings gone. Root cause: in the dual image both firmwares share one data partition, but MeshCore's ESP32 companion uses SPIFFS and the keyboard firmware LittleFS, each formatting what it cannot mount. Fix without touching MeshCore: cpadv::DataFs (LittleFS) owns the partition in both firmwares; in the dual companion, variant/fs_compat/SPIFFS.h makes MeshCore's SPIFFS object a DataFs (-I variant/fs_compat, lib_ignore = SPIFFS, compile-time check in CardputerBoard.cpp; the binary no longer contains SPIFFS). DataFs probes the partition (app/core/drivers/FlashFsProbe, unit-tested) and only formats an unusable one, saying why; keyboard mode shows 'Storage was reset' and points to Settings > Restore from SD. The phone-only image keeps stock SPIFFS. To confirm on the device: same key and contacts after two round trips (app/TESTS.md).
-
-#### VALIDATION-9
-
-**Keyboard mode fails to read most received packets** · P0 · M · In progress · after VALIDATION-1
-
-Seen on the device (2026-11-05), same place: phone mode decoded about 6 packets and 3 errors in 900 s; keyboard mode 1 packet and 4 errors in 310 s (and 0 in earlier sessions). Keyboard mode detects packets as often but fails to read them, which points at the path from the chip to the ESP32 rather than at the antenna. Prime suspect: the SD card, which shares the radio's SPI bus and is put in SPI mode only by keyboard mode; the ESP32 SD driver releases CS without the dummy clock some cards need to stop driving MISO. Done so far: one dummy byte after every SD access (sdcard::Lock), the same RadioMonitor in both firmwares (every packet and error with RSSI/SNR, noise floor, time outside Rx, loop gap) and MESH_DEBUG in keyboard mode (readData(-7) = damaged on air, -705/-707 = SPI failure). Next: compare both modes, and keyboard mode without SD card (app/TESTS.md); close or widen the fix from those numbers.
+Seen on the device (2026-11-05): switching to phone mode logged 'SPIFFS: mount failed', a 34 s boot (format) and a new identity; switching back logged 'Corrupted dir pair', a format and another new identity, with contacts and settings gone. Root cause: in the dual image both firmwares share one data partition, but MeshCore's ESP32 companion uses SPIFFS and the keyboard firmware LittleFS, each formatting what it cannot mount. Fix without touching MeshCore: cpadv::DataFs (LittleFS) owns the partition in both firmwares; in the dual companion, variant/fs_compat/SPIFFS.h makes MeshCore's SPIFFS object a DataFs (-I variant/fs_compat, lib_ignore = SPIFFS, compile-time check in CardputerBoard.cpp; the binary no longer contains SPIFFS). DataFs probes the partition (app/core/drivers/FlashFsProbe, unit-tested) and only formats an unusable one, saying why; keyboard mode shows 'Storage was reset' and points to Settings > Restore from SD. The phone-only image keeps stock SPIFFS. To confirm on the device: same key and contacts after two round trips (app/TESTS.md). 2026-11-05 on the device: keyboard to phone mode works - 'FS companion: data partition mounted (LittleFS, 28 / 3968 KB used)', no SPIFFS error, boot 2.2 s instead of 34 s, existing identity loaded (no IdentityStore::save). Left to confirm: the way back (esc x3) and a second round trip.
 
 #### VALIDATION-1
 
@@ -111,6 +104,12 @@ Delivered in v0.7.0.
 **GPS fix log line shows the real satellite count** · P2 · S · Done · after VALIDATION-1
 
 Seen on the device (2026-11-05): 'fix 48.86838, 2.19656, 0 sats, hdop 99.9' while the status line showed 7 satellites. The module sends RMC (position) before GGA (satellites, hdop) and the line was printed in between. GpsLink now announces the fix once GGA confirms it, or after 2 s as 'position only' when GGA still reports no satellites (weak signal indoors); a fix that vanishes before being announced logs nothing. Three unit tests reproduce the device sequence.
+
+#### VALIDATION-9
+
+**Keyboard mode received fewer packets than phone mode** · P0 · M · Done · after VALIDATION-1
+
+Seen on the device (2026-11-05): keyboard mode decoded 0 to 1 packet per session while phone mode decoded about one every 2-3 minutes. Done: the same RadioMonitor in both firmwares (every packet and error with RSSI/SNR, noise floor, time outside Rx, loop gap), MESH_DEBUG in keyboard mode, and one dummy SPI byte after every SD access so the card releases MISO (sdcard::Lock). Measured afterwards, same place, SD card in: keyboard mode 5 packets + 6 errors in 240 s, phone mode 12 packets + 14 errors in 860 s - the same ~45 % success rate. Every error is readData(-7) (CRC, damaged on air) with RSSI -109 to -114 dBm and SNR -9 to -14.5 dB, none is an SPI failure (-705/-707): the remaining losses are the radio link, at the edge of SF8 sensitivity, not the firmware. The earlier silent sessions are not reproduced; whether the SD fix or chance explains them is not proven, and the monitor stays in place to catch a regression.
 
 ### Release & CI
 
