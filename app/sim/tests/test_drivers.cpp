@@ -2,6 +2,7 @@
 // Layer 1 of the test pyramid: each hardware block alone, no UI.
 //   make -C app/sim test        (CORE_LOG=1 to see the driver logs)
 #include "../../core/KeyMatrix.h"
+#include "../../core/drivers/FlashFsProbe.h"
 #include "../../core/drivers/GpsLink.h"
 #include "../../core/drivers/Pi4ioe.h"
 #include "../../core/drivers/Tca8418.h"
@@ -465,6 +466,28 @@ TEST(pi4ioe_absent_or_wrong_chip) {
   chip.id = 0xA2;
   chip.readsFail = true;
   CHECK(!io.probe());
+}
+
+// ============================================================ data partition probe (VALIDATION-8)
+
+TEST(flashfs_classifies_partition_content) {
+  uint8_t erased[64], lfs[64], spiffs[64];
+  memset(erased, 0xFF, sizeof(erased));
+  // LittleFS v2 superblock: revision count, tag, then the name "littlefs"
+  memset(lfs, 0xFF, sizeof(lfs));
+  const uint8_t head[] = {0x03, 0x00, 0x00, 0x00, 0xF0, 0x0F, 0xFF, 0xF7, 'l', 'i', 't', 't', 'l', 'e', 'f', 's'};
+  memcpy(lfs, head, sizeof(head));
+  // SPIFFS object lookup page: object ids, no name
+  memset(spiffs, 0xFF, sizeof(spiffs));
+  const uint8_t ids[] = {0x01, 0x80, 0x01, 0x00, 0x02, 0x80, 0x02, 0x00};
+  memcpy(spiffs, ids, sizeof(ids));
+
+  CHECK(flashfs::classify(erased, erased, 64) == flashfs::Content::Blank);
+  CHECK(flashfs::classify(lfs, erased, 64) == flashfs::Content::LittleFs);
+  CHECK(flashfs::classify(erased, lfs, 64) == flashfs::Content::LittleFs);   // superblock copy in block 1
+  CHECK(flashfs::classify(spiffs, erased, 64) == flashfs::Content::Foreign);
+  CHECK(flashfs::classify(erased, spiffs, 64) == flashfs::Content::Foreign);
+  CHECK(strstr(flashfs::describe(flashfs::Content::Foreign), "SPIFFS") != nullptr);
 }
 
 // ============================================================ main

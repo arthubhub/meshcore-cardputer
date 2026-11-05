@@ -2,7 +2,7 @@
 #include "../core/I18n.h"
 #include <CpadvLog.h>
 #include <Arduino.h>
-#include <LittleFS.h>
+#include <CpadvDataFs.h>   // the data partition (shared with phone mode)
 #include <SD.h>
 #include "SdCard.h"
 
@@ -39,7 +39,7 @@ bool DeviceBackup::exportConfig(char* msg, size_t n) {
   int saved = 0;
   bool ok = true;
   for (int i = 0; i < FILE_COUNT && ok; i++) {
-    File in = LittleFS.open(FILES[i], "r");
+    File in = cpadv::dataFs().openIfExists(FILES[i]);
     if (!in) continue;   // e.g. no channels joined yet
     uint8_t idx = i;
     uint32_t len = in.size();
@@ -72,7 +72,7 @@ bool DeviceBackup::importConfig(char* msg, size_t n) {
   while (ok && in.read(&idx, 1) == 1) {
     uint32_t len = 0;
     if (in.read((uint8_t*)&len, 4) != 4 || idx >= FILE_COUNT || len > MAX_FILE) { ok = false; break; }
-    File out = LittleFS.open(FILES[idx], "w", true);   // creates /identity if needed
+    File out = cpadv::dataFs().open(FILES[idx], "w", true);   // creates /identity if needed
     ok = out && copy(in, out, len);
     if (out) out.close();
     if (ok) restored++;

@@ -68,7 +68,18 @@ with the official BLE companion ("phone mode") shipped in the same flash image (
 - Memory: no PSRAM. No double buffer, no malloc > 32 KB, a single 240x135 RGB565 framebuffer (64.8 KB).
   Static RAM budget: 70 %.
 - SPI is shared by the radio and the SD card (SCK 40 / MOSI 14 / MISO 39): every SD access holds
-  `sdcard::Lock` (`device/SdCard`); SD CS stays high otherwise.
+  `sdcard::Lock` (`device/SdCard`); SD CS stays high otherwise, and releasing the last lock clocks one dummy
+  byte so the card stops driving MISO before the radio reads again.
+- Flash storage: one file system, LittleFS on the `spiffs` data partition, owned by `cpadv::DataFs`
+  (`variant/CpadvDataFs`, one instance: `cpadv::dataFs()`). Never call `LittleFS.`/`SPIFFS.` directly and never
+  format by hand: `DataFs::mount()` formats only an unusable partition and logs why (blank / corrupted / another
+  file system), and `exists()`/`openIfExists()` stay silent for missing files. In the dual image the companion's
+  MeshCore `SPIFFS` object is a `DataFs` too (`variant/fs_compat/SPIFFS.h`, `-I variant/fs_compat`,
+  `lib_ignore = SPIFFS`, compile-time check in `CardputerBoard.cpp`): both modes share files and identity
+  (VALIDATION-8). The phone-only `cardputer_adv_companion_ble` image keeps stock SPIFFS.
+- Radio diagnostics: `cpadv::RadioMonitor` (`variant/CpadvRadioMonitor`), attached by `radio_init()`, logs every
+  received packet and receive error with RSSI/SNR and puts the same radio summary in the `BEAT` line of both
+  firmwares (counters, noise floor, time outside Rx, longest loop gap). Both firmwares build with `MESH_DEBUG=1`.
 - Logging: every hardware-related path logs with the `[CPADV]` prefix. Firmware code uses
   `CPLOG_E/W/I/D(tag, fmt, ...)` (`variant/CpadvLog.h`), portable code `CORE_LOGE/W/I(tag, ...)` (`core/Log.h`).
   Log failures with enough context to diagnose them from a serial capture alone (register values, error codes,
@@ -163,7 +174,8 @@ electrical behaviour of the TCA8418 / PI4IOE / GPS, battery, real heap fragmenta
 - `cardputer_adv_standalone_map`: same, plus the offline map from SD (`CPADV_MAP=1`).
 - `cardputer_adv_demo`: Cardputer without the Cap: simulated network and GPS (`DemoMesh`, `DemoGps`), map included.
 - `cardputer_adv_dual_standalone` + `cardputer_adv_dual_companion`: dual boot (`variant/partitions_cpadv_dual.csv`:
-  app0 standalone with map, app1 companion, shared LittleFS so both share the radio identity). Assembled by
+  app0 standalone with map, app1 companion, one shared LittleFS through `cpadv::DataFs` so both share files and
+  the radio identity - see "Flash storage" above). Assembled by
   `tools/make_dual.py` into `.pio/build/firmware-dual.bin` (flash at 0x0). Switch: Settings > "Mode téléphone";
   back: press esc 3 times (`CardputerBoard::loop` + `CpadvBoot`). Not compatible with M5Launcher.
 - Display, internal I2C, speaker and battery go through M5Unified/M5GFX.

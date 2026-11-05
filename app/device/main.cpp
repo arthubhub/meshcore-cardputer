@@ -6,7 +6,7 @@
 //   cardputer_adv_demo             no LoRa Cap needed: simulated network and GPS (CPADV_DEMO=1)
 #include <Arduino.h>
 #include <CpadvLog.h>
-#include <LittleFS.h>
+#include <CpadvDataFs.h>   // the data partition (shared with phone mode)
 #include <M5Unified.h>
 #include <helpers/ArduinoHelpers.h>
 #include <target.h>
@@ -22,6 +22,7 @@
 #include "DeviceServices.h"
 #include "LittleFsStorage.h"
 #include "SdCard.h"
+#include <CpadvRadioMonitor.h>
 #include "SdTiles.h"
 #include "Tca8418Keyboard.h"
 #if CPADV_MAP
@@ -155,20 +156,21 @@ static DebugConsole console;
 
 // One status line every 10 s (called by board.loop()).
 static void heartbeat() {
-  RadioStats rs = meshNode.radioStats();
 #if CPADV_DEMO
   CPLOG_I("BEAT", "up %lus heap %u min %u | bat %d%% | screen %s | keys %s | DEMO", millis() / 1000UL,
           ESP.getFreeHeap(), ESP.getMinFreeHeap(), M5.Power.getBatteryLevel(), screenAsleep ? "off" : "on",
           keyboard.ok() ? "ok" : "NO");
 #else
   const GpsState& g = gpsDev.state();
-  CPLOG_I("BEAT", "up %lus heap %u min %u | bat %d%% %umV | screen %s | keys %s %lu ev %lu err INT %s | radio %s rx %u tx %u | "
+  // Radio part: same summary as phone mode (variant/CpadvRadioMonitor), so both modes compare directly
+  char radio[120] = "radio NOT READY";
+  if (cpadv::RadioMonitor* m = board.radioMonitor()) m->summary(radio, sizeof(radio), millis());
+  CPLOG_I("BEAT", "up %lus heap %u min %u | bat %d%% %umV | screen %s | keys %s %lu ev %lu err INT %s | %s | "
           "gps %s %lu B %lu sent %s %u sats",
           millis() / 1000UL, ESP.getFreeHeap(), ESP.getMinFreeHeap(), M5.Power.getBatteryLevel(),
           board.getBattMilliVolts(), screenAsleep ? "off" : "on", keyboard.ok() ? "ok" : "NO",
           (unsigned long)keyboard.eventsRead(), (unsigned long)keyboard.i2cErrors(), keyboard.intLevel() ? "hi" : "LOW",
-          radioReady ? "ok" : "NO", rs.rxPackets, rs.txPackets,
-          gpsDev.searching() ? "searching" : "locked", (unsigned long)gpsDev.bytesReceived(),
+          radio, gpsDev.searching() ? "searching" : "locked", (unsigned long)gpsDev.bytesReceived(),
           (unsigned long)g.sentences, g.valid ? "FIX" : "nofix", g.sats);
 #endif
 }
@@ -215,13 +217,12 @@ static void setupConsole() {
 void setup() {
   board.begin();   // starts the serial log first (banner, I2C scan), then the hardware
 
-  if (!LittleFS.begin(true)) CPLOG_E("MAIN", "LittleFS mount failed");
-  CPLOG_I("MAIN", "LittleFS %u / %u KB used", (unsigned)(LittleFS.usedBytes() / 1024),
-                (unsigned)(LittleFS.totalBytes() / 1024));
+  // Shared with phone mode in the dual image; logs usage, and why if it had to format (VALIDATION-8)
+  if (!cpadv::dataFs().mount(true, "keyboard")) CPLOG_E("MAIN", "data partition unavailable: nothing will be saved");
   settings.load();
   {
     // ~16 KB of flash per conversation history (64 messages + file system overhead)
-    int total = (int)(LittleFS.totalBytes() / 1024);
+    int total = (int)(cpadv::dataFs().totalBytes() / 1024);
     int convs = (total - 96) / 16;
     meshNode.messages().setCapacity(convs);
     CPLOG_I("MAIN", "storage %d KB -> up to %d conversations kept", total,
@@ -278,6 +279,14 @@ void setup() {
 #else
   if (!radioReady) app.notify(tr("No radio", "Radio absente"), tr("Check the LoRa Cap and its antenna", "Vérifier le Cap LoRa et l'antenne"), 8000);
 #endif
+  if (cpadv::dataFs().dataLostAtBoot()) {
+    // The partition held data that could not be mounted (corrupted, or written by another file system):
+    // identity, contacts and settings are new. The SD backup brings them back.
+    app.notify(tr("Storage was reset", "Mémoire réinitialisée"),
+               sdcard::mounted() ? tr("Settings > Restore from SD", "Réglages > Restaurer depuis SD")
+                                 : tr("Data lost: new identity", "Données perdues : nouvelle identité"),
+               10000);
+  }
   lastActivity = millis();
   setupConsole();
   board.setHeartbeat(heartbeat);

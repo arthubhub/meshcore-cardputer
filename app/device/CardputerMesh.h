@@ -15,7 +15,7 @@ public:
   CardputerMesh(mesh::Radio& radio, mesh::RNG& rng, mesh::RTCClock& rtc, SimpleMeshTables& tables,
                 DeviceSettings& settings);
 
-  void begin();   // identity, contacts, channels, message index (LittleFS must be mounted)
+  void begin();   // identity, contacts, channels, message index (cpadv::dataFs() must be mounted)
   void loop();    // mesh + retries + deferred saves; call as often as possible
   bool started() const { return _started; }
   void flush() { if (_started) { saveContacts(); _store.flush(); } }   // before a backup
