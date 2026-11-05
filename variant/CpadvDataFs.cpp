@@ -22,6 +22,13 @@ public:
     struct stat st;
     return stat(full, &st) == 0;
   }
+
+  // Reading a missing file is a normal answer, not an error: MeshCore's companion opens /contacts3 and
+  // /channels2 without checking first. Answer "no file" quietly; every other case is the framework's.
+  FileImplPtr open(const char* path, const char* mode, const bool create) override {
+    if (mode && mode[0] == 'r' && !create && !exists(path)) return FileImplPtr();
+    return VFSImpl::open(path, mode, create);
+  }
 };
 
 }  // namespace
