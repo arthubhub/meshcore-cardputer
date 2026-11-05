@@ -10,6 +10,8 @@
   #define PIN_SD_CS 12
 #endif
 
+namespace cpadv { class RadioMonitor; }
+
 class CardputerBoard : public ESP32Board {
 public:
   void begin();
@@ -20,6 +22,10 @@ public:
 
   // Replaces the default heartbeat line (the standalone firmware prints a richer one).
   void setHeartbeat(void (*fn)()) { _heartbeat = fn; }
+
+  // Radio measurements (VALIDATION-9), attached by radio_init(); loop() drives it in both firmwares.
+  void attachRadioMonitor(cpadv::RadioMonitor* m) { _radioMonitor = m; }
+  cpadv::RadioMonitor* radioMonitor() const { return _radioMonitor; }
 
   // true when the PI4IOE5V6408 expander of the Cap LoRa-1262 answered on the internal I2C bus.
   // false = Cap LoRa868 (no expander) or no Cap at all.
@@ -33,5 +39,6 @@ private:
   bool enableCapRfPath();
   bool _cap1262 = false;
   void (*_heartbeat)() = nullptr;
+  cpadv::RadioMonitor* _radioMonitor = nullptr;
   uint32_t _lastHeartbeat = 0;
 };

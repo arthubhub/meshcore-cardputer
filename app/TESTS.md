@@ -52,6 +52,33 @@ que le firmware a détecté.
 - [ ] Appuyer 3 fois sur `esc` : `esc 1/3`, `2/3`, `3/3`, « Mode clavier... » à l'écran, retour au firmware autonome.
 - [ ] Le nom / la clé publique du nœud sont les mêmes dans les deux modes (même identité).
 
+### Données partagées entre les deux modes (VALIDATION-8)
+
+Première mise à jour depuis une image double v0.7 : la partition de données peut contenir l'ancien format du
+mode téléphone. Elle est alors reformatée **une dernière fois** (log `formatting the data partition - its previous
+content is LOST`) : faire *Settings › Restore from SD* ensuite. Après ça, plus aucune perte.
+
+- [ ] Mode clavier : log `FS keyboard: data partition mounted (LittleFS, … KB used)`, sans `FORMATTED`.
+      Noter la clé (`identity loaded, key xxxxxxxx...`) et le nombre de contacts.
+- [ ] Passer en mode téléphone : log `FS companion: data partition mounted (LittleFS, …)`, **pas** de
+      `SPIFFS: mount failed`, démarrage en environ 1 s (avant : 34 s), pas de `IdentityStore::save()`.
+- [ ] Dans l'appli MeshCore : la clé publique du nœud est la même que celle notée en mode clavier.
+- [ ] Revenir (esc ×3) : même clé, mêmes contacts, mêmes conversations, aucun `FORMATTED` ni `Corrupted dir pair`.
+- [ ] Refaire l'aller-retour une deuxième fois : toujours rien de perdu.
+
+### Réception radio, même mesure dans les deux modes (VALIDATION-9)
+
+Les deux firmwares affichent maintenant la même partie radio dans la ligne `BEAT` :
+`radio rx N err E tx T nf -112 last -95dBm/6.5dB 12s ago | off-rx 0.2% gap 35ms`, et une ligne par paquet
+(`rx #N: rssi …`) ou par erreur (`rx error #N: rssi …, snr … (strong signal: suspect the SPI bus | weak signal)`).
+MeshCore affiche aussi `readData(-7)` (paquet abîmé en l'air) ou `readData(-705/-707)` (échange SPI raté).
+
+- [ ] Même endroit, 10 minutes en mode clavier puis 10 minutes en mode téléphone, écran éteint : noter
+      `rx` et `err` à la fin de chaque période.
+- [ ] Mode clavier **sans carte SD** (la retirer avant de démarrer), 10 minutes : noter `rx` et `err`.
+- [ ] Copier toutes les lignes `rx error` et `readData(...)` : le signal (rssi/snr) des erreurs dit si c'est la
+      radio ou le bus SPI.
+
 ## Phase 1 — firmware companion (`cardputer_adv_companion_ble`)
 
 - [ ] Au démarrage, le log contient `BOARD  board begin` puis `M5Unified board id=... (ADV=...)` avec les deux nombres identiques.

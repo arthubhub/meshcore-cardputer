@@ -139,12 +139,12 @@
       "category": "Validation & bugs",
       "priority": 2,
       "size": "S",
-      "status": "done",
+      "status": "in-progress",
       "requested": false,
       "depends_on": [
         "VALIDATION-1"
       ],
-      "details": "Seen on the device (2026-11-05): '[E][vfs_api.cpp:105] open(): /littlefs/mc89ee25ae8528 does not exist' when the first message of a channel was sent. Not a compatibility problem: MessageStore::ensure() probes the ring file of a new conversation on purpose, and LittleFsStorage::read opened it without checking it exists, so the Arduino file layer printed an error. read() now checks exists() first, like write() and remove()."
+      "details": "Seen on the device (2026-11-05): '[E][vfs_api.cpp:105] open(): /littlefs/... does not exist' for every missing file. The first fix (exists() before open() in LittleFsStorage::read) did not work on the device: the framework's LittleFSImpl::exists() itself calls open(), which prints the error. Fixed at the root by cpadv::DataFs (variant/CpadvDataFs): its file layer answers exists() with stat(), and openIfExists() is used for every optional file (settings, contacts, channels, backup, message rings). To confirm on the device: no 'does not exist' line in keyboard mode."
     },
     {
       "id": "VALIDATION-7",
@@ -158,6 +158,32 @@
         "VALIDATION-1"
       ],
       "details": "Seen on the device (2026-11-05): 'fix 48.86838, 2.19656, 0 sats, hdop 99.9' while the status line showed 7 satellites. The module sends RMC (position) before GGA (satellites, hdop) and the line was printed in between. GpsLink now announces the fix once GGA confirms it, or after 2 s as 'position only' when GGA still reports no satellites (weak signal indoors); a fix that vanishes before being announced logs nothing. Three unit tests reproduce the device sequence."
+    },
+    {
+      "id": "VALIDATION-8",
+      "title": "Phone mode and keyboard mode erased each other's data",
+      "category": "Validation & bugs",
+      "priority": 0,
+      "size": "M",
+      "status": "in-progress",
+      "requested": false,
+      "depends_on": [
+        "VALIDATION-1"
+      ],
+      "details": "Seen on the device (2026-11-05): switching to phone mode logged 'SPIFFS: mount failed', a 34 s boot (format) and a new identity; switching back logged 'Corrupted dir pair', a format and another new identity, with contacts and settings gone. Root cause: in the dual image both firmwares share one data partition, but MeshCore's ESP32 companion uses SPIFFS and the keyboard firmware LittleFS, each formatting what it cannot mount. Fix without touching MeshCore: cpadv::DataFs (LittleFS) owns the partition in both firmwares; in the dual companion, variant/fs_compat/SPIFFS.h makes MeshCore's SPIFFS object a DataFs (-I variant/fs_compat, lib_ignore = SPIFFS, compile-time check in CardputerBoard.cpp; the binary no longer contains SPIFFS). DataFs probes the partition (app/core/drivers/FlashFsProbe, unit-tested) and only formats an unusable one, saying why; keyboard mode shows 'Storage was reset' and points to Settings > Restore from SD. The phone-only image keeps stock SPIFFS. To confirm on the device: same key and contacts after two round trips (app/TESTS.md)."
+    },
+    {
+      "id": "VALIDATION-9",
+      "title": "Keyboard mode fails to read most received packets",
+      "category": "Validation & bugs",
+      "priority": 0,
+      "size": "M",
+      "status": "in-progress",
+      "requested": false,
+      "depends_on": [
+        "VALIDATION-1"
+      ],
+      "details": "Seen on the device (2026-11-05), same place: phone mode decoded about 6 packets and 3 errors in 900 s; keyboard mode 1 packet and 4 errors in 310 s (and 0 in earlier sessions). Keyboard mode detects packets as often but fails to read them, which points at the path from the chip to the ESP32 rather than at the antenna. Prime suspect: the SD card, which shares the radio's SPI bus and is put in SPI mode only by keyboard mode; the ESP32 SD driver releases CS without the dummy clock some cards need to stop driving MISO. Done so far: one dummy byte after every SD access (sdcard::Lock), the same RadioMonitor in both firmwares (every packet and error with RSSI/SNR, noise floor, time outside Rx, loop gap) and MESH_DEBUG in keyboard mode (readData(-7) = damaged on air, -705/-707 = SPI failure). Next: compare both modes, and keyboard mode without SD card (app/TESTS.md); close or widen the fix from those numbers."
     },
     {
       "id": "RELEASE-2",
@@ -346,6 +372,20 @@
       "requested": false,
       "depends_on": [],
       "details": "Settings › Phone mode, back with esc ×3; shared radio identity."
+    },
+    {
+      "id": "SYNC-8",
+      "title": "Back up to the SD card before switching modes",
+      "category": "Companion sync",
+      "priority": 2,
+      "size": "S",
+      "status": "backlog",
+      "requested": false,
+      "depends_on": [
+        "SECURITY-1",
+        "VALIDATION-8"
+      ],
+      "details": "When a card is present, write the configuration backup automatically just before restarting into the other mode, so that a storage problem can never cost the identity or the contacts again."
     },
     {
       "id": "RADIO-1",
@@ -766,7 +806,7 @@
       "status": "backlog",
       "requested": false,
       "depends_on": [],
-      "details": "cardputer_backup.bin holds the private key in clear: anyone with the card can impersonate the node. Encrypt it with a passphrase typed on the keyboard."
+      "details": "cardputer_backup.bin holds the private key in clear: anyone with the card can impersonate the node. Encrypt that file only, with a passphrase typed on the keyboard: PBKDF2-SHA256 + AES-256-GCM from mbedtls (hardware AES/SHA on the ESP32-S3), salt and iteration count in a versioned header, wrong passphrase detected by the GCM tag, old plain backups still restorable with a warning. The rest of the card stays plain FAT32, so map tiles keep being copied from a PC as before (they are public data anyway). Needed before SYNC-8 writes backups automatically."
     },
     {
       "id": "SECURITY-2",
@@ -789,6 +829,20 @@
       "requested": false,
       "depends_on": [],
       "details": "Optional PIN after screen-off to protect messages and contacts on a lost device."
+    },
+    {
+      "id": "SECURITY-4",
+      "title": "Encrypt the internal flash at rest",
+      "category": "Security",
+      "priority": 3,
+      "size": "L",
+      "status": "backlog",
+      "requested": true,
+      "depends_on": [
+        "SECURITY-1",
+        "VALIDATION-8"
+      ],
+      "details": "Protects the identity, contacts and messages of a lost device against a flash dump. Assessed 2026-11-05, not easy today: (1) ESP32-S3 hardware flash encryption is not enabled in the prebuilt Arduino bootloader/SDK (CONFIG_SECURE_FLASH_ENC_ENABLED absent): it needs an ESP-IDF-built bootloader, burns eFuses irreversibly, and breaks plain USB/web/M5Launcher flashing of the dual image; (2) file-level encryption inside cpadv::DataFs would cover both modes transparently, but needs a key that is not stored in the same flash: an eFuse key block read through the HMAC peripheral (one irreversible eFuse write) or a PIN at boot, which phone mode cannot ask today. The SD card is out of scope: tiles must stay addable from a PC."
     },
     {
       "id": "HARDWARE-1",

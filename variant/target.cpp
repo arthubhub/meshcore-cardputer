@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include "target.h"
 #include "CpadvLog.h"
+#include "CpadvRadioMonitor.h"
 
 CardputerBoard board;
 
@@ -11,6 +12,7 @@ SPIClass& radio_spi() { return spi; }
 RADIO_CLASS radio = new Module(P_LORA_NSS, P_LORA_DIO_1, P_LORA_RESET, P_LORA_BUSY, spi);
 
 WRAPPER_CLASS radio_driver(radio, board);
+static cpadv::RadioMonitor radio_monitor(radio_driver);
 
 ESP32RTCClock fallback_clock;
 AutoDiscoverRTCClock rtc_clock(fallback_clock);
@@ -35,6 +37,7 @@ bool radio_init() {
 
   bool ok = radio.std_init(&spi);
   if (ok) {
+    board.attachRadioMonitor(&radio_monitor);
     CPLOG_I("RADIO", "SX1262 OK: %.3f MHz BW %.1f SF %d, TX %d dBm",
                   (float)LORA_FREQ, (float)LORA_BW, (int)LORA_SF, (int)LORA_TX_POWER);
   } else {

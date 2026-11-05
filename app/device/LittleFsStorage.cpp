@@ -1,13 +1,12 @@
 #include "LittleFsStorage.h"
 #include <CpadvLog.h>
 #include <Arduino.h>
-#include <LittleFS.h>
+#include <CpadvDataFs.h>   // the data partition (shared with phone mode)
 
 bool LittleFsStorage::read(const char* path, uint32_t off, void* buf, uint32_t len) {
-  // A missing file is a normal answer (e.g. MessageStore probes the ring file of a new conversation).
-  // exists() first: open() on a missing file prints a framework error line on the serial log.
-  if (!LittleFS.exists(path)) return false;
-  File f = LittleFS.open(path, "r");
+  // A missing file is a normal answer (e.g. MessageStore probes the ring file of a new conversation):
+  // openIfExists() checks with stat(), without the framework's "does not exist" error line (VALIDATION-6).
+  File f = cpadv::dataFs().openIfExists(path);
   if (!f) return false;
   bool ok = f.seek(off) && f.read((uint8_t*)buf, len) == len;
   f.close();
@@ -16,7 +15,7 @@ bool LittleFsStorage::read(const char* path, uint32_t off, void* buf, uint32_t l
 
 bool LittleFsStorage::write(const char* path, uint32_t off, const void* buf, uint32_t len) {
   // "r+" keeps the content (in-place update of one record); "w" creates a missing file.
-  File f = LittleFS.exists(path) ? LittleFS.open(path, "r+") : LittleFS.open(path, "w");
+  File f = cpadv::dataFs().exists(path) ? cpadv::dataFs().open(path, "r+") : cpadv::dataFs().open(path, "w");
   if (!f) {
     CPLOG_I("FS", "storage: cannot open %s", path);
     return false;
@@ -38,5 +37,5 @@ bool LittleFsStorage::write(const char* path, uint32_t off, const void* buf, uin
 }
 
 bool LittleFsStorage::remove(const char* path) {
-  return LittleFS.exists(path) && LittleFS.remove(path);
+  return cpadv::dataFs().exists(path) && cpadv::dataFs().remove(path);
 }

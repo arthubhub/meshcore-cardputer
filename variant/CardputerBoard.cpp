@@ -5,6 +5,17 @@
 #include "../app/core/drivers/Pi4ioe.h"
 #include "../app/core/drivers/Tca8418.h"
 #include "CpadvBoot.h"
+#include "CpadvRadioMonitor.h"
+
+#if defined(CPADV_DUAL) && defined(DISPLAY_CLASS)
+  // Dual-image companion: MeshCore's SPIFFS must be the shared LittleFS (VALIDATION-8). If the framework's
+  // SPIFFS.h were picked instead, phone mode would format the keyboard firmware's data at every switch.
+  #include <SPIFFS.h>
+  #include <type_traits>
+  #include "CpadvDataFs.h"
+static_assert(std::is_base_of<cpadv::DataFs, fs::SPIFFSFS>::value,
+              "dual companion: SPIFFS must come from variant/fs_compat (see platformio.ini, VALIDATION-8)");
+#endif
 
 // Companion firmware of a dual-boot image: the keyboard is only used to go back to the
 // standalone firmware (esc pressed 3 times within 3 s). The standalone firmware has its own driver.
@@ -135,12 +146,15 @@ void CardputerBoard::loop() {
   cpadv::logLoop();
   if (returnKeys) pollReturnKeys();
   uint32_t now = millis();
+  if (_radioMonitor) _radioMonitor->loop(now);
   if (now - _lastHeartbeat < 10000) return;
   _lastHeartbeat = now;
   if (_heartbeat) {
     _heartbeat();
     return;
   }
-  CPLOG_I("BEAT", "up %lus | heap %lu min %lu | battery %u mV", (unsigned long)(now / 1000),
-          (unsigned long)ESP.getFreeHeap(), (unsigned long)ESP.getMinFreeHeap(), getBattMilliVolts());
+  char radio[120] = "radio not started";
+  if (_radioMonitor) _radioMonitor->summary(radio, sizeof(radio), now);
+  CPLOG_I("BEAT", "up %lus | heap %lu min %lu | battery %u mV | %s", (unsigned long)(now / 1000),
+          (unsigned long)ESP.getFreeHeap(), (unsigned long)ESP.getMinFreeHeap(), getBattMilliVolts(), radio);
 }

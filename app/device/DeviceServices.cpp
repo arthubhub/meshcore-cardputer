@@ -3,7 +3,7 @@
 #include "../core/RadioPresets.h"
 #include <Arduino.h>
 #include <stddef.h>
-#include <LittleFS.h>
+#include <CpadvDataFs.h>   // the data partition (shared with phone mode)
 #include <M5Unified.h>
 #include <target.h>
 #include <CpadvBoot.h>
@@ -40,7 +40,7 @@ const RadioPreset& presetOf(const UiSettings& s) {
 static uint32_t align4(uint32_t v) { return (v + 3) & ~3u; }
 
 void DeviceSettings::load() {
-  File f = LittleFS.open(SETTINGS_PATH, "r");
+  File f = cpadv::dataFs().openIfExists(SETTINGS_PATH);
   if (!f) {
     CPLOG_I("SET", "settings: no file, using defaults");
     return;
@@ -81,7 +81,7 @@ bool DeviceSettings::save(const UiSettings& s) {
   sf.s = _s;
   sf.checksum = checksum((const uint8_t*)&sf.s, sizeof(sf.s));
   static_assert(offsetof(SettingsFile, s) == 8, "settings payload must start at offset 8");
-  File f = LittleFS.open(SETTINGS_PATH, "w");
+  File f = cpadv::dataFs().open(SETTINGS_PATH, "w");
   bool ok = f && f.write((const uint8_t*)&sf, sizeof(sf)) == sizeof(sf);
   if (f) f.close();
   CPLOG_I("SET", "settings saved (%s)", ok ? "ok" : "WRITE FAILED");

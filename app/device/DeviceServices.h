@@ -3,7 +3,7 @@
 #include "../core/Services.h"
 #include <CpadvVersion.inc>   // CPADV_VERSION, generated from git by tools/pio_version.py
 
-// Settings stored in LittleFS (/cpadv_settings.bin), applied to the radio on save.
+// Settings stored on the data partition (/cpadv_settings.bin), applied to the radio on save.
 class DeviceSettings : public SettingsService {
 public:
   void load();

@@ -2,7 +2,7 @@
 #include <CpadvLog.h>
 #if !CPADV_DEMO
 #include "../core/RadioPresets.h"
-#include <LittleFS.h>
+#include <CpadvDataFs.h>   // the data partition (shared with phone mode)
 #include <helpers/ArduinoHelpers.h>
 #include <helpers/IdentityStore.h>
 #include <helpers/StaticPoolPacketManager.h>
@@ -81,7 +81,7 @@ void CardputerMesh::begin() {
 }
 
 void CardputerMesh::loadIdentity() {
-  IdentityStore ids(LittleFS, "/identity");
+  IdentityStore ids(cpadv::dataFs(), "/identity");
   if (ids.load("_main", self_id)) {
     CPLOG_I("MESH", "identity loaded, key %02x%02x%02x%02x...", self_id.pub_key[0], self_id.pub_key[1],
                   self_id.pub_key[2], self_id.pub_key[3]);
@@ -98,7 +98,7 @@ void CardputerMesh::loadIdentity() {
 }
 
 void CardputerMesh::loadContacts() {
-  File f = LittleFS.open(CONTACTS_PATH, "r");
+  File f = cpadv::dataFs().openIfExists(CONTACTS_PATH);
   if (!f) return;
   uint32_t magic = 0;
   if (f.read((uint8_t*)&magic, 4) != 4 || magic != CONTACTS_MAGIC) { f.close(); return; }
@@ -127,7 +127,7 @@ void CardputerMesh::loadContacts() {
 }
 
 void CardputerMesh::saveContacts() {
-  File f = LittleFS.open(CONTACTS_PATH, "w");
+  File f = cpadv::dataFs().open(CONTACTS_PATH, "w");
   if (!f) { CPLOG_E("MESH", "cannot save contacts"); return; }
   f.write((const uint8_t*)&CONTACTS_MAGIC, 4);
   ContactsIterator it = startContactsIterator();
@@ -162,7 +162,7 @@ bool CardputerMesh::addChannelSecret(const char* name, const uint8_t* secret, in
 
 void CardputerMesh::loadChannels() {
   addChannel("Public", PUBLIC_PSK_B64);
-  File f = LittleFS.open(CHANNELS_PATH, "r");
+  File f = cpadv::dataFs().openIfExists(CHANNELS_PATH);
   if (!f) return;
   uint32_t magic = 0;
   if (f.read((uint8_t*)&magic, 4) == 4 && magic == CHANNELS_MAGIC) {
@@ -176,7 +176,7 @@ void CardputerMesh::loadChannels() {
 }
 
 void CardputerMesh::saveChannels() {
-  File f = LittleFS.open(CHANNELS_PATH, "w");
+  File f = cpadv::dataFs().open(CHANNELS_PATH, "w");
   if (!f) return;
   f.write((const uint8_t*)&CHANNELS_MAGIC, 4);
   for (int i = 1; i < MAX_GROUP_CHANNELS; i++) {   // slot 0 = Public, always re-created
