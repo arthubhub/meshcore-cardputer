@@ -139,12 +139,12 @@
       "category": "Validation & bugs",
       "priority": 2,
       "size": "S",
-      "status": "in-progress",
+      "status": "done",
       "requested": false,
       "depends_on": [
         "VALIDATION-1"
       ],
-      "details": "Seen on the device (2026-11-05): '[E][vfs_api.cpp:105] open(): /littlefs/... does not exist' for every missing file. The first fix (exists() before open() in LittleFsStorage::read) did not work on the device: the framework's LittleFSImpl::exists() itself calls open(), which prints the error. Fixed at the root by cpadv::DataFs (variant/CpadvDataFs): its file layer answers exists() with stat(), and openIfExists() is used for every optional file (settings, contacts, channels, backup, message rings). To confirm on the device: no 'does not exist' line in keyboard mode. 2026-11-05: keyboard mode confirmed clean on the device. Phone mode still printed 'contacts3 / channels2 does not exist' (MeshCore opens them without checking): DataFs now also answers a read of a missing file quietly (QuietVfsImpl::open). To confirm: no such line in phone mode either."
+      "details": "Seen on the device (2026-11-05): '[E][vfs_api.cpp:105] open(): /littlefs/... does not exist' for every missing file. The first fix (exists() before open() in LittleFsStorage::read) did not work on the device: the framework's LittleFSImpl::exists() itself calls open(), which prints the error. Fixed at the root by cpadv::DataFs (variant/CpadvDataFs): its file layer answers exists() with stat(), and openIfExists() is used for every optional file (settings, contacts, channels, backup, message rings). To confirm on the device: no 'does not exist' line in keyboard mode. 2026-11-05: keyboard mode confirmed clean on the device. Phone mode still printed 'contacts3 / channels2 does not exist' (MeshCore opens them without checking): DataFs now also answers a read of a missing file quietly (QuietVfsImpl::open). To confirm: no such line in phone mode either. Confirmed on the device with v0.7.0-5-g07072f5: no 'does not exist' line in either mode (phone mode on a partition without /contacts3 and /channels2)."
     },
     {
       "id": "VALIDATION-7",
@@ -165,12 +165,12 @@
       "category": "Validation & bugs",
       "priority": 0,
       "size": "M",
-      "status": "in-progress",
+      "status": "done",
       "requested": false,
       "depends_on": [
         "VALIDATION-1"
       ],
-      "details": "Seen on the device (2026-11-05): switching to phone mode logged 'SPIFFS: mount failed', a 34 s boot (format) and a new identity; switching back logged 'Corrupted dir pair', a format and another new identity, with contacts and settings gone. Root cause: in the dual image both firmwares share one data partition, but MeshCore's ESP32 companion uses SPIFFS and the keyboard firmware LittleFS, each formatting what it cannot mount. Fix without touching MeshCore: cpadv::DataFs (LittleFS) owns the partition in both firmwares; in the dual companion, variant/fs_compat/SPIFFS.h makes MeshCore's SPIFFS object a DataFs (-I variant/fs_compat, lib_ignore = SPIFFS, compile-time check in CardputerBoard.cpp; the binary no longer contains SPIFFS). DataFs probes the partition (app/core/drivers/FlashFsProbe, unit-tested) and only formats an unusable one, saying why; keyboard mode shows 'Storage was reset' and points to Settings > Restore from SD. The phone-only image keeps stock SPIFFS. To confirm on the device: same key and contacts after two round trips (app/TESTS.md). 2026-11-05 on the device: keyboard to phone mode works - 'FS companion: data partition mounted (LittleFS, 28 / 3968 KB used)', no SPIFFS error, boot 2.2 s instead of 34 s, existing identity loaded (no IdentityStore::save). Left to confirm: the way back (esc x3) and a second round trip."
+      "details": "Seen on the device (2026-11-05): switching to phone mode logged 'SPIFFS: mount failed', a 34 s boot (format) and a new identity; switching back logged 'Corrupted dir pair', a format and another new identity, with contacts and settings gone. Root cause: in the dual image both firmwares share one data partition, but MeshCore's ESP32 companion uses SPIFFS and the keyboard firmware LittleFS, each formatting what it cannot mount. Fix without touching MeshCore: cpadv::DataFs (LittleFS) owns the partition in both firmwares; in the dual companion, variant/fs_compat/SPIFFS.h makes MeshCore's SPIFFS object a DataFs (-I variant/fs_compat, lib_ignore = SPIFFS, compile-time check in CardputerBoard.cpp; the binary no longer contains SPIFFS). DataFs probes the partition (app/core/drivers/FlashFsProbe, unit-tested) and only formats an unusable one, saying why; keyboard mode shows 'Storage was reset' and points to Settings > Restore from SD. The phone-only image keeps stock SPIFFS. To confirm on the device: same key and contacts after two round trips (app/TESTS.md). 2026-11-05 on the device: keyboard to phone mode works - 'FS companion: data partition mounted (LittleFS, 28 / 3968 KB used)', no SPIFFS error, boot 2.2 s instead of 34 s, existing identity loaded (no IdentityStore::save). Left to confirm: the way back (esc x3) and a second round trip. Confirmed on the device with v0.7.0-5-g07072f5: keyboard -> phone -> keyboard, the same LittleFS (36 / 3968 KB) is mounted by both, no format, identity 61201869 and the 51 contacts kept, the unread Public message received just before the switch still there after it."
     },
     {
       "id": "VALIDATION-9",
