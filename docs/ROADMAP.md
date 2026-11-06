@@ -166,12 +166,6 @@ v0.7.0 was published under the tag 'v0.7.0' and the release job was skipped with
 
 The version used to be typed by hand in platformio.ini (0.6.1, already behind the cardputer-v0.7.0 tag; none for the companion), and the device showed both dual-boot slots as 'built Mar  5 2024' because the app descriptor came from the prebuilt Arduino framework. tools/version.py now derives the version from git (v0.8.0 on a tag, v0.8.0-3-g97fb867 after it, -dirty with local changes, -demo for the demo env, CPADV_VERSION overrides), and tools/pio_version.py applies it to every env: a generated CpadvVersion.inc (only its includers recompile) and the real version, env name and build date written into the app descriptor before esptool builds the image. The serial banner, Settings › System, the dual-boot line (with a warning when the slots differ), tools/make_dual.py and esptool image_info all show it. CI fetches the tags and self-tests the rules.
 
-#### RELEASE-6
-
-**Release job runs on every published release** · P0 · S · Done
-
-v0.7.0 was published under the tag 'v0.7.0' and the release job was skipped without any warning: it only ran for tags starting with 'cardputer-v'. It now runs on every published release and names the files from github.event.release.tag_name (<env>-vX.Y.Z.bin, a 'cardputer-' prefix is dropped); a tag that is not vX.Y.Z prints a warning instead of being skipped. The title and the pre-release box set on GitHub are kept (they used to be overwritten). Known limit: re-running the job appends the notes a second time.
-
 #### RELEASE-9
 
 **Driver test pyramid with emulated chips** · P1 · L · Done
