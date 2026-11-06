@@ -4,7 +4,7 @@
 
 What the MeshCore firmware for the M5Stack Cardputer ADV + Cap LoRa-1262 could do next, feature by feature, with a priority and a size for each item. This file is generated: change [`roadmap.json`](roadmap.json), then run `python3 tools/roadmap.py`.
 
-Last updated 2026-11-05 · 57 open items · 10 done.
+Last updated 2026-11-05 · 55 open items · 12 done.
 
 ## How to read it
 
@@ -18,7 +18,7 @@ Last updated 2026-11-05 · 57 open items · 10 done.
 
 | Category | In progress | Next up | Backlog | Done |
 |---|---|---|---|---|
-| Validation & bugs | 2 | · | 3 | 4 |
+| Validation & bugs | · | · | 3 | 6 |
 | Release & CI | · | · | 5 | 4 |
 | Companion sync | · | 2 | 5 | 1 |
 | Radio tools | · | · | 7 | · |
@@ -32,8 +32,7 @@ Last updated 2026-11-05 · 57 open items · 10 done.
 
 ## In progress
 
-- **[VALIDATION-8](#validation-8)** Phone mode and keyboard mode erased each other's data · P0 · M
-- **[VALIDATION-6](#validation-6)** No framework error when a conversation file does not exist yet · P2 · S
+_Nothing here yet._
 
 ## Next up
 
@@ -50,11 +49,11 @@ Last updated 2026-11-05 · 57 open items · 10 done.
 | [VALIDATION-2](#validation-2) | Crash report after a reboot | P1 | M | Backlog | · |
 | [VALIDATION-3](#validation-3) | MessageStore robustness tests | P2 | M | Backlog | · |
 | [VALIDATION-4](#validation-4) | Large-font glyphs on the compass | P2 | S | Backlog | · |
-| [VALIDATION-6](#validation-6) | No framework error when a conversation file does not exist yet | P2 | S | In progress | VALIDATION-1 |
-| [VALIDATION-8](#validation-8) | Phone mode and keyboard mode erased each other's data | P0 | M | In progress | VALIDATION-1 |
 | [VALIDATION-1](#validation-1) | Validate phases 1–7 on a real Cardputer | P0 | M | Done | · |
 | [VALIDATION-5](#validation-5) | Serial diagnostics: boot-log replay, status line, console | P1 | M | Done | · |
+| [VALIDATION-6](#validation-6) | No framework error when a conversation file does not exist yet | P2 | S | Done | VALIDATION-1 |
 | [VALIDATION-7](#validation-7) | GPS fix log line shows the real satellite count | P2 | S | Done | VALIDATION-1 |
+| [VALIDATION-8](#validation-8) | Phone mode and keyboard mode erased each other's data | P0 | M | Done | VALIDATION-1 |
 | [VALIDATION-9](#validation-9) | Keyboard mode received fewer packets than phone mode | P0 | M | Done | VALIDATION-1 |
 
 #### VALIDATION-2
@@ -75,18 +74,6 @@ Unit tests for a full LittleFS, a write interrupted by power loss, a corrupted i
 
 In the compass screenshot the distance unit 'm' renders as a solid block in the big font ('597 ▀'). Check the glyph table of the display font and add a test scenario at short distances.
 
-#### VALIDATION-6
-
-**No framework error when a conversation file does not exist yet** · P2 · S · In progress · after VALIDATION-1
-
-Seen on the device (2026-11-05): '[E][vfs_api.cpp:105] open(): /littlefs/... does not exist' for every missing file. The first fix (exists() before open() in LittleFsStorage::read) did not work on the device: the framework's LittleFSImpl::exists() itself calls open(), which prints the error. Fixed at the root by cpadv::DataFs (variant/CpadvDataFs): its file layer answers exists() with stat(), and openIfExists() is used for every optional file (settings, contacts, channels, backup, message rings). To confirm on the device: no 'does not exist' line in keyboard mode. 2026-11-05: keyboard mode confirmed clean on the device. Phone mode still printed 'contacts3 / channels2 does not exist' (MeshCore opens them without checking): DataFs now also answers a read of a missing file quietly (QuietVfsImpl::open). To confirm: no such line in phone mode either.
-
-#### VALIDATION-8
-
-**Phone mode and keyboard mode erased each other's data** · P0 · M · In progress · after VALIDATION-1
-
-Seen on the device (2026-11-05): switching to phone mode logged 'SPIFFS: mount failed', a 34 s boot (format) and a new identity; switching back logged 'Corrupted dir pair', a format and another new identity, with contacts and settings gone. Root cause: in the dual image both firmwares share one data partition, but MeshCore's ESP32 companion uses SPIFFS and the keyboard firmware LittleFS, each formatting what it cannot mount. Fix without touching MeshCore: cpadv::DataFs (LittleFS) owns the partition in both firmwares; in the dual companion, variant/fs_compat/SPIFFS.h makes MeshCore's SPIFFS object a DataFs (-I variant/fs_compat, lib_ignore = SPIFFS, compile-time check in CardputerBoard.cpp; the binary no longer contains SPIFFS). DataFs probes the partition (app/core/drivers/FlashFsProbe, unit-tested) and only formats an unusable one, saying why; keyboard mode shows 'Storage was reset' and points to Settings > Restore from SD. The phone-only image keeps stock SPIFFS. To confirm on the device: same key and contacts after two round trips (app/TESTS.md). 2026-11-05 on the device: keyboard to phone mode works - 'FS companion: data partition mounted (LittleFS, 28 / 3968 KB used)', no SPIFFS error, boot 2.2 s instead of 34 s, existing identity loaded (no IdentityStore::save). Left to confirm: the way back (esc x3) and a second round trip.
-
 #### VALIDATION-1
 
 **Validate phases 1–7 on a real Cardputer** · P0 · M · Done
@@ -99,11 +86,23 @@ Validated by the project owner on a Cardputer ADV + Cap LoRa-1262 on 2026-11-05 
 
 Delivered in v0.7.0.
 
+#### VALIDATION-6
+
+**No framework error when a conversation file does not exist yet** · P2 · S · Done · after VALIDATION-1
+
+Seen on the device (2026-11-05): '[E][vfs_api.cpp:105] open(): /littlefs/... does not exist' for every missing file. The first fix (exists() before open() in LittleFsStorage::read) did not work on the device: the framework's LittleFSImpl::exists() itself calls open(), which prints the error. Fixed at the root by cpadv::DataFs (variant/CpadvDataFs): its file layer answers exists() with stat(), and openIfExists() is used for every optional file (settings, contacts, channels, backup, message rings). To confirm on the device: no 'does not exist' line in keyboard mode. 2026-11-05: keyboard mode confirmed clean on the device. Phone mode still printed 'contacts3 / channels2 does not exist' (MeshCore opens them without checking): DataFs now also answers a read of a missing file quietly (QuietVfsImpl::open). To confirm: no such line in phone mode either. Confirmed on the device with v0.7.0-5-g07072f5: no 'does not exist' line in either mode (phone mode on a partition without /contacts3 and /channels2).
+
 #### VALIDATION-7
 
 **GPS fix log line shows the real satellite count** · P2 · S · Done · after VALIDATION-1
 
 Seen on the device (2026-11-05): 'fix 48.86838, 2.19656, 0 sats, hdop 99.9' while the status line showed 7 satellites. The module sends RMC (position) before GGA (satellites, hdop) and the line was printed in between. GpsLink now announces the fix once GGA confirms it, or after 2 s as 'position only' when GGA still reports no satellites (weak signal indoors); a fix that vanishes before being announced logs nothing. Three unit tests reproduce the device sequence.
+
+#### VALIDATION-8
+
+**Phone mode and keyboard mode erased each other's data** · P0 · M · Done · after VALIDATION-1
+
+Seen on the device (2026-11-05): switching to phone mode logged 'SPIFFS: mount failed', a 34 s boot (format) and a new identity; switching back logged 'Corrupted dir pair', a format and another new identity, with contacts and settings gone. Root cause: in the dual image both firmwares share one data partition, but MeshCore's ESP32 companion uses SPIFFS and the keyboard firmware LittleFS, each formatting what it cannot mount. Fix without touching MeshCore: cpadv::DataFs (LittleFS) owns the partition in both firmwares; in the dual companion, variant/fs_compat/SPIFFS.h makes MeshCore's SPIFFS object a DataFs (-I variant/fs_compat, lib_ignore = SPIFFS, compile-time check in CardputerBoard.cpp; the binary no longer contains SPIFFS). DataFs probes the partition (app/core/drivers/FlashFsProbe, unit-tested) and only formats an unusable one, saying why; keyboard mode shows 'Storage was reset' and points to Settings > Restore from SD. The phone-only image keeps stock SPIFFS. To confirm on the device: same key and contacts after two round trips (app/TESTS.md). 2026-11-05 on the device: keyboard to phone mode works - 'FS companion: data partition mounted (LittleFS, 28 / 3968 KB used)', no SPIFFS error, boot 2.2 s instead of 34 s, existing identity loaded (no IdentityStore::save). Left to confirm: the way back (esc x3) and a second round trip. Confirmed on the device with v0.7.0-5-g07072f5: keyboard -> phone -> keyboard, the same LittleFS (36 / 3968 KB) is mounted by both, no format, identity 61201869 and the 51 contacts kept, the unread Public message received just before the switch still there after it.
 
 #### VALIDATION-9
 
