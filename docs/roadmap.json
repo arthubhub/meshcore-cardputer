@@ -1,6 +1,6 @@
 {
   "title": "Cardputer Mesh Roadmap",
-  "updated": "2026-11-05",
+  "updated": "2026-11-07",
   "categories": [
     {
       "prefix": "VALIDATION",
@@ -474,6 +474,45 @@
       "details": "Forward packets while enabled (for an event or a hike), with a clear status-bar marker and the duty-cycle meter. Needs care: repeating rules and airtime."
     },
     {
+      "id": "RADIO-8",
+      "title": "Nearby repeater search",
+      "category": "Radio tools",
+      "priority": 1,
+      "size": "M",
+      "status": "in-progress",
+      "requested": true,
+      "depends_on": [
+        "VALIDATION-1"
+      ],
+      "details": "A keyboard-mode screen, like the search in the phone app: send MeshCore's zero-hop discovery request and list the repeaters that answer, with the SNR in both directions (how they hear us, how we hear them). Direct neighbours only; room servers do not answer, and a repeater answers at most 4 requests per 2 minutes, so results accumulate over several searches, which also helps on weak links."
+    },
+    {
+      "id": "RADIO-9",
+      "title": "Configurable path hash size",
+      "category": "Radio tools",
+      "priority": 1,
+      "size": "M",
+      "status": "backlog",
+      "requested": true,
+      "depends_on": [
+        "VALIDATION-1"
+      ],
+      "details": "Choose how many bytes of each node's public key identify it in a packet's path: 1, 2 or 3 (MeshCore's path hash size; the phone app sets it with CMD_SET_PATH_HASH_MODE). More bytes mean fewer collisions between nodes on a large mesh, but longer packets. Keyboard mode always floods with the default of 1 byte today: add a setting in Settings, pass it to every flood (sendFlood takes path_hash_size), and check that repeaters on older firmware forward such packets. Later, with SYNC-1, share the value with phone mode. Reported by the project owner on 2026-11-07: the node's ID is on 1 byte, which is why this moved up to P1."
+    },
+    {
+      "id": "RADIO-10",
+      "title": "Region setting (flood scope, e.g. fr / eu)",
+      "category": "Radio tools",
+      "priority": 1,
+      "size": "M",
+      "status": "backlog",
+      "requested": true,
+      "depends_on": [
+        "VALIDATION-1"
+      ],
+      "details": "Reported by the project owner on 2026-11-07: no region is recorded on the node (fr / eu). MeshCore calls this the flood scope: a named region with a key, whose transport code on each flood lets repeaters decide whether to forward it. The companion stores it (default_scope_name, default_scope_key) and the app sets it with CMD_SET_DEFAULT_FLOOD_SCOPE; keyboard mode has neither, so its floods are never scoped. Add a region setting to Settings, save it, and override sendFloodScoped() in CardputerMesh, as companion_radio/MyMesh.cpp does (TransportKeyStore, RegionMap). Check how the local mesh names its regions first. Keyboard and phone mode keep separate settings today: sharing the region belongs with SYNC-1. Combine with RADIO-9, since both go through the same flood call."
+    },
+    {
       "id": "MESSAGING-1",
       "title": "Show my contact as a QR code",
       "category": "Messaging",
@@ -566,6 +605,19 @@
       "requested": false,
       "depends_on": [],
       "details": "Messages from phones often contain emoji. Show a readable fallback glyph instead of nothing, and widen the font coverage within the flash budget."
+    },
+    {
+      "id": "MESSAGING-9",
+      "title": "From a message to the sender's profile",
+      "category": "Messaging",
+      "priority": 1,
+      "size": "M",
+      "status": "backlog",
+      "requested": true,
+      "depends_on": [
+        "VALIDATION-1"
+      ],
+      "details": "In a conversation, select a message and open its details and the sender's profile: name, contact sheet (key, position, compass, write to them), number of hops, SNR, time, delivery attempts. Hops and SNR are already stored with each received message (StoredMsg), so a message-selection mode in ChatScreen and a detail screen are the main work, reusing ContactDetailScreen. Direct messages link to the contact by key; channel messages only carry the sender's name, so the link there is a name match and may find nobody. Showing the route itself, not just the hop count, needs the path to be stored with the message."
     },
     {
       "id": "MAP-1",

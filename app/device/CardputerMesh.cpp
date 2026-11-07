@@ -318,6 +318,34 @@ bool CardputerMesh::sendAdvert(bool flood, bool withPosition) {
   return true;
 }
 
+// ================================================================ nearby repeaters (RADIO-8)
+
+bool CardputerMesh::startDiscovery() {
+  uint32_t now = millis();
+  if (!_started || !_discovery.canStart(now)) return false;
+  uint32_t tag;
+  getRNG()->random((uint8_t*)&tag, sizeof(tag));
+  _discovery.start(tag, now);
+  uint8_t req[NodeDiscovery::REQUEST_LEN];
+  _discovery.buildRequest(req);
+  mesh::Packet* pkt = createControlData(req, sizeof(req));
+  if (!pkt) {
+    CPLOG_W("MESH", "discover: no free packet");
+    return false;
+  }
+  sendZeroHop(pkt);
+  CPLOG_I("MESH", "discover: request sent (zero hop), %d repeaters known", _discovery.count());
+  return true;
+}
+
+void CardputerMesh::onControlDataRecv(mesh::Packet* packet) {
+  float rssi = radio_driver.getLastRSSI();
+  if (!_discovery.accept(packet->payload, packet->payload_len, packet->getSNR(), rssi, millis())) return;
+  const uint8_t* id = &packet->payload[6];
+  CPLOG_I("MESH", "discover: repeater %02x%02x%02x%02x, it heard us at %.1f dB, we heard it at %.1f dB (%.0f dBm)", id[0],
+          id[1], id[2], id[3], (int8_t)packet->payload[1] / 4.0f, packet->getSNR(), rssi);
+}
+
 // ================================================================ channels (UI)
 
 bool CardputerMesh::joinChannel(const char* name) {

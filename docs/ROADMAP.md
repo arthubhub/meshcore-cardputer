@@ -4,7 +4,7 @@
 
 What the MeshCore firmware for the M5Stack Cardputer ADV + Cap LoRa-1262 could do next, feature by feature, with a priority and a size for each item. This file is generated: change [`roadmap.json`](roadmap.json), then run `python3 tools/roadmap.py`.
 
-Last updated 2026-11-05 · 55 open items · 12 done.
+Last updated 2026-11-07 · 59 open items · 12 done.
 
 ## How to read it
 
@@ -21,8 +21,8 @@ Last updated 2026-11-05 · 55 open items · 12 done.
 | Validation & bugs | · | · | 3 | 6 |
 | Release & CI | · | · | 5 | 4 |
 | Companion sync | · | 2 | 5 | 1 |
-| Radio tools | · | · | 7 | · |
-| Messaging | · | · | 8 | · |
+| Radio tools | 1 | · | 9 | · |
+| Messaging | · | · | 9 | · |
 | GPS & map | · | · | 5 | · |
 | Connectivity | · | · | 4 | · |
 | Power | · | · | 4 | · |
@@ -32,7 +32,7 @@ Last updated 2026-11-05 · 55 open items · 12 done.
 
 ## In progress
 
-_Nothing here yet._
+- **[RADIO-8](#radio-8)** Nearby repeater search · P1 · M
 
 ## Next up
 
@@ -250,6 +250,9 @@ Settings › Phone mode, back with esc ×3; shared radio identity.
 | [RADIO-5](#radio-5) | Noise floor and channel scanner | P2 | M | Backlog | · |
 | [RADIO-6](#radio-6) | Packet sniffer log | P2 | M | Backlog | · |
 | [RADIO-7](#radio-7) | Temporary repeater mode | P3 | M | Backlog | RADIO-4 |
+| [RADIO-8](#radio-8) | Nearby repeater search ★ | P1 | M | In progress | VALIDATION-1 |
+| [RADIO-9](#radio-9) | Configurable path hash size ★ | P1 | M | Backlog | VALIDATION-1 |
+| [RADIO-10](#radio-10) | Region setting (flood scope, e.g. fr / eu) ★ | P1 | M | Backlog | VALIDATION-1 |
 
 #### RADIO-1
 
@@ -293,6 +296,24 @@ A screen listing every packet heard (type, route, hops, SNR, sender prefix), wit
 
 Forward packets while enabled (for an event or a hike), with a clear status-bar marker and the duty-cycle meter. Needs care: repeating rules and airtime.
 
+#### RADIO-8
+
+**Nearby repeater search** ★ · P1 · M · In progress · after VALIDATION-1
+
+A keyboard-mode screen, like the search in the phone app: send MeshCore's zero-hop discovery request and list the repeaters that answer, with the SNR in both directions (how they hear us, how we hear them). Direct neighbours only; room servers do not answer, and a repeater answers at most 4 requests per 2 minutes, so results accumulate over several searches, which also helps on weak links.
+
+#### RADIO-9
+
+**Configurable path hash size** ★ · P1 · M · Backlog · after VALIDATION-1
+
+Choose how many bytes of each node's public key identify it in a packet's path: 1, 2 or 3 (MeshCore's path hash size; the phone app sets it with CMD_SET_PATH_HASH_MODE). More bytes mean fewer collisions between nodes on a large mesh, but longer packets. Keyboard mode always floods with the default of 1 byte today: add a setting in Settings, pass it to every flood (sendFlood takes path_hash_size), and check that repeaters on older firmware forward such packets. Later, with SYNC-1, share the value with phone mode. Reported by the project owner on 2026-11-07: the node's ID is on 1 byte, which is why this moved up to P1.
+
+#### RADIO-10
+
+**Region setting (flood scope, e.g. fr / eu)** ★ · P1 · M · Backlog · after VALIDATION-1
+
+Reported by the project owner on 2026-11-07: no region is recorded on the node (fr / eu). MeshCore calls this the flood scope: a named region with a key, whose transport code on each flood lets repeaters decide whether to forward it. The companion stores it (default_scope_name, default_scope_key) and the app sets it with CMD_SET_DEFAULT_FLOOD_SCOPE; keyboard mode has neither, so its floods are never scoped. Add a region setting to Settings, save it, and override sendFloodScoped() in CardputerMesh, as companion_radio/MyMesh.cpp does (TransportKeyStore, RegionMap). Check how the local mesh names its regions first. Keyboard and phone mode keep separate settings today: sharing the region belongs with SYNC-1. Combine with RADIO-9, since both go through the same flood call.
+
 ### Messaging
 
 | ID | Item | Priority | Size | Status | Depends on |
@@ -305,6 +326,7 @@ Forward packets while enabled (for an event or a hike), with a clear status-bar 
 | [MESSAGING-6](#messaging-6) | Unread messages on the RGB LED | P2 | S | Backlog | VALIDATION-1 |
 | [MESSAGING-7](#messaging-7) | Search and export conversations | P3 | M | Backlog | · |
 | [MESSAGING-8](#messaging-8) | Emoji and other scripts | P3 | M | Backlog | · |
+| [MESSAGING-9](#messaging-9) | From a message to the sender's profile ★ | P1 | M | Backlog | VALIDATION-1 |
 
 #### MESSAGING-1
 
@@ -353,6 +375,12 @@ Search text across conversations; export one conversation to a text file on the 
 **Emoji and other scripts** · P3 · M · Backlog
 
 Messages from phones often contain emoji. Show a readable fallback glyph instead of nothing, and widen the font coverage within the flash budget.
+
+#### MESSAGING-9
+
+**From a message to the sender's profile** ★ · P1 · M · Backlog · after VALIDATION-1
+
+In a conversation, select a message and open its details and the sender's profile: name, contact sheet (key, position, compass, write to them), number of hops, SNR, time, delivery attempts. Hops and SNR are already stored with each received message (StoredMsg), so a message-selection mode in ChatScreen and a detail screen are the main work, reusing ContactDetailScreen. Direct messages link to the contact by key; channel messages only carry the sender's name, so the link there is a name match and may find nobody. Showing the route itself, not just the hop count, needs the path to be stored with the message.
 
 ### GPS & map
 

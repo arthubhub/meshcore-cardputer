@@ -7,6 +7,7 @@
 #include <stddef.h>
 #include "MessageStore.h"
 #include "Nmea.h"
+#include "drivers/NodeDiscovery.h"
 
 struct DeviceStatus {
   int  batteryPercent = -1;   // -1 = unknown
@@ -92,6 +93,11 @@ public:
 
   virtual int neighbours(NeighbourInfo* out, int max) = 0;
   virtual RadioStats radioStats() = 0;
+
+  // Search for the repeaters within direct radio range. False: radio unavailable or too soon after the last
+  // search (see discovery().secondsUntilNext). Answers appear in discovery() as they arrive.
+  virtual bool startDiscovery() = 0;
+  virtual const NodeDiscovery& discovery() const = 0;
 };
 
 enum SoundKind : uint8_t { SOUND_DIRECT_MSG, SOUND_CHANNEL_MSG, SOUND_SENT, SOUND_FAIL };

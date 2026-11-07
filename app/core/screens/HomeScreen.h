@@ -14,18 +14,18 @@ private:
 
 class HomeScreen : public Screen {
 public:
-  HomeScreen(Screen* messages, Screen* contacts, Screen* gps, Screen* map, Screen* settings)
-    : _messages(messages), _contacts(contacts), _gps(gps), _map(map), _settings(settings) {}
+  HomeScreen(Screen* messages, Screen* contacts, Screen* gps, Screen* map, Screen* nearby, Screen* settings)
+    : _messages(messages), _contacts(contacts), _gps(gps), _map(map), _nearby(nearby), _settings(settings) {}
   const char* title() const override { return tr("Home", "Accueil"); }
   const char* help() const override {
-    return _map ? tr("M:msg C:contacts G:gps K:map S:settings", "M:msg C:contacts G:gps K:carte S:régl.")
-                : tr("M:messages C:contacts G:gps S:settings", "M:messages C:contacts G:gps S:réglages");
+    return _map ? tr("M:msg C:cont G:gps K:map N:near S:set", "M:msg C:cont G:gps K:carte N:rout S:rég")
+                : tr("M:msg C:contacts G:gps N:near S:settings", "M:msg C:cont G:gps N:routeurs S:régl.");
   }
   bool onKey(App& app, const KeyEvent& e) override;
   bool tick(App& app) override;
   void draw(App& app, lgfx::LovyanGFX& g) override;
 private:
-  Screen *_messages, *_contacts, *_gps, *_map, *_settings;
+  Screen *_messages, *_contacts, *_gps, *_map, *_nearby, *_settings;
   int _lastUnread = -1;
   uint32_t _lastRefresh = 0;
 };
