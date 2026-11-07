@@ -13,6 +13,9 @@
 //   rx <from> <text...>            receive a direct message (creates the contact if unknown)
 //   rxch <channel> <from> <text>   receive a message on a joined channel (e.g. Public)
 //   hear <name> <snr>              a neighbour advert is heard (new contact => notification)
+//   nearby <name> <snrThere> <snrHere>  a repeater in direct range answers the next searches (name: no spaces)
+//   nearby none                    no repeater in range
+//   expect-nearby <n>              number of repeaters listed by the search
 //   rxburst <from> <n>             receive n numbered direct messages ("message 1".."message n"), 1 s apart
 //   contact <name> [hops] [fav] [repeater|room] [pos <lat> <lon>]   add a known contact (hops -1 = no path)
 //   net ack on|off                 contacts acknowledge direct messages (off => retries then failure)
@@ -63,6 +66,7 @@
 #include "../core/screens/MessagingScreens.h"
 #include "../core/screens/GpsScreens.h"
 #include "../core/screens/MapScreen.h"
+#include "../core/screens/NearbyScreen.h"
 #include "../core/DemoGps.h"
 #include "../core/KeyMatrix.h"
 #include "SimServices.h"
@@ -190,7 +194,8 @@ int main(int argc, char** argv) {
   MapScreen map;
   SystemScreen systemScreen;
   SettingsScreen settingsScreen(textInput, systemScreen);
-  HomeScreen home(&conversations, &contacts, &gps, &map, &settingsScreen);
+  NearbyScreen nearby(contactDetail);
+  HomeScreen home(&conversations, &contacts, &gps, &map, &nearby, &settingsScreen);
   app.begin(&home);
 
   HwRig hw(sys);
@@ -293,6 +298,9 @@ int main(int argc, char** argv) {
       app.invalidate(); runFor(LOOP_MS);
     } else if (cmd == "hear") {
       std::string n; float snr = 0; ls >> n >> snr; mesh.hear(n, snr); runFor(LOOP_MS);
+    } else if (cmd == "nearby") {
+      std::string n; float there = 0, here = 0; ls >> n >> there >> here;
+      if (n == "none") mesh.clearNearby(); else mesh.addNearby(n, there, here);
     } else if (cmd == "tca") {
       int r = -1, c = -1; std::string mode; ls >> r >> c >> mode;
       uint8_t k = KeyMatrix::fromGrid(r, c);
@@ -459,6 +467,9 @@ int main(int argc, char** argv) {
     } else if (cmd == "expect-contacts") {
       int want = 0; ls >> want;
       if (want != mesh.contactCount()) { fprintf(stderr, "line %d: FAIL expected %d contacts, got %d\n", lineNo, want, mesh.contactCount()); g_failures++; }
+    } else if (cmd == "expect-nearby") {
+      int want = 0; ls >> want;
+      if (want != mesh.discovery().count()) { fprintf(stderr, "line %d: FAIL expected %d nearby repeaters, got %d\n", lineNo, want, mesh.discovery().count()); g_failures++; }
     } else if (cmd == "expect-sounds") {
       int want = 0; ls >> want;
       if (want != sys.sounds) { fprintf(stderr, "line %d: FAIL expected %d sounds, got %d\n", lineNo, want, sys.sounds); g_failures++; }

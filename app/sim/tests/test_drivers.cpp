@@ -4,6 +4,7 @@
 #include "../../core/KeyMatrix.h"
 #include "../../core/drivers/FlashFsProbe.h"
 #include "../../core/drivers/GpsLink.h"
+#include "../../core/drivers/NodeDiscovery.h"
 #include "../../core/drivers/Pi4ioe.h"
 #include "../../core/drivers/Tca8418.h"
 #include "../fakes/FakeGpsUart.h"
@@ -488,6 +489,103 @@ TEST(flashfs_classifies_partition_content) {
   CHECK(flashfs::classify(spiffs, erased, 64) == flashfs::Content::Foreign);
   CHECK(flashfs::classify(erased, spiffs, 64) == flashfs::Content::Foreign);
   CHECK(strstr(flashfs::describe(flashfs::Content::Foreign), "SPIFFS") != nullptr);
+}
+
+// ============================================================ nearby repeaters (RADIO-8)
+
+// Answer of a repeater, built like meshcore/examples/simple_repeater/MyMesh.cpp
+static size_t discoverAnswer(uint8_t* out, uint8_t id, int8_t snrX4, uint32_t tag, uint8_t type = 2) {
+  out[0] = 0x90 | type;
+  out[1] = (uint8_t)snrX4;
+  memcpy(&out[2], &tag, 4);
+  memset(&out[6], id, 8);
+  return 14;
+}
+
+TEST(discovery_request_is_the_meshcore_one) {
+  NodeDiscovery d;
+  d.start(0x11223344, 0);
+  uint8_t r[NodeDiscovery::REQUEST_LEN];
+  d.buildRequest(r);
+  const uint8_t want[] = {0x81, 0x04, 0x44, 0x33, 0x22, 0x11};
+  CHECK(memcmp(r, want, sizeof(want)) == 0);
+}
+
+TEST(discovery_accepts_only_answers_to_this_search) {
+  NodeDiscovery d;
+  uint8_t a[20];
+  size_t n = discoverAnswer(a, 1, -20, 7);
+  CHECK(!d.accept(a, n, -9, -110, 0));                  // no search yet
+  d.start(7, 1000);
+  CHECK(!d.accept(a, n - 1, -9, -110, 1000));           // too short
+  n = discoverAnswer(a, 1, -20, 8);
+  CHECK(!d.accept(a, n, -9, -110, 1000));               // other tag
+  n = discoverAnswer(a, 1, -20, 7, 4);
+  CHECK(!d.accept(a, n, -9, -110, 1000));               // a sensor, not a repeater
+  a[0] = 0x82;
+  CHECK(!d.accept(a, 14, -9, -110, 1000));              // a request, not an answer
+  CHECK_EQ(d.count(), 0);
+  n = discoverAnswer(a, 1, -20, 7);
+  CHECK(d.accept(a, n, -9.5f, -110, 2000));
+  CHECK_EQ(d.count(), 1);
+  CHECK(d.at(0).prefix[7] == 1);
+  CHECK(d.at(0).type == 2);
+  CHECK(d.at(0).snrThere == -5.0f);
+  CHECK(d.at(0).snrHere == -9.5f);
+  CHECK(d.at(0).rssi == -110.0f);
+  CHECK_EQ(d.at(0).heardMs, 2000u);
+}
+
+TEST(discovery_sorts_merges_and_adds_up_searches) {
+  NodeDiscovery d;
+  uint8_t a[20];
+  d.start(1, 0);
+  d.accept(a, discoverAnswer(a, 1, 0, 1), -12, -112, 10);
+  d.accept(a, discoverAnswer(a, 2, 0, 1), -3, -100, 20);
+  CHECK_EQ(d.count(), 2);
+  CHECK(d.at(0).prefix[0] == 2);
+  d.accept(a, discoverAnswer(a, 1, 0, 1), 2, -95, 30);  // same repeater, better signal: no duplicate
+  CHECK_EQ(d.count(), 2);
+  CHECK(d.at(0).prefix[0] == 1);
+  uint32_t t = NodeDiscovery::MIN_INTERVAL_MS;
+  d.start(2, t);
+  CHECK(!d.accept(a, discoverAnswer(a, 3, 0, 1), 0, -100, t));   // late answer to the previous search
+  d.accept(a, discoverAnswer(a, 3, 0, 2), 0, -100, t);
+  CHECK_EQ(d.count(), 3);                               // the first two are still listed
+  d.clear();
+  CHECK_EQ(d.count(), 0);
+}
+
+TEST(discovery_full_table_keeps_the_strongest) {
+  NodeDiscovery d;
+  uint8_t a[20];
+  d.start(1, 0);
+  for (int i = 0; i < NodeDiscovery::MAX_NODES; i++) d.accept(a, discoverAnswer(a, i + 1, 0, 1), -10 - i, -110, 0);
+  CHECK_EQ(d.count(), NodeDiscovery::MAX_NODES);
+  d.accept(a, discoverAnswer(a, 100, 0, 1), -99, -125, 0);   // weaker than all: dropped
+  CHECK(d.at(NodeDiscovery::MAX_NODES - 1).prefix[0] == NodeDiscovery::MAX_NODES);
+  d.accept(a, discoverAnswer(a, 101, 0, 1), 5, -90, 0);      // stronger: replaces the weakest
+  CHECK_EQ(d.count(), NodeDiscovery::MAX_NODES);
+  CHECK(d.at(0).prefix[0] == 101);
+  CHECK(d.at(NodeDiscovery::MAX_NODES - 1).prefix[0] == NodeDiscovery::MAX_NODES - 1);
+}
+
+TEST(discovery_window_and_pause) {
+  NodeDiscovery d;
+  CHECK(d.canStart(0));
+  CHECK(!d.searching(0));
+  CHECK_EQ(d.secondsUntilNext(0), 0u);
+  d.start(1, 5000);
+  CHECK(d.searching(5000));
+  CHECK_EQ(d.secondsLeft(5000), 15u);
+  CHECK_EQ(d.secondsLeft(5001), 15u);
+  CHECK(!d.canStart(5000));
+  CHECK_EQ(d.secondsUntilNext(5000), 30u);
+  CHECK(!d.searching(5000 + NodeDiscovery::WINDOW_MS));
+  CHECK_EQ(d.secondsLeft(5000 + NodeDiscovery::WINDOW_MS), 0u);
+  CHECK(!d.canStart(5000 + NodeDiscovery::MIN_INTERVAL_MS - 1));
+  CHECK_EQ(d.secondsUntilNext(5000 + NodeDiscovery::MIN_INTERVAL_MS - 1), 1u);
+  CHECK(d.canStart(5000 + NodeDiscovery::MIN_INTERVAL_MS));
 }
 
 // ============================================================ main

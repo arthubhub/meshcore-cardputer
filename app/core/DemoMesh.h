@@ -19,6 +19,9 @@ public:
   void receive(const std::string& sender, const std::string& text);                           // direct
   void receiveChannel(const std::string& channel, const std::string& sender, const std::string& text);
   void hear(const std::string& name, float snr);
+  // A repeater in direct range: it answers the next discovery requests, through the real NodeDiscovery.
+  void addNearby(const std::string& name, float snrThere, float snrHere);
+  void clearNearby();
   void reboot();              // flush + reload the message store from the files
   void tick();                // advances the fake network (ACKs, retries, demo bot)
   // Demo firmware: characters chat on Public, reply to direct messages, adverts... (off in tests)
@@ -50,6 +53,8 @@ public:
   bool pollEvent(MeshEvent& out) override;
   int neighbours(NeighbourInfo* out, int max) override;
   RadioStats radioStats() override;
+  bool startDiscovery() override;
+  const NodeDiscovery& discovery() const override { return _discovery; }
 
 private:
   void logf(const char* fmt, ...);
@@ -79,5 +84,10 @@ private:
   std::vector<Channel> _channels;
   std::vector<Pending> _pending;
   std::deque<MeshEvent> _events;
+  struct Nearby { std::string name; float snrThere, snrHere; };
+  struct Answer { std::vector<uint8_t> frame; float snrHere; uint32_t at; };
+  std::vector<Nearby> _nearby;
+  std::vector<Answer> _answers;
+  NodeDiscovery _discovery;
   uint32_t _rx = 0;
 };

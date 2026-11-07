@@ -6,7 +6,8 @@
 A standalone [MeshCore](https://github.com/meshcore-dev/MeshCore) firmware for the M5Stack Cardputer ADV
 fitted with the Cap LoRa-1262. Your Cardputer becomes a self-contained mesh messenger: you type and read
 messages on its own keyboard and screen, check your position on the built-in GPS, find your contacts with
-a compass, and browse offline maps stored on a microSD card — no phone required.
+a compass, search for the repeaters within radio range, and browse offline maps stored on a microSD card — no
+phone required.
 
 If you would rather use the official MeshCore app, the same image also contains the stock companion
 firmware. Switching to "phone mode" is a single menu entry, and pressing **esc** three times brings you

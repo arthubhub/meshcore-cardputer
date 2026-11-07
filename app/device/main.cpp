@@ -16,6 +16,7 @@
 #include "../core/screens/HomeScreen.h"
 #include "../core/screens/MessagingScreens.h"
 #include "../core/screens/SettingsScreens.h"
+#include "../core/screens/NearbyScreen.h"
 #include "DebugConsole.h"
 #include <CpadvBoot.h>
 #include "DeviceBackup.h"
@@ -86,10 +87,11 @@ static CompassScreen compassScreen;
 static GpsScreen gpsScreen(compassScreen);
 static SystemScreen systemScreen;
 static SettingsScreen settingsScreen(textInput, systemScreen);
+static NearbyScreen nearbyScreen(contactDetail);
 #if CPADV_MAP
-static HomeScreen home(&conversations, &contactsScreen, &gpsScreen, &mapScreen, &settingsScreen);
+static HomeScreen home(&conversations, &contactsScreen, &gpsScreen, &mapScreen, &nearbyScreen, &settingsScreen);
 #else
-static HomeScreen home(&conversations, &contactsScreen, &gpsScreen, nullptr, &settingsScreen);   // no map built in
+static HomeScreen home(&conversations, &contactsScreen, &gpsScreen, nullptr, &nearbyScreen, &settingsScreen);   // no map built in
 #endif
 
 // ---------------------------------------------------------------- power / screen

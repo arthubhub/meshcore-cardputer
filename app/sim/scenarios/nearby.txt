@@ -1,0 +1,54 @@
+# Nearby routers (RADIO-8): discovery request, answers of the repeaters, known and unknown ones.
+name Cardputer
+time 1793541600
+contact Relais-Colomiers 0 repeater
+nearby Relais-Colomiers -4.5 -6.2
+nearby Relais-Pibrac -9.0 -11.5
+
+# Home > N: the search starts by itself
+key n
+wait 100
+expect-nearby 0
+shot n1_nearby_searching
+wait 1200
+expect-nearby 1
+wait 1000
+expect-nearby 2
+shot n2_nearby_found
+
+# too soon: the search is refused and explained
+key r
+wait 100
+shot n3_nearby_wait
+wait 2500
+
+# known repeater: its contact sheet; unknown one: explained
+key enter
+expect-screen Contact
+key `
+key down
+key enter
+wait 100
+shot n4_nearby_unknown
+wait 3500
+
+# a new search after the pause adds to the list
+nearby Relais-Blagnac -2.0 -3.0
+wait 30000
+key r
+wait 4000
+expect-nearby 3
+shot n5_nearby_added
+key `
+expect-screen Home
+
+# nothing in range, in French
+nearby none
+lang fr
+wait 30000
+key n
+wait 16000
+expect-nearby 3
+shot n6_nearby_fr
+key `
+expect-screen Accueil

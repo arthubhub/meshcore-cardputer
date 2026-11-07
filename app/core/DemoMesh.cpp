@@ -188,9 +188,56 @@ bool DemoMesh::sendText(const ConvKey& to, const char* text) {
   return true;
 }
 
+void DemoMesh::addNearby(const std::string& name, float snrThere, float snrHere) {
+  _nearby.push_back(Nearby{name, snrThere, snrHere});
+}
+
+void DemoMesh::clearNearby() {
+  _nearby.clear();
+  _answers.clear();
+}
+
+bool DemoMesh::startDiscovery() {
+  uint32_t now = _sys.millis();
+  if (!_discovery.canStart(now)) return false;
+  _discovery.start(rnd(), now);
+  sentPackets++;
+  uint8_t req[NodeDiscovery::REQUEST_LEN];
+  _discovery.buildRequest(req);
+  std::vector<Nearby> who = _nearby;
+  if (_bot) {   // demo firmware: its repeater contacts answer
+    for (auto& c : _contacts) {
+      if (c.v.type == CONTACT_REPEATER) who.push_back(Nearby{c.v.name, -2.5f - (rnd() % 20) / 2.0f, -4.0f - (rnd() % 20) / 2.0f});
+    }
+  }
+  uint32_t delay = 1000;
+  for (auto& n : who) {
+    ConvKey k = keyFromName(ConvKey::DIRECT, n.name);
+    Answer a;
+    a.frame.resize(NodeDiscovery::MIN_RESPONSE_LEN, 0);
+    a.frame[0] = 0x90 | CONTACT_REPEATER;            // CTL_TYPE_NODE_DISCOVER_RESP | ADV_TYPE_REPEATER
+    a.frame[1] = (uint8_t)(int8_t)(n.snrThere * 4);
+    memcpy(&a.frame[2], &req[2], 4);                 // tag of the request
+    memcpy(&a.frame[6], k.id, sizeof(k.id));
+    a.snrHere = n.snrHere;
+    a.at = now + delay;
+    delay += 900;
+    _answers.push_back(a);
+  }
+  return true;
+}
+
 void DemoMesh::tick() {
   uint32_t now = _sys.millis();
   if (_bot) botTick();
+  for (size_t i = 0; i < _answers.size();) {
+    if ((int32_t)(now - _answers[i].at) >= 0) {
+      _discovery.accept(_answers[i].frame.data(), _answers[i].frame.size(), _answers[i].snrHere, -100 + _answers[i].snrHere, now);
+      _answers.erase(_answers.begin() + i);
+    } else {
+      i++;
+    }
+  }
   for (size_t i = 0; i < _pending.size();) {
     Pending& p = _pending[i];
     StoredMsg m;

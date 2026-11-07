@@ -38,12 +38,15 @@ public:
   bool pollEvent(MeshEvent& out) override;
   int neighbours(NeighbourInfo* out, int max) override;
   RadioStats radioStats() override;
+  bool startDiscovery() override;
+  const NodeDiscovery& discovery() const override { return _discovery; }
 
 protected:
   // ---- BaseChatMesh / Mesh ----
   float getAirtimeBudgetFactor() const override { return 1.0f; }
   int calcRxDelay(float score, uint32_t air_time) const override { return 0; }
   bool allowPacketForward(const mesh::Packet* packet) override { return false; }   // client, not a repeater
+  void onControlDataRecv(mesh::Packet* packet) override;
   void onAdvertRecv(mesh::Packet* packet, const mesh::Identity& id, uint32_t timestamp, const uint8_t* app_data,
                     size_t app_data_len) override;
   void onDiscoveredContact(ContactInfo& contact, bool is_new, uint8_t path_len, const uint8_t* path) override;
@@ -102,6 +105,7 @@ private:
   DeviceSettings& _settings;
   GpsService* _gps = nullptr;
   LittleFsStorage _storage;
+  NodeDiscovery _discovery;
   MessageStore _store;
   bool _started = false;
 

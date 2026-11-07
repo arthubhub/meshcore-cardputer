@@ -79,6 +79,20 @@ MeshCore affiche aussi `readData(-7)` (paquet abîmé en l'air) ou `readData(-70
 - [ ] Copier toutes les lignes `rx error` et `readData(...)` : le signal (rssi/snr) des erreurs dit si c'est la
       radio ou le bus SPI.
 
+## Routeurs proches (RADIO-8)
+
+À faire à un endroit où un routeur est à portée directe (mode clavier, moniteur série ouvert).
+
+- [ ] Accueil → `N` : l'écran « Nearby routers » s'ouvre et affiche `Searching... 15 s`.
+      Log : `discover: request sent (zero hop), 0 repeaters known`.
+- [ ] Chaque réponse ajoute une ligne, et le log affiche `discover: repeater xxxxxxxx, it heard us at … dB, we heard it at … dB`.
+      Les deux SNR de la ligne (aller / retour) sont les mêmes que dans le log.
+- [ ] `R` avant 30 s : message « Please wait », aucun nouvel envoi radio. `R` après 30 s : nouvelle recherche, la liste
+      est conservée et complétée.
+- [ ] `Entrée` sur un routeur connu : sa fiche contact. Sur un routeur inconnu (début de clé) : message expliquant
+      que son nom arrivera avec sa prochaine annonce.
+- [ ] Aucun routeur à portée : « No router answered » à la fin des 15 s.
+
 ## Phase 1 — firmware companion (`cardputer_adv_companion_ble`)
 
 - [ ] Au démarrage, le log contient `BOARD  board begin` puis `M5Unified board id=... (ADV=...)` avec les deux nombres identiques.

@@ -25,6 +25,7 @@ bool HomeScreen::onKey(App& app, const KeyEvent& e) {
                     tr("This build has no map (see the _map build)", "Firmware sans carte (version _map en option)"), 2500);
     return true;
   }
+  if (e.is('n')) { app.push(_nearby); return true; }
   if (e.is('s')) { app.push(_settings); return true; }
   return false;
 }
