@@ -54,8 +54,7 @@ struct ContactView {
   uint8_t type;               // ContactType
   bool favourite;
   int8_t hops;                // -1: no known path (messages are flooded)
-  uint8_t pathHashBytes;      // size of each entry of `path`
-  uint8_t path[12];           // start of the route to this contact (first repeater first)
+  MsgRoute route;             // the route to this contact, first repeater first
   uint32_t lastHeard;         // unix time (our clock) of the last advert, 0 = never
   bool hasPos;
   int32_t latE6, lonE6;       // position from the contact's advert (degrees * 1e6)
@@ -69,9 +68,16 @@ struct MeshEvent {
   char text[64] = {};         // message preview (AIRTIME: "8.1 % / 10 %")
 };
 
-class MeshService {
+// The known nodes, favourites first, then most recently heard. What looking a node up needs from the mesh.
+class NodeDirectory {
 public:
-  virtual ~MeshService() {}
+  virtual ~NodeDirectory() {}
+  virtual int contactCount() = 0;
+  virtual bool contactAt(int i, ContactView& out) = 0;
+};
+
+class MeshService : public NodeDirectory {
+public:
   virtual const char* selfName() = 0;
 
   // Conversations and history (read by the screens, written by the mesh).
@@ -82,9 +88,6 @@ public:
   // Max text length in bytes for this conversation (channels: name prefix included).
   virtual int maxTextLen(const ConvKey& to) = 0;
 
-  // Contacts: favourites first, then most recently heard.
-  virtual int contactCount() = 0;
-  virtual bool contactAt(int i, ContactView& out) = 0;
   virtual bool findContact(const ConvKey& key, ContactView& out) = 0;
   virtual bool setFavourite(const ConvKey& key, bool fav) = 0;
   virtual bool removeContact(const ConvKey& key) = 0;

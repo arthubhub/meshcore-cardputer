@@ -143,6 +143,30 @@ essais finis, revenir à ces valeurs si le réseau local n'utilise ni région ni
 - [ ] Pendant la capture, messages et réception continuent. Comparer le taux d'erreurs du `BEAT` avec et sans capture.
 - [ ] Sans carte SD, `L` affiche « No SD card ». `C` vide la liste.
 
+## Zoom de la carte (MAP-6)
+
+Il faut le firmware avec carte et des tuiles sur la SD. Le log de démarrage donne les niveaux présents (`map tiles zoom a-b`).
+
+- [ ] `=` deux fois au-delà du niveau maximum : la carte reste affichée, plus pixelisée, avec `x2` puis `x4` en haut à droite. Un `=` de plus ne change rien.
+- [ ] `-` deux fois en dessous du niveau minimum : `/2` puis `/4`. Noter le temps d'affichage à chaque niveau. L'objectif est moins de 1,5 s.
+- [ ] Pendant un affichage en `/4`, un message reçu arrive normalement, et le taux d'erreurs du `BEAT` reste comparable.
+- [ ] Encore plus bas : grille et marqueurs seuls, instantané, jusqu'à `z3`.
+- [ ] Déplacement `;.,/` à chaque échelle, puis `0` pour revenir à sa position.
+
+## Route d'un message et trajet sur la carte (MESSAGING-10, MAP-7)
+
+- [ ] **Première mise à jour :** l'historique des messages repart de zéro. Les contacts, la clé (même identifiant), les canaux et les réglages sont intacts.
+      Dans le log : `storage … KB -> up to … conversations kept`, avec moins de conversations qu'avant si la partition est petite.
+- [ ] Message reçu par inondation à travers un ou plusieurs routeurs : dans son détail, *Hops* et *Route* (`a1>b2`) concordent.
+- [ ] `T` : les sauts, de l'expéditeur vers toi, avec `ok`, `uncertain (n)`, `no position` ou `?`. `Entrée` sur un routeur ouvre sa fiche.
+- [ ] `T` encore (firmware avec carte) : la carte cadre tout le trajet. `+` `-` et les flèches marchent, `R` recadre, `` ` `` revient et ta vue d'avant est retrouvée.
+- [ ] Les points et les traits correspondent aux vrais routeurs que tu connais sur ton réseau. Un saut orange est une supposition : la vérifier dans la liste.
+- [ ] Message reçu en direct : *Route, planned* (« prévue »), trait en pointillés.
+- [ ] Après un redémarrage, la route d'un ancien message est toujours là.
+- [ ] Sans position pour aucun point : message « Nothing to show ».
+- [ ] Firmware sans carte : la liste des sauts s'ouvre, le second `T` affiche « Map not included ».
+- [ ] Journal radio : les noms des contacts remplacent les identifiants quand un seul contact correspond.
+
 ## Phase 1 — firmware companion (`cardputer_adv_companion_ble`)
 
 - [ ] Au démarrage, le log contient `BOARD  board begin` puis `M5Unified board id=... (ADV=...)` avec les deux nombres identiques.

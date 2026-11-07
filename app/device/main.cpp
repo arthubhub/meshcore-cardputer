@@ -18,6 +18,7 @@
 #include "../core/screens/SettingsScreens.h"
 #include "../core/screens/NearbyScreen.h"
 #include "../core/screens/PacketsScreen.h"
+#include "../core/screens/RouteScreen.h"
 #include "DebugConsole.h"
 #include <CpadvBoot.h>
 #include "DeviceBackup.h"
@@ -83,6 +84,7 @@ static TextInputScreen textInput;
 static ChatScreen chatScreen;
 static ContactDetailScreen contactDetail(chatScreen);
 static MessageDetailScreen messageDetail(chatScreen, contactDetail);
+static RouteScreen routeScreen(contactDetail);
 static ContactsScreen contactsScreen(chatScreen, contactDetail);
 static ConversationsScreen conversations(chatScreen, contactsScreen, textInput);
 static CompassScreen compassScreen;
@@ -233,10 +235,8 @@ void setup() {
   if (!cpadv::dataFs().mount(true, "keyboard")) CPLOG_E("MAIN", "data partition unavailable: nothing will be saved");
   settings.load();
   {
-    // ~16 KB of flash per conversation history (64 messages + file system overhead)
     int total = (int)(cpadv::dataFs().totalBytes() / 1024);
-    int convs = (total - 96) / 16;
-    meshNode.messages().setCapacity(convs);
+    meshNode.messages().setCapacityFromFlash(total);
     CPLOG_I("MAIN", "storage %d KB -> up to %d conversations kept", total,
                   meshNode.messages().capacity());
   }
@@ -274,6 +274,10 @@ void setup() {
   compassScreen.setChat(&chatScreen);
   contactDetail.setCompass(&compassScreen);
   chatScreen.setMessageDetail(&messageDetail);
+  messageDetail.setRouteScreen(&routeScreen);
+#if CPADV_MAP
+  routeScreen.setMap(&mapScreen);
+#endif
   keyboard.begin();
 
   M5.Display.setRotation(1);

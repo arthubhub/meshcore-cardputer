@@ -2,12 +2,13 @@
 // Persistent message history, shared by the Cardputer (LittleFS) and the simulator (host files).
 //
 // - One fixed-size ring file per conversation: the last MAX_MSGS messages, updated in place
-//   (an ACK only rewrites one 196-byte record). Bounded flash usage: ~12.5 KB per conversation.
+//   (an ACK only rewrites one record). Bounded flash usage: see FLASH_KB_PER_CONV.
 // - A small index (~4 KB of RAM) keeps names, unread counters and the last message preview,
 //   so lists and the home screen never touch the flash.
 // - Only the messages on screen are loaded (see ChatScreen), never a whole history.
 #include <stdint.h>
 #include <stddef.h>
+#include "drivers/PathView.h"
 
 // Byte-level file access, implemented by the platform.
 class Storage {
@@ -51,8 +52,11 @@ struct StoredMsg {
   int8_t snrX4 = 0;         // received: SNR * 4
   uint8_t hops = 0xFF;      // received: number of hops (0xFF unknown)
   uint8_t attempt = 0;      // outgoing: send attempts so far
+  uint8_t routeType = 0;    // received: wire::Route of the packet
+  int16_t rssi = 0;         // received: dBm
   char sender[23] = {};     // channel messages: sender name
   char text[MSG_TEXT_MAX + 1] = {};
+  MsgRoute route;           // in travel order: from the sender to us, or from us to the contact
 };
 
 struct ConvMeta {
@@ -70,10 +74,14 @@ class MessageStore {
 public:
   static constexpr int MAX_CONVS = 40;
   static constexpr int MAX_MSGS = 64;
+  static constexpr int RESERVED_FLASH_KB = 96;    // identity, contacts, channels, settings, file system
+  // One history file (MAX_MSGS records) plus what the file system adds around it
+  static constexpr int FLASH_KB_PER_CONV = (MAX_MSGS * (int)sizeof(StoredMsg) + 1023) / 1024 + 4;
 
   void begin(Storage* st);
   // Max conversations kept with a history file (<= MAX_CONVS), from the free flash space.
   void setCapacity(int convs) { _capacity = convs < 4 ? 4 : convs > MAX_CONVS ? MAX_CONVS : convs; }
+  void setCapacityFromFlash(int totalKb) { setCapacity((totalKb - RESERVED_FLASH_KB) / FLASH_KB_PER_CONV); }
   int capacity() const { return _capacity; }
 
   // Creates the conversation if needed (channels are listed even without messages).
@@ -101,6 +109,7 @@ public:
 private:
   ConvMeta* findMut(const ConvKey& k);
   void sort();
+  void purgeOlderFormat(uint32_t count);
   bool writeHeader(const char* path, uint32_t total);
 
   Storage* _st = nullptr;

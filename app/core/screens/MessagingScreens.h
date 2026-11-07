@@ -2,6 +2,7 @@
 #include "../App.h"
 #include "../Widgets.h"
 #include "SettingsScreens.h"
+#include "../drivers/RouteResolver.h"
 
 // "Press D again to confirm" helper for destructive actions.
 struct ConfirmPress {
@@ -12,6 +13,7 @@ struct ConfirmPress {
 };
 
 class MessageDetailScreen;
+class RouteScreen;
 
 // Conversation thread: bubbles, delivery status, compose line.
 // Fn+; selects the newest message and then walks back: the selected message is always the lowest bubble, and Enter
@@ -125,9 +127,10 @@ class MessageDetailScreen : public Screen {
 public:
   MessageDetailScreen(ChatScreen& chat, ContactDetailScreen& contact) : _chat(chat), _contact(contact) {}
   void show(const ConvKey& conv, const char* convName, const StoredMsg& m, int position);
+  void setRouteScreen(RouteScreen* route) { _route = route; }
 
   const char* title() const override { return "Message"; }
-  const char* help() const override { return tr("Enter:profile  ;.:scroll  `:back", "Entrée:profil  ;.:défiler  `:retour"); }
+  const char* help() const override { return tr("Enter:profile  T:route  ;.:scroll", "Entrée:profil  T:route  ;.:défiler"); }
   void onEnter(App& app) override { _list = ListState(); }
   bool onKey(App& app, const KeyEvent& e) override;
   void draw(App& app, lgfx::LovyanGFX& g) override;
@@ -137,9 +140,11 @@ private:
   enum class Link : uint8_t { None, ByKey, ByName, Self };
   Link findProfile(App& app, ContactView& out, int* matches);
   int fillRows(App& app, const char** labels, char (*values)[48]);
+  void openRoute(App& app);
 
   ChatScreen& _chat;
   ContactDetailScreen& _contact;
+  RouteScreen* _route = nullptr;
   ConvKey _conv;
   char _convName[32] = {};
   StoredMsg _m;

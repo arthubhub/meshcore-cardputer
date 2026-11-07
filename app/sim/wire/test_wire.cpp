@@ -15,6 +15,7 @@
 #include <helpers/TxtDataHelpers.h>
 #include "../../core/drivers/PacketLog.h"
 #include "../../device/FloodPolicy.h"
+#include "../../device/MessageRoute.h"
 
 #include <deque>
 #include <functional>
@@ -108,6 +109,7 @@ public:
   FloodPolicy floods;
   PacketLog packets;
   std::vector<std::string> inbox;
+  StoredMsg lastMsg;                 // the record CardputerMesh would store for the last message received
   int acks = 0;
   uint32_t expectedAck = 0;
 
@@ -143,14 +145,22 @@ protected:
     if (memcmp(data, &expectedAck, 4) == 0) acks++;
     return nullptr;
   }
-  void onMessageRecv(const ContactInfo&, mesh::Packet*, uint32_t, const char* text) override { inbox.push_back(text); }
+  void onMessageRecv(const ContactInfo& from, mesh::Packet* p, uint32_t, const char* text) override {
+    inbox.push_back(text);
+    lastMsg = StoredMsg();
+    MessageRoute::received(lastMsg, *p, from);
+  }
   void onCommandDataRecv(const ContactInfo&, mesh::Packet*, uint32_t, const char*) override {}
   void onCLICommandRecv(const ContactInfo&, mesh::Packet*, uint32_t, const char*, char*) override {}
   void onSignedMessageRecv(const ContactInfo&, mesh::Packet*, uint32_t, const uint8_t*, const char*) override {}
   uint32_t calcFloodTimeoutMillisFor(uint32_t) const override { return 2000; }
   uint32_t calcDirectTimeoutMillisFor(uint32_t, uint8_t) const override { return 2000; }
   void onSendTimeout() override {}
-  void onChannelMessageRecv(const mesh::GroupChannel&, mesh::Packet*, uint32_t, const char* text) override { inbox.push_back(text); }
+  void onChannelMessageRecv(const mesh::GroupChannel&, mesh::Packet* p, uint32_t, const char* text) override {
+    inbox.push_back(text);
+    lastMsg = StoredMsg();
+    MessageRoute::receivedOnChannel(lastMsg, *p);
+  }
   uint8_t onContactRequest(const ContactInfo&, uint32_t, const uint8_t*, uint8_t, uint8_t*) override { return 0; }
   void onContactResponse(const ContactInfo&, const uint8_t*, uint8_t) override {}
 
@@ -220,6 +230,37 @@ struct Net {
       g_now += 10;
       a.loop();
       r.loop();
+      b.loop();
+    }
+  }
+  void meet() {
+    a.advertise();
+    run();
+    b.advertise();
+    run();
+  }
+};
+
+// A -- R1 -- R2 -- B: the order of the hops can only be seen with two repeaters
+struct Chain {
+  FakeRadio ra, rb, r1, r2;
+  ChatNode a{ra, 11}, b{rb, 22};
+  Repeater first{r1, 33}, second{r2, 44};
+  Chain() {
+    link(ra, r1);
+    link(r1, r2);
+    link(r2, rb);
+    a.start("Alice");
+    b.start("Bob");
+    first.start();
+    second.start();
+  }
+  void run(int ms = 3000) {
+    for (int t = 0; t < ms; t += 10) {
+      g_now += 10;
+      a.loop();
+      first.loop();
+      second.loop();
       b.loop();
     }
   }
@@ -411,6 +452,72 @@ TEST(a_region_not_allowed_on_the_repeater_is_refused) {
   n.a.advertise();
   n.run();
   CHECK(!n.b.discover(n.a));
+}
+
+// The route of a flood is written from the sender to us, and our ACK and returned path use it the other way
+TEST(a_flood_records_its_real_route_in_order) {
+  for (int bytes = 1; bytes <= 3; bytes++) {
+    Chain n;
+    n.a.floods.configure(bytes, "");
+    n.b.floods.configure(bytes, "");
+    n.meet();
+    CHECK(n.a.send(n.b, "first") == MSG_SEND_SENT_FLOOD);
+    n.run();
+    CHECK(n.b.inbox.size() == 1);
+    const StoredMsg& m = n.b.lastMsg;
+    CHECK(m.route.kind == PATH_TAKEN);
+    CHECK(m.routeType == ROUTE_TYPE_FLOOD);
+    CHECK(m.hops == 2);
+    PathView v = m.route.view();
+    CHECK(v.hops() == 2 && v.hashBytes() == bytes && !v.truncated());
+    CHECK(memcmp(v.hash(0), n.first.id().pub_key, bytes) == 0);     // the repeater next to the sender comes first
+    CHECK(memcmp(v.hash(1), n.second.id().pub_key, bytes) == 0);    // the last one is the one we heard
+  }
+}
+
+TEST(a_direct_message_only_has_the_planned_route) {
+  for (int bytes = 1; bytes <= 3; bytes++) {
+    Chain n;
+    n.a.floods.configure(bytes, "");
+    n.b.floods.configure(bytes, "");
+    n.meet();
+    CHECK(n.a.send(n.b, "flood") == MSG_SEND_SENT_FLOOD);
+    n.run();
+    n.b.send(n.a, "reply");            // B learns its route to A from the path A returns
+    n.run();
+    CHECK(n.b.contact(n.a)->out_path_len != OUT_PATH_UNKNOWN);
+    CHECK(n.a.send(n.b, "direct") == MSG_SEND_SENT_DIRECT);
+    n.run();
+    CHECK(n.b.inbox.back() == "direct");
+    const StoredMsg& m = n.b.lastMsg;
+    CHECK(m.routeType == ROUTE_TYPE_DIRECT);
+    CHECK(m.route.kind == PATH_PLANNED);                            // not proof of the way it came
+    PathView v = m.route.view();
+    CHECK(v.hops() == 2 && v.hashBytes() == bytes);
+    CHECK(memcmp(v.hash(0), n.first.id().pub_key, bytes) == 0);     // travel order, sender's side first
+    CHECK(memcmp(v.hash(1), n.second.id().pub_key, bytes) == 0);
+    StoredMsg sent;
+    MessageRoute::sending(sent, true, *n.a.contact(n.b));
+    CHECK(sent.route.kind == PATH_PLANNED);
+    CHECK(memcmp(sent.route.view().hash(0), n.first.id().pub_key, bytes) == 0);   // our side first
+    MessageRoute::sending(sent, false, *n.a.contact(n.b));
+    CHECK(sent.route.kind == PATH_NONE);
+  }
+}
+
+TEST(a_channel_message_records_its_route) {
+  Chain n;
+  n.a.joinPublic();
+  n.b.joinPublic();
+  n.a.floods.configure(2, "");
+  CHECK(n.a.sendChannel("hello"));
+  n.run();
+  const StoredMsg& m = n.b.lastMsg;
+  CHECK(m.route.kind == PATH_TAKEN && m.hops == 2);
+  PathView v = m.route.view();
+  CHECK(v.hashBytes() == 2);
+  CHECK(memcmp(v.hash(0), n.first.id().pub_key, 2) == 0);
+  CHECK(memcmp(v.hash(1), n.second.id().pub_key, 2) == 0);
 }
 
 TEST(the_log_tells_another_region_from_ours) {

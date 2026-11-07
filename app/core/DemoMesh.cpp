@@ -93,8 +93,9 @@ void DemoMesh::addContact(const std::string& name, int hops, bool fav, uint8_t t
   c->v.hasPos = hasPos;
   c->v.latE6 = (int32_t)(lat * 1e6);
   c->v.lonE6 = (int32_t)(lon * 1e6);
-  c->v.pathHashBytes = 1;
-  for (int i = 0; i < hops && i < (int)sizeof(c->v.path); i++) c->v.path[i] = (uint8_t)(k.id[i % 6] ^ (i * 37));
+  uint8_t path[64];
+  for (size_t i = 0; i < sizeof(path); i++) path[i] = (uint8_t)(k.id[i % 6] ^ (i * 37));
+  if (hops >= 0) c->v.route.set(PATH_PLANNED, (uint8_t)hops, path);
   c->heardAtMs = _sys.millis();
   c->snr = 7.25f;
   sortContacts();
@@ -115,7 +116,25 @@ void DemoMesh::hear(const std::string& name, float snr) {
   sortContacts();
 }
 
-void DemoMesh::receive(const std::string& sender, const std::string& text) {
+void DemoMesh::setContactKey(const std::string& name, const std::vector<uint8_t>& keyStart) {
+  Contact* c = findMut(keyFromName(ConvKey::DIRECT, name));
+  if (!c) return;
+  memset(c->v.pubKey, 0, sizeof(c->v.pubKey));
+  memcpy(c->v.pubKey, keyStart.data(), keyStart.size() < sizeof(c->v.pubKey) ? keyStart.size() : sizeof(c->v.pubKey));
+}
+
+MsgRoute DemoMesh::repeaterRoute(int hops) const {
+  uint8_t path[64];
+  int n = 0;
+  for (auto& c : _contacts) {
+    if (c.v.type == CONTACT_REPEATER && n < hops) path[n++] = c.v.pubKey[0];
+  }
+  MsgRoute r;
+  r.set(PATH_TAKEN, (uint8_t)n, path);
+  return r;
+}
+
+void DemoMesh::receive(const std::string& sender, const std::string& text, const MsgRoute* route) {
   hear(sender, 6.5f);
   ConvKey k = keyFromName(ConvKey::DIRECT, sender);
   Contact* c = findMut(k);
@@ -124,6 +143,10 @@ void DemoMesh::receive(const std::string& sender, const std::string& text) {
   m.state = MSG_RECEIVED;
   m.snrX4 = 26;
   m.hops = c ? std::max<int>(0, c->v.hops) : 1;
+  m.rssi = -96;
+  m.routeType = wire::ROUTE_FLOOD;
+  m.route = route ? *route : repeaterRoute(m.hops);
+  if (route) m.hops = (uint8_t)route->view().hops();
   utf8Copy(m.text, sizeof(m.text), text.c_str());
   _store.append(k, sender.c_str(), m, true);
   _rx++;
@@ -132,7 +155,8 @@ void DemoMesh::receive(const std::string& sender, const std::string& text) {
   logf("rx %s: %s", sender.c_str(), text.c_str());
 }
 
-void DemoMesh::receiveChannel(const std::string& channel, const std::string& sender, const std::string& text) {
+void DemoMesh::receiveChannel(const std::string& channel, const std::string& sender, const std::string& text,
+                              const MsgRoute* route) {
   ConvKey k = keyByName(channel);
   if (!k.valid() || k.kind != ConvKey::CHANNEL) {
     logf("rx on unknown channel %s ignored (not joined)", channel.c_str());
@@ -143,6 +167,10 @@ void DemoMesh::receiveChannel(const std::string& channel, const std::string& sen
   m.state = MSG_RECEIVED;
   m.snrX4 = 18;
   m.hops = 2;
+  m.rssi = -101;
+  m.routeType = wire::ROUTE_FLOOD;
+  m.route = route ? *route : repeaterRoute(m.hops);
+  if (route) m.hops = (uint8_t)route->view().hops();
   utf8Copy(m.sender, sizeof(m.sender), sender.c_str());
   utf8Copy(m.text, sizeof(m.text), text.c_str());
   _store.append(k, channel.c_str(), m, true);
@@ -161,6 +189,8 @@ void DemoMesh::transmit(Pending& p, StoredMsg& m) {
   m.attempt++;
   Contact* c = findMut(p.key);
   m.state = (c && c->v.hops >= 0) ? MSG_SENT_DIRECT : MSG_SENT_FLOOD;
+  if (m.state == MSG_SENT_DIRECT) m.route = c->v.route;
+  else m.route = MsgRoute();
   p.deadline = _sys.millis() + 4000;
   p.ackAt = netAcks ? _sys.millis() + netDelayMs : 0;
   sentPackets++;

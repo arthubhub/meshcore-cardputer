@@ -7,14 +7,20 @@
 #include "../../core/drivers/FlashFsProbe.h"
 #include "../../core/drivers/FloodOptions.h"
 #include "../../core/drivers/GpsLink.h"
+#include "../../core/drivers/MapProjection.h"
 #include "../../core/drivers/NodeDiscovery.h"
 #include "../../core/drivers/PacketLog.h"
+#include "../../core/drivers/RouteResolver.h"
 #include "../../core/drivers/Pi4ioe.h"
 #include "../../core/drivers/Tca8418.h"
+#include "../../core/drivers/TileGrid.h"
+#include "../../core/drivers/TileRasterizer.h"
 #include "../fakes/FakeGpsUart.h"
 #include "../fakes/FakeI2c.h"
 
 #include <functional>
+#include <map>
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 #include <string>
@@ -884,20 +890,600 @@ TEST(packet_log_csv) {
   CHECK_EQ(commas, got);
 }
 
-TEST(path_hashes_text) {
+// ============================================================ PathView, routes in messages (MESSAGING-10)
+
+TEST(path_view_reads_each_size) {
+  const uint8_t p[] = {0xA1, 0xB2, 0xC3, 0xD4, 0xE5, 0xF6};
+  PathView one(3, p, sizeof(p));
+  CHECK_EQ(one.hops(), 3);
+  CHECK_EQ(one.hashBytes(), 1);
+  CHECK_EQ(one.hash(2)[0], 0xC3);
+  PathView two((1 << 6) | 2, p, sizeof(p));
+  CHECK_EQ(two.hops(), 2);
+  CHECK_EQ(two.hashBytes(), 2);
+  CHECK_EQ(two.hash(1)[1], 0xD4);
+  PathView three((2 << 6) | 2, p, sizeof(p));
+  CHECK_EQ(three.hash(1)[2], 0xF6);
+  CHECK(!three.truncated());
+  PathView reserved((3 << 6) | 1, p, sizeof(p));
+  CHECK(!reserved.validSize());
+  CHECK_EQ(reserved.heldHops(), 0);
+  PathView none(2, nullptr, 8);
+  CHECK_EQ(none.heldHops(), 0);
+  CHECK(none.truncated());
+}
+
+TEST(path_view_text) {
   const uint8_t p[] = {0xA1, 0xB2, 0xC3, 0xD4};
   char out[32];
-  formatPathHashes(p, sizeof(p), 0, 1, out, sizeof(out));
+  PathView(0, p, sizeof(p)).format(out, sizeof(out));
   CHECK(strcmp(out, "") == 0);
-  formatPathHashes(p, sizeof(p), 3, 1, out, sizeof(out));
+  PathView(3, p, sizeof(p)).format(out, sizeof(out));
   CHECK(strcmp(out, "a1>b2>c3") == 0);
-  formatPathHashes(p, sizeof(p), 2, 2, out, sizeof(out));
+  PathView((1 << 6) | 2, p, sizeof(p)).format(out, sizeof(out));
   CHECK(strcmp(out, "a1b2>c3d4") == 0);
-  formatPathHashes(p, sizeof(p), 5, 1, out, sizeof(out));   // more hops than the bytes kept
+  PathView(5, p, sizeof(p)).format(out, sizeof(out));       // more hops than the bytes held
   CHECK(strcmp(out, "a1>b2>c3>d4..") == 0);
   char tiny[8];
-  formatPathHashes(p, sizeof(p), 4, 1, tiny, sizeof(tiny));
+  PathView(4, p, sizeof(p)).format(tiny, sizeof(tiny));
   CHECK(strlen(tiny) < sizeof(tiny));
+  CHECK(strstr(tiny, "..") != nullptr);
+}
+
+TEST(route_copies_and_reverses) {
+  const uint8_t p[] = {0xA1, 0xB2, 0xC3, 0xD4, 0xE5, 0xF6};
+  MsgRoute r;
+  CHECK(!r.known());
+  r.set(PATH_TAKEN, (1 << 6) | 3, p);
+  CHECK(r.known() && r.kind == PATH_TAKEN);
+  CHECK_EQ(r.view().hops(), 3);
+  CHECK_EQ(r.view().hash(2)[1], 0xF6);
+  r.setReversed(PATH_PLANNED, (1 << 6) | 3, p);    // entries reverse, the bytes of each ID do not
+  CHECK_EQ(r.view().hash(0)[0], 0xE5);
+  CHECK_EQ(r.view().hash(0)[1], 0xF6);
+  CHECK_EQ(r.view().hash(2)[1], 0xB2);
+  r.set(PATH_TAKEN, 0, nullptr);                   // heard directly: a known route of no hop
+  CHECK(r.known());
+  CHECK_EQ(r.view().hops(), 0);
+  r.set(PATH_TAKEN, (3 << 6) | 1, p);              // reserved size
+  CHECK(!r.known());
+  r.set(PATH_TAKEN, 2, nullptr);                   // no data
+  CHECK(!r.known());
+}
+
+TEST(route_longer_than_a_record_is_cut) {
+  uint8_t p[64];
+  for (int i = 0; i < 64; i++) p[i] = (uint8_t)i;
+  MsgRoute r;
+  r.set(PATH_TAKEN, 40, p);
+  CHECK_EQ(r.view().hops(), 40);
+  CHECK_EQ(r.view().heldHops(), MSG_PATH_MAX);
+  CHECK(r.view().truncated());
+  CHECK_EQ(r.view().hash(31)[0], 31);              // from the sender on
+  r.set(PATH_TAKEN, (2 << 6) | 21, p);             // 3 bytes: 63 bytes in the packet, 10 hops held
+  CHECK_EQ(r.view().heldHops(), 10);
+  CHECK_EQ(r.view().hash(9)[2], 29);
+  r.setReversed(PATH_PLANNED, 40, p);              // reversed: starts at the far end of the source
+  CHECK_EQ(r.view().hash(0)[0], 39);
+  CHECK_EQ(r.view().hash(31)[0], 8);
+}
+
+// ============================================================ MessageStore
+
+class MemoryStorage : public Storage {
+public:
+  bool read(const char* path, uint32_t off, void* buf, uint32_t len) override {
+    auto it = files.find(path);
+    if (it == files.end() || off + len > it->second.size()) return false;
+    memcpy(buf, it->second.data() + off, len);
+    return true;
+  }
+  bool write(const char* path, uint32_t off, const void* buf, uint32_t len) override {
+    std::vector<uint8_t>& f = files[path];
+    if (f.size() < off + len) f.resize(off + len);
+    memcpy(f.data() + off, buf, len);
+    return true;
+  }
+  bool remove(const char* path) override { return files.erase(path) > 0; }
+  std::map<std::string, std::vector<uint8_t>> files;
+};
+
+static ConvKey directConv(uint8_t b) {
+  ConvKey k;
+  k.kind = ConvKey::DIRECT;
+  k.id[0] = b;
+  return k;
+}
+
+TEST(store_keeps_the_route_of_a_message) {
+  MemoryStorage disk;
+  MessageStore st;
+  st.begin(&disk);
+  StoredMsg m;
+  m.rssi = -113;
+  m.routeType = wire::ROUTE_FLOOD;
+  const uint8_t path[] = {0xA1, 0xB2};
+  m.route.set(PATH_TAKEN, 2, path);
+  strcpy(m.text, "hi");
+  ConvKey k = directConv(1);
+  CHECK(st.append(k, "Bob", m, true) == 0);
+  CHECK(st.flush());
+
+  MessageStore reloaded;               // after a restart
+  reloaded.begin(&disk);
+  StoredMsg r;
+  CHECK(reloaded.read(k, 0, r));
+  CHECK(r.route.kind == PATH_TAKEN);
+  CHECK_EQ(r.route.view().hash(1)[0], 0xB2);
+  CHECK_EQ(r.rssi, -113);
+  CHECK(strcmp(r.text, "hi") == 0);
+}
+
+TEST(store_ring_keeps_the_newest_routes) {
+  MemoryStorage disk;
+  MessageStore st;
+  st.begin(&disk);
+  ConvKey k = directConv(2);
+  for (int i = 0; i < MessageStore::MAX_MSGS + 3; i++) {
+    StoredMsg m;
+    uint8_t path[1] = {(uint8_t)i};
+    m.route.set(PATH_TAKEN, 1, path);
+    CHECK(st.append(k, "Bob", m, false) == i);
+  }
+  StoredMsg out[2];
+  CHECK_EQ(st.loadRecent(k, out, 2, 0), 2);
+  CHECK_EQ(out[1].route.view().hash(0)[0], MessageStore::MAX_MSGS + 2);
+  CHECK_EQ(out[0].route.view().hash(0)[0], MessageStore::MAX_MSGS + 1);
+}
+
+TEST(store_clears_the_older_format) {
+  MemoryStorage disk;
+  // What the previous firmware left: its index, two ring files, and the other files of the partition
+  struct { uint32_t magic, recordSize, count; } header = {0x31495043, (uint32_t)sizeof(ConvMeta), 2};
+  ConvMeta metas[2];
+  metas[0].key = directConv(3);
+  metas[1].key = directConv(4);
+  disk.write("/mindex", 0, &header, sizeof(header));
+  disk.write("/mindex", sizeof(header), metas, sizeof(metas));
+  char a[24], b[24];
+  metas[0].key.path(a, sizeof(a));
+  metas[1].key.path(b, sizeof(b));
+  disk.write(a, 0, "old", 3);
+  disk.write(b, 0, "old", 3);
+  disk.write("/contacts.cp", 0, "keep", 4);
+
+  MessageStore st;
+  st.begin(&disk);
+  CHECK_EQ(st.count(), 0);
+  CHECK(!disk.files.count(a) && !disk.files.count(b) && !disk.files.count("/mindex"));
+  CHECK(disk.files.count("/contacts.cp"));
+  StoredMsg m;
+  CHECK(st.append(directConv(3), "Bob", m, false) == 0);   // and it works afterwards
+}
+
+TEST(store_replaces_a_ring_file_of_another_format) {
+  MemoryStorage disk;
+  ConvKey k = directConv(5);
+  char path[24];
+  k.path(path, sizeof(path));
+  uint32_t old[4] = {0x314D5043, 7, 196, 64};              // no index, an orphan file
+  disk.write(path, 0, old, sizeof(old));
+  disk.write(path, 5000, "x", 1);
+  MessageStore st;
+  st.begin(&disk);
+  StoredMsg m;
+  CHECK(st.append(k, "Bob", m, false) == 0);               // numbering does not continue from the orphan
+  CHECK_EQ(st.total(k), 1u);
+}
+
+TEST(store_capacity_follows_the_flash) {
+  MessageStore st;
+  CHECK(MessageStore::FLASH_KB_PER_CONV * 1024 > MessageStore::MAX_MSGS * (int)sizeof(StoredMsg));
+  st.setCapacityFromFlash(5500);       // the 5.4 MB partition
+  CHECK_EQ(st.capacity(), MessageStore::MAX_CONVS);
+  st.setCapacityFromFlash(500);        // what a launcher may leave: fewer conversations
+  CHECK_EQ(st.capacity(), (500 - MessageStore::RESERVED_FLASH_KB) / MessageStore::FLASH_KB_PER_CONV);
+  st.setCapacityFromFlash(10);
+  CHECK_EQ(st.capacity(), 4);
+}
+
+// ============================================================ NodeLookup, RouteResolver (MESSAGING-10)
+
+class FakeNodes : public NodeDirectory {
+public:
+  int contactCount() override { return (int)nodes.size(); }
+  bool contactAt(int i, ContactView& out) override { out = nodes[i]; return true; }
+  void add(const char* name, uint8_t k0, uint8_t k1, uint8_t type, bool hasPos = false, double lat = 0, double lon = 0) {
+    ContactView c{};
+    utf8Copy(c.name, sizeof(c.name), name);
+    c.pubKey[0] = k0;
+    c.pubKey[1] = k1;
+    c.key.kind = ConvKey::DIRECT;
+    c.key.id[0] = (uint8_t)nodes.size();
+    c.type = type;
+    c.hasPos = hasPos;
+    c.latE6 = (int32_t)(lat * 1e6);
+    c.lonE6 = (int32_t)(lon * 1e6);
+    nodes.push_back(c);
+  }
+  std::vector<ContactView> nodes;
+};
+
+TEST(node_lookup_returns_every_candidate) {
+  FakeNodes d;
+  d.add("Alpha", 0xA1, 0x01, CONTACT_REPEATER);
+  d.add("Beta", 0xA1, 0x02, CONTACT_REPEATER);
+  d.add("Person", 0xA1, 0x03, CONTACT_CHAT);
+  d.add("Room", 0xA1, 0x04, CONTACT_ROOM);
+  d.add("Gamma", 0xB2, 0x05, CONTACT_REPEATER);
+  NodeLookup look(d);
+  NodeMatch m[2];
+  const uint8_t a1[] = {0xA1, 0x02}, none[] = {0xCC};
+  CHECK_EQ(look.find(a1, 1, NodeLookup::Kind::Relay, m, 2), 3);     // more than it can return, and it says so
+  CHECK(strcmp(m[1].name, "Beta") == 0);
+  CHECK_EQ(look.find(a1, 1, NodeLookup::Kind::Any, m, 2), 4);       // a person does not relay
+  CHECK_EQ(look.find(a1, 2, NodeLookup::Kind::Relay, m, 2), 1);     // two bytes settle it
+  CHECK_EQ(look.find(none, 1, NodeLookup::Kind::Any, m, 2), 0);
+  char name[16] = "";
+  CHECK(look.uniqueName(a1, 2, NodeLookup::Kind::Relay, name, sizeof(name)));
+  CHECK(strcmp(name, "Beta") == 0);
+  CHECK(!look.uniqueName(a1, 1, NodeLookup::Kind::Relay, name, sizeof(name)));
+}
+
+static RouteEndpoint endpoint(const char* name, bool hasPos = false, double lat = 0, double lon = 0) {
+  RouteEndpoint e;
+  e.name = name;
+  e.hasPos = hasPos;
+  e.lat = lat;
+  e.lon = lon;
+  return e;
+}
+
+static MsgRoute takenRoute(std::vector<uint8_t> bytes, int hops, int hashBytes = 1) {
+  MsgRoute r;
+  r.set(PATH_TAKEN, (uint8_t)(((hashBytes - 1) << 6) | hops), bytes.data());
+  return r;
+}
+
+TEST(route_points_keep_the_travel_order) {
+  FakeNodes d;
+  d.add("Near", 0x11, 0, CONTACT_REPEATER, true, 43.6, 1.4);
+  d.add("Far", 0x22, 0, CONTACT_REPEATER, true, 43.7, 1.5);
+  static ResolvedRoute r;
+  RouteResolver(d).resolve(takenRoute({0x22, 0x11}, 2), endpoint("Bob", true, 43.8, 1.6), endpoint("Me", true, 43.5, 1.3), r);
+  CHECK_EQ(r.count, 4);
+  CHECK(strcmp(r.points[0].name, "Bob") == 0 && r.points[0].state == HopState::Endpoint);
+  CHECK(strcmp(r.points[1].name, "Far") == 0 && r.points[1].state == HopState::Single);
+  CHECK(strcmp(r.points[2].name, "Near") == 0);
+  CHECK(strcmp(r.points[3].name, "Me") == 0);
+  CHECK_EQ(r.placed, 2);
+  CHECK_EQ(r.ambiguous, 0);
+  CHECK_EQ(r.unknown, 0);
+  CHECK(r.kind == PATH_TAKEN);
+}
+
+TEST(route_unknown_hops_and_missing_positions) {
+  FakeNodes d;
+  d.add("NoPosition", 0x11, 0, CONTACT_REPEATER);
+  static ResolvedRoute r;
+  RouteResolver(d).resolve(takenRoute({0x11, 0x99}, 2), endpoint("Bob"), endpoint("Me"), r);
+  CHECK(r.points[1].state == HopState::Single && !r.points[1].hasPos);
+  CHECK(strcmp(r.points[1].name, "NoPosition") == 0);
+  CHECK(r.points[2].state == HopState::Unknown && !r.points[2].hasPos);
+  CHECK_EQ(r.points[2].hash[0], 0x99);
+  CHECK_EQ(r.placed, 0);
+  CHECK_EQ(r.unknown, 1);
+}
+
+TEST(route_ambiguous_hop_takes_the_candidate_on_the_way) {
+  FakeNodes d;
+  d.add("Lille", 0x11, 0, CONTACT_REPEATER, true, 50.63, 3.06);      // the same ID, far away
+  d.add("Colomiers", 0x11, 1, CONTACT_REPEATER, true, 43.61, 1.33);
+  static ResolvedRoute r;
+  RouteResolver(d).resolve(takenRoute({0x11}, 1), endpoint("Bob", true, 43.60, 1.44), endpoint("Me", true, 43.62, 1.20), r);
+  CHECK(r.points[1].state == HopState::Ambiguous);
+  CHECK(strcmp(r.points[1].name, "Colomiers") == 0);
+  CHECK(r.points[1].hasPos);
+  CHECK_EQ(r.points[1].candidates, 2);
+  CHECK_EQ(r.ambiguous, 1);
+  CHECK_EQ(r.placed, 1);
+}
+
+TEST(route_ambiguous_hops_in_a_row_follow_each_other) {
+  FakeNodes d;
+  d.add("West", 0x11, 0, CONTACT_REPEATER, true, 43.6, 1.0);
+  d.add("Paris", 0x11, 1, CONTACT_REPEATER, true, 48.8, 2.3);
+  d.add("Middle", 0x22, 0, CONTACT_REPEATER, true, 43.6, 1.1);
+  d.add("Lyon", 0x22, 1, CONTACT_REPEATER, true, 45.7, 4.8);
+  static ResolvedRoute r;
+  RouteResolver(d).resolve(takenRoute({0x11, 0x22}, 2), endpoint("Bob", true, 43.6, 0.9), endpoint("Me", false), r);
+  CHECK(strcmp(r.points[1].name, "West") == 0);
+  CHECK(strcmp(r.points[2].name, "Middle") == 0);    // close to the choice made just before
+}
+
+TEST(route_ambiguous_hop_with_nothing_to_compare) {
+  FakeNodes d;
+  d.add("NoPos", 0x11, 0, CONTACT_REPEATER);
+  d.add("First", 0x11, 1, CONTACT_REPEATER, true, 43.6, 1.0);
+  d.add("Second", 0x11, 2, CONTACT_REPEATER, true, 44.0, 2.0);
+  static ResolvedRoute r;
+  RouteResolver(d).resolve(takenRoute({0x11}, 1), endpoint("Bob"), endpoint("Me"), r);
+  CHECK(strcmp(r.points[1].name, "First") == 0);     // a stable choice, still shown as ambiguous
+  CHECK(r.points[1].state == HopState::Ambiguous);
+  CHECK_EQ(r.points[1].candidates, 3);
+  FakeNodes blind;
+  blind.add("A", 0x11, 0, CONTACT_REPEATER);
+  blind.add("B", 0x11, 1, CONTACT_REPEATER);
+  RouteResolver(blind).resolve(takenRoute({0x11}, 1), endpoint("Bob"), endpoint("Me"), r);
+  CHECK(r.points[1].state == HopState::Ambiguous && !r.points[1].hasPos);
+  CHECK_EQ(r.placed, 0);
+}
+
+TEST(route_two_byte_ids_are_not_confused) {
+  FakeNodes d;
+  d.add("A", 0x11, 0xAA, CONTACT_REPEATER, true, 43.6, 1.0);
+  d.add("B", 0x11, 0xBB, CONTACT_REPEATER, true, 44.0, 2.0);
+  static ResolvedRoute r;
+  RouteResolver(d).resolve(takenRoute({0x11, 0xBB}, 1, 2), endpoint("Bob"), endpoint("Me"), r);
+  CHECK(r.points[1].state == HopState::Single);
+  CHECK(strcmp(r.points[1].name, "B") == 0);
+}
+
+TEST(route_without_hops_or_cut_short) {
+  FakeNodes d;
+  static ResolvedRoute r;
+  MsgRoute none;
+  RouteResolver(d).resolve(none, endpoint("Bob"), endpoint("Me"), r);
+  CHECK_EQ(r.count, 2);                 // the two ends, no hop
+  CHECK(r.kind == PATH_NONE);
+  CHECK_EQ(r.hops, 0);
+  std::vector<uint8_t> many(64, 0x55);
+  RouteResolver(d).resolve(takenRoute(many, 40), endpoint("Bob"), endpoint("Me"), r);
+  CHECK_EQ(r.hops, 40);
+  CHECK_EQ(r.notHeld, 40 - MSG_PATH_MAX);
+  CHECK_EQ(r.count, ResolvedRoute::MAX_POINTS);
+  CHECK_EQ(r.unknown, MSG_PATH_MAX);
+}
+
+// ============================================================ Map geometry (MAP-6)
+
+TEST(zoom_range_around_the_levels_on_the_card) {
+  TileGrid g(240, 111);
+  CHECK_EQ(g.maxZoom(), TileGrid::NO_TILES_MAX_ZOOM);    // no card: markers on the grid
+  CHECK(!g.hasDataAt(14));
+  g.setLevels(12, 15);
+  CHECK_EQ(g.maxZoom(), 17);
+  CHECK_EQ(g.clampZoom(99), 17);
+  CHECK_EQ(g.clampZoom(-4), TileGrid::MIN_ZOOM);
+  CHECK(!g.hasDataAt(9));
+  CHECK(g.hasDataAt(10));
+  CHECK(g.hasDataAt(17));
+  CHECK_EQ(g.shiftAt(13), 0);
+  CHECK_EQ(g.shiftAt(16), 1);
+  CHECK_EQ(g.shiftAt(17), 2);
+  CHECK_EQ(g.shiftAt(11), -1);
+  CHECK_EQ(g.shiftAt(10), -2);
+  CHECK_EQ(g.shiftAt(9), 0);
+  g.setNoLevels();
+  CHECK_EQ(g.maxZoom(), TileGrid::NO_TILES_MAX_ZOOM);
+}
+
+// Every pixel of the screen belongs to exactly one piece, at any position and scale
+static void checkCoverage(TileGrid& g, double left, double top, int z) {
+  static int seen[111][240];
+  memset(seen, 0, sizeof(seen));
+  g.begin(left, top, z);
+  TileBlit b;
+  int pieces = 0;
+  while (g.next(b)) {
+    CHECK(++pieces < 100);
+    for (int y = b.screenY; y < b.screenY + b.h; y++)
+      for (int x = b.screenX; x < b.screenX + b.w; x++) {
+        CHECK(x >= 0 && x < 240 && y >= 0 && y < 111);
+        seen[y][x]++;
+      }
+  }
+  for (auto& row : seen) for (int v : row) if (v != 1) { CHECK_EQ(v, 1); return; }
+}
+
+TEST(tile_pieces_cover_the_screen_once) {
+  TileGrid g(240, 111);
+  g.setLevels(12, 15);
+  const double N[][2] = {{0, 0}, {7.5, 3.25}, {255.9, 255.9}, {-100.2, -30.1}, {64, 64}, {1000000.3, 999999.7}};
+  for (auto& p : N) for (int z : {9, 10, 11, 12, 15, 16, 17}) checkCoverage(g, p[0], p[1], z);
+}
+
+TEST(tile_pieces_at_each_scale) {
+  TileGrid g(240, 111);
+  g.setLevels(12, 15);
+  TileBlit b;
+  // native: global pixel 2560 is the start of tile 10
+  g.begin(2560, 2560, 14);
+  CHECK(g.next(b));
+  CHECK(b.hasData && b.z == 14 && b.x == 10 && b.y == 10 && b.shift == 0 && b.w == 240 && b.h == 111);
+  // enlarged twice from level 15: tile 5 of level 15 starts at pixel 5 * 1024 of level 17
+  g.begin(5 * 1024 + 100, 7 * 1024, 17);
+  CHECK(g.next(b));
+  CHECK(b.z == 15 && b.x == 5 && b.y == 7 && b.shift == 2 && b.localX == 100 && b.localY == 0);
+  // reduced twice from level 12: each tile is 64 pixels wide on the screen
+  g.begin(64 * 3, 64 * 2, 10);
+  CHECK(g.next(b));
+  CHECK(b.z == 12 && b.x == 3 && b.y == 2 && b.shift == -2 && b.w == 64 && b.h == 64);
+  // no data: the same walk, in plain tiles of that zoom
+  g.begin(0, 0, 9);
+  CHECK(g.next(b));
+  CHECK(!b.hasData && b.w == 240 && b.h == 111);
+}
+
+TEST(tile_pieces_at_the_edges_of_the_world) {
+  TileGrid g(240, 111);
+  g.setLevels(3, 5);
+  TileBlit b;
+  g.begin(-100, -50, 3);
+  bool wrapped = false, above = false;
+  while (g.next(b)) {
+    if (b.x == 7) wrapped = true;        // left of tile 0: the world wraps
+    if (b.y < 0) { above = true; CHECK(!b.hasData); }
+    CHECK(b.x >= 0 && b.x < 8);
+  }
+  CHECK(wrapped && above);
+  g.begin(0, 8 * 256 - 10, 3);
+  bool below = false;
+  while (g.next(b)) if (b.y >= 8) { below = true; CHECK(!b.hasData); }
+  CHECK(below);
+}
+
+// A tile whose pixels say where they are: value = column + 256 * (row & 0xFF)
+class CountingTiles : public TileSource {
+public:
+  bool available() override { return true; }
+  bool zoomRange(int&, int&) override { return true; }
+  bool hint(double&, double&) override { return false; }
+  bool beginTile(int z, int x, int y) override { opened++; open = !missing; return open; }
+  bool readRow(int row, int x0, int w, uint16_t* dst) override {
+    reads++;
+    CHECK(open && row >= 0 && row < 256 && x0 >= 0 && x0 + w <= 256 && w > 0);
+    if (failAt >= 0 && reads > failAt) return false;
+    for (int i = 0; i < w; i++) dst[i] = (uint16_t)((x0 + i) + 256 * row);
+    return true;
+  }
+  void endTile() override { closed++; open = false; }
+  bool missing = false, open = false;
+  int opened = 0, closed = 0, reads = 0, failAt = -1;
+};
+
+class CapturedRows : public RowSink {
+public:
+  void row(int x, int y, int w, const uint16_t* p) override {
+    for (int i = 0; i < w; i++) px[y][x + i] = p[i];
+    rows++;
+  }
+  uint16_t px[256][256] = {};
+  int rows = 0;
+};
+
+static TileBlit wholePiece(int shift, int w, int h, int localX, int localY) {
+  TileBlit b;
+  b.hasData = true;
+  b.shift = shift;
+  b.w = w;
+  b.h = h;
+  b.localX = localX;
+  b.localY = localY;
+  return b;
+}
+
+TEST(rasterizer_native_scale) {
+  CountingTiles t;
+  TileRasterizer r;
+  CapturedRows out;
+  CHECK(r.draw(t, wholePiece(0, 100, 50, 10, 20), out));
+  CHECK_EQ(out.px[0][0], 10 + 256 * 20);
+  CHECK_EQ(out.px[49][99], 109 + 256 * 69);
+  CHECK_EQ(t.reads, 50);
+  CHECK_EQ(t.closed, 1);
+}
+
+TEST(rasterizer_enlarges_and_reads_each_row_once) {
+  CountingTiles t;
+  TileRasterizer r;
+  CapturedRows out;
+  CHECK(r.draw(t, wholePiece(2, 100, 40, 6, 0), out));    // local 6 = tile pixel 1, shown 4 times
+  CHECK_EQ(out.px[0][0], 1);
+  CHECK_EQ(out.px[0][1], 1);
+  CHECK_EQ(out.px[0][2], 2);       // local 8
+  CHECK_EQ(out.px[3][0], 1);
+  CHECK_EQ(out.px[4][0], 1 + 256);
+  CHECK_EQ(out.rows, 40);
+  CHECK_EQ(t.reads, 10);           // 40 rows on the screen, 10 on the card
+}
+
+TEST(rasterizer_reduces) {
+  CountingTiles t;
+  TileRasterizer r;
+  CapturedRows out;
+  CHECK(r.draw(t, wholePiece(-2, 64, 64, 0, 0), out));
+  CHECK_EQ(out.px[0][1], 4);
+  CHECK_EQ(out.px[1][0], 4 * 256);
+  CHECK_EQ(out.px[63][63], 252 + 256 * 252);
+  CHECK_EQ(t.reads, 64);
+}
+
+TEST(rasterizer_missing_tile_and_read_error) {
+  TileRasterizer r;
+  CapturedRows out;
+  CountingTiles none;
+  none.missing = true;
+  CHECK(!r.draw(none, wholePiece(0, 10, 10, 0, 0), out));
+  CHECK_EQ(out.rows, 0);
+  TileBlit noData = wholePiece(0, 10, 10, 0, 0);
+  noData.hasData = false;
+  CountingTiles t;
+  CHECK(!r.draw(t, noData, out));
+  CHECK_EQ(t.opened, 0);           // nothing touched the card
+  CountingTiles bad;
+  bad.failAt = 3;
+  CHECK(!r.draw(bad, wholePiece(0, 10, 10, 0, 0), out));
+  CHECK_EQ(bad.closed, 1);         // the file is closed even on error
+}
+
+TEST(projection_clips_lines) {
+  MapProjection p(10, 0, 0, 240, 111);
+  double x0 = 10, y0 = 10, x1 = 100, y1 = 50;
+  CHECK(p.clip(x0, y0, x1, y1));   // inside: unchanged
+  CHECK(x0 == 10 && y1 == 50);
+  x0 = -100; y0 = 50; x1 = 340; y1 = 50;
+  CHECK(p.clip(x0, y0, x1, y1));   // crosses the view
+  CHECK(x0 == 0 && x1 == 239 && y0 == 50);
+  x0 = -10; y0 = -10; x1 = -5; y1 = 500;
+  CHECK(!p.clip(x0, y0, x1, y1));  // stays on one side
+  x0 = -1e7; y0 = -1e7; x1 = 1e7; y1 = 1e7;   // far beyond any 16-bit coordinate
+  CHECK(p.clip(x0, y0, x1, y1));
+  CHECK(x0 >= 0 && y0 >= 0 && x1 <= 239 && y1 <= 110);
+  x0 = 300; y0 = -100; x1 = 400; y1 = -50;
+  CHECK(!p.clip(x0, y0, x1, y1));
+  x0 = 500; y0 = 500; x1 = 500; y1 = 500;     // one point, outside
+  CHECK(!p.clip(x0, y0, x1, y1));
+}
+
+TEST(projection_places_a_position) {
+  double px, py;
+  geo::toPixel(43.6, 1.44, 12, px, py);
+  MapProjection p(12, px - 120, py - 55, 240, 111);
+  double x, y;
+  p.toView(43.6, 1.44, x, y);
+  CHECK(fabs(x - 120) < 1e-6 && fabs(y - 55) < 1e-6);
+}
+
+TEST(bounds_fit_a_route) {
+  geo::Bounds b;
+  CHECK(b.empty());
+  b.add(43.60, 1.44);
+  CHECK(!b.empty());
+  CHECK_EQ(b.fitZoom(240, 111, 10, 3, 17), 17);        // one point: as close as allowed
+  b.add(43.70, 1.34);
+  b.add(43.65, 1.40);                                  // inside: changes nothing
+  int z = b.fitZoom(240, 111, 10, 3, 17);
+  double x0, y0, x1, y1;
+  geo::toPixel(43.70, 1.34, z, x0, y0);
+  geo::toPixel(43.60, 1.44, z, x1, y1);
+  CHECK(x1 - x0 <= 220 && y1 - y0 <= 91);              // fits...
+  geo::toPixel(43.70, 1.34, z + 1, x0, y0);
+  geo::toPixel(43.60, 1.44, z + 1, x1, y1);
+  CHECK(x1 - x0 > 220 || y1 - y0 > 91);                // ...and not one level closer
+  double lat, lon;
+  b.center(lat, lon);
+  CHECK(fabs(lon - 1.39) < 1e-6);
+  CHECK(lat > 43.64 && lat < 43.66);
+  geo::Bounds world;
+  world.add(-70, -170);
+  world.add(70, 170);
+  CHECK_EQ(world.fitZoom(240, 111, 10, 3, 17), 3);     // never below the minimum
+  geo::Bounds both, none;
+  both.add(b);
+  both.add(none);
+  both.add(10, 10);
+  CHECK_EQ(both.fitZoom(240, 111, 10, 3, 17), 3);
 }
 
 // ============================================================ main

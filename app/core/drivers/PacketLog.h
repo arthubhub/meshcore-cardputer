@@ -3,6 +3,7 @@
 // MeshCore here, and against MeshCore's real packets in sim/wire. Fixed ring in RAM, nothing is ever allocated.
 #include <stddef.h>
 #include <stdint.h>
+#include "PathView.h"
 
 namespace wire {
 // MeshCore packet header (meshcore/src/Packet.h). sim/wire checks these against MeshCore's own values.
@@ -82,7 +83,3 @@ private:
   PacketRecord _r[CAPACITY];
   uint32_t _total = 0;
 };
-
-// Hex path "a1>b2>c3" of `hops` entries of `hashBytes` bytes each, read from at most `pathCap` bytes.
-// A route that does not fit ends with "..".
-void formatPathHashes(const uint8_t* path, size_t pathCap, int hops, int hashBytes, char* out, size_t n);

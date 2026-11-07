@@ -1,5 +1,6 @@
 #include "MessagingScreens.h"
 #include "GpsScreens.h"
+#include "RouteScreen.h"
 #include "../Geo.h"
 #include <stdio.h>
 #include <string.h>
@@ -489,14 +490,19 @@ int MessageDetailScreen::fillRows(App& app, const char** labels, char (*v)[48]) 
     snprintf(row(tr("Status", "État")), 48, "%s", deliveryStatus(_m, &color));
     if (!channel) {
       snprintf(row(tr("Attempts", "Essais")), 48, "%u", _m.attempt);
-      if (_m.state == MSG_SENT_DIRECT || _m.state == MSG_SENT_FLOOD) {
-        snprintf(row("Route"), 48, "%s", _m.state == MSG_SENT_DIRECT ? "direct" : "flood");
-      }
     }
   } else {
     if (_m.hops == 0xFF) snprintf(row(tr("Hops", "Sauts")), 48, "%s", tr("unknown", "inconnu"));
     else hopsLabel((int8_t)_m.hops, row(tr("Hops", "Sauts")), 48);
-    snprintf(row("SNR"), 48, "%.1f dB", _m.snrX4 / 4.0f);
+    if (_m.rssi) snprintf(row("Signal"), 48, "%.1f dB  %d dBm", _m.snrX4 / 4.0f, _m.rssi);
+    else snprintf(row("Signal"), 48, "%.1f dB", _m.snrX4 / 4.0f);
+  }
+  if (_m.route.known()) {
+    char* out = row(_m.route.kind == PATH_PLANNED ? tr("Route, planned", "Route prévue") : "Route");
+    if (_m.route.view().hops()) _m.route.view().format(out, 48);
+    else snprintf(out, 48, "direct");
+  } else if (!channel || !_m.outgoing) {
+    snprintf(row("Route"), 48, "%s", _m.state == MSG_SENT_FLOOD ? "flood" : tr("unknown", "inconnue"));
   }
   ContactView c;
   int matches = 0;
@@ -512,6 +518,32 @@ int MessageDetailScreen::fillRows(App& app, const char** labels, char (*v)[48]) 
   return n;
 }
 
+void MessageDetailScreen::openRoute(App& app) {
+  if (!_m.route.known() || !_route) {
+    app.notify(tr("No route for this message", "Pas de route pour ce message"),
+               tr("Floods only show theirs on arrival", "Un flood ne la donne qu'à l'arrivée"), 3000);
+    return;
+  }
+  DeviceStatus st = app.services().sys->status();
+  RouteEndpoint me;
+  me.name = tr("Me", "Moi");
+  me.hasPos = st.hasPosition;
+  me.lat = st.lat;
+  me.lon = st.lon;
+  RouteEndpoint other;
+  other.name = _m.sender[0] ? _m.sender : _convName;
+  ContactView c;
+  int matches = 0;
+  if (findProfile(app, c, &matches) != Link::None && matches == 1) {   // with several, its position would be a guess
+    other.key = c.key;
+    other.hasPos = c.hasPos;
+    other.lat = c.latE6 / 1e6;
+    other.lon = c.lonE6 / 1e6;
+  }
+  _route->show(app, _m.route, _m.outgoing ? me : other, _m.outgoing ? other : me);
+  app.push(_route);
+}
+
 bool MessageDetailScreen::onKey(App& app, const KeyEvent& e) {
   const char* labels[MAX_ROWS];
   char v[MAX_ROWS][48];
@@ -525,6 +557,10 @@ bool MessageDetailScreen::onKey(App& app, const KeyEvent& e) {
       _chat.selectAt(_position);
     }
     return false;
+  }
+  if (e.is('t')) {
+    openRoute(app);
+    return true;
   }
   if (e.code == KeyCode::Enter || e.is('p')) {
     ContactView c;
@@ -629,7 +665,7 @@ void ContactDetailScreen::draw(App& app, lgfx::LovyanGFX& g) {
   } else {
     snprintf(v[6], 48, "%s", c.hasPos ? tr("my position?", "ma position ?") : "-");
   }
-  if (c.hops > 0) formatPathHashes(c.path, sizeof(c.path), c.hops, c.pathHashBytes, v[7], 48);
+  if (c.hops > 0) c.route.view().format(v[7], 48);
   else snprintf(v[7], 48, "-");
   for (int i = 0; i < 8; i++) {
     drawListRow(g, CONTENT_Y + 1 + i * LINE_H, labels[i], v[i], false, i == 0 ? ACCENT : FG, true);

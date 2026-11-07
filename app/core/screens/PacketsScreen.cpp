@@ -1,4 +1,5 @@
 #include "PacketsScreen.h"
+#include "../drivers/NodeLookup.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -19,6 +20,11 @@ void hex(const uint8_t* p, int n, char* out, size_t cap) {
   size_t o = 0;
   out[0] = 0;
   for (int i = 0; i < n && o + 2 < cap; i++) o += snprintf(out + o, cap - o, "%02x", p[i]);
+}
+
+// The name of a node when its ID points to one contact only, else its ID in hex
+void nodeLabel(App& app, const uint8_t* id, int bytes, NodeLookup::Kind kind, char* out, size_t n) {
+  if (!bytes || !NodeLookup(*app.services().mesh).uniqueName(id, bytes, kind, out, n)) hex(id, bytes, out, n);
 }
 
 }  // namespace
@@ -114,9 +120,10 @@ void PacketsScreen::draw(App& app, lgfx::LovyanGFX& g) {
     int k = _list.top + i;
     const PacketRecord* r = log.recent(skip + k);
     if (!r) break;
-    char when[12], from[8], left[40], right[24];
+    char when[12], from[16], left[48], right[24];
     formatTime(app, *r, when, sizeof(when));
-    hex(r->from, r->fromLen, from, sizeof(from));
+    if (r->source == PacketRecord::SRC_NODE) nodeLabel(app, r->from, r->fromLen, NodeLookup::Kind::Any, from, sizeof(from));
+    else hex(r->from, r->fromLen, from, sizeof(from));
     snprintf(left, sizeof(left), "%s %s%s %s", when, r->tx() ? ">" : "", PacketLog::typeName(r->type), from);
     char hops[8];
     if (r->flood()) snprintf(hops, sizeof(hops), "%u", r->hops);
@@ -148,17 +155,18 @@ void PacketDetailScreen::draw(App& app, lgfx::LovyanGFX& g) {
                                                               : tr("direct with region", "direct avec région");
   snprintf(row("Route"), 32, "%s", route);
   snprintf(row(tr("Hops", "Sauts")), 32, tr("%u, ID on %u byte(s)", "%u, ID sur %u octet(s)"), _r.hops, _r.hashBytes);
-  char hexa[12];
+  char hexa[16];
   if (_r.source == PacketRecord::SRC_NONE) {
     snprintf(row(tr("From", "De")), 32, "-");
   } else {
-    hex(_r.from, _r.fromLen, hexa, sizeof(hexa));
+    if (_r.source == PacketRecord::SRC_NODE) nodeLabel(app, _r.from, _r.fromLen, NodeLookup::Kind::Any, hexa, sizeof(hexa));
+    else hex(_r.from, _r.fromLen, hexa, sizeof(hexa));
     if (_r.source == PacketRecord::SRC_CHANNEL) snprintf(row(tr("Channel ID", "ID canal")), 32, "%s", hexa);
     else if (_r.flags & PacketRecord::HAS_TO) snprintf(row(tr("From > to", "De > à")), 32, "%s > %02x", hexa, _r.to);
     else snprintf(row(tr("From", "De")), 32, "%s", hexa);
   }
   if (_r.hops) {
-    hex(_r.lastHop, _r.hashBytes, hexa, sizeof(hexa));
+    nodeLabel(app, _r.lastHop, _r.hashBytes, NodeLookup::Kind::Relay, hexa, sizeof(hexa));
     snprintf(row(tr("Heard via", "Entendu via")), 32, "%s", hexa);
   } else {
     snprintf(row(tr("Heard via", "Entendu via")), 32, "%s", _r.tx() ? "-" : tr("the sender", "l'émetteur"));

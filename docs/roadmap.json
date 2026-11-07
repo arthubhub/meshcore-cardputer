@@ -186,6 +186,17 @@
       "details": "Seen on the device (2026-11-05): keyboard mode decoded 0 to 1 packet per session while phone mode decoded about one every 2-3 minutes. Done: the same RadioMonitor in both firmwares (every packet and error with RSSI/SNR, noise floor, time outside Rx, loop gap), MESH_DEBUG in keyboard mode, and one dummy SPI byte after every SD access so the card releases MISO (sdcard::Lock). Measured afterwards, same place, SD card in: keyboard mode 5 packets + 6 errors in 240 s, phone mode 12 packets + 14 errors in 860 s - the same ~45 % success rate. Every error is readData(-7) (CRC, damaged on air) with RSSI -109 to -114 dBm and SNR -9 to -14.5 dB, none is an SPI failure (-705/-707): the remaining losses are the radio link, at the edge of SF8 sensitivity, not the firmware. The earlier silent sessions are not reproduced; whether the SD fix or chance explains them is not proven, and the monitor stays in place to catch a regression."
     },
     {
+      "id": "VALIDATION-10",
+      "title": "Find and fix the compass bugs",
+      "category": "Validation & bugs",
+      "priority": 1,
+      "size": "M",
+      "status": "backlog",
+      "requested": true,
+      "depends_on": [],
+      "details": "Reported by the project owner on 2026-11-07: the compass has bugs, and how to fix them is still to be found. First list the symptoms on the device, with the serial log: wrong direction, needle not moving, behaviour while standing still or moving slowly, wrong distance. Then find each root cause before changing anything, with a scenario that reproduces it. Known leads, to confirm: the heading only comes from GPS movement, because the BMI270 has no magnetometer (MAP-5), and the distance unit renders as a block in the big font (VALIDATION-4)."
+    },
+    {
       "id": "RELEASE-2",
       "title": "Contribute the Cardputer ADV variant to MeshCore",
       "category": "Release & CI",
@@ -410,9 +421,10 @@
       "requested": true,
       "depends_on": [
         "RADIO-1",
-        "MAP-1"
+        "MAP-1",
+        "MAP-6"
       ],
-      "details": "While hunting, log RSSI with the GPS position and draw coloured dots on the offline map; estimate the likely source area from the strongest readings. Builds on the map and GPS already in place."
+      "details": "While hunting, log RSSI with the GPS position and draw coloured dots on the offline map; estimate the likely source area from the strongest readings. Builds on the map and GPS already in place. Draw it as a MapLayer (MAP-6)."
     },
     {
       "id": "RADIO-3",
@@ -423,9 +435,10 @@
       "status": "backlog",
       "requested": false,
       "depends_on": [
-        "VALIDATION-1"
+        "VALIDATION-1",
+        "MAP-6"
       ],
-      "details": "Send periodic pings to a chosen node, log ACK/no-ACK, RSSI, SNR and position to the SD card (CSV + GPX), and show coverage dots on the map. Useful to every mesh community planning repeaters."
+      "details": "Send periodic pings to a chosen node, log ACK/no-ACK, RSSI, SNR and position to the SD card (CSV + GPX), and show coverage dots on the map. Useful to every mesh community planning repeaters. Draw it as a MapLayer (MAP-6)."
     },
     {
       "id": "RADIO-4",
@@ -569,7 +582,7 @@
       "status": "backlog",
       "requested": false,
       "depends_on": [],
-      "details": "Send a trace to a contact and show each hop with its SNR, so a weak link in a path is visible."
+      "details": "Send a trace to a contact and show each hop with its SNR, so a weak link in a path is visible. RouteResolver and RouteScreen (MAP-7) can show its hops; a trace adds the SNR of each hop, which a stored route does not have."
     },
     {
       "id": "MESSAGING-6",
@@ -617,7 +630,44 @@
       "depends_on": [
         "VALIDATION-1"
       ],
-      "details": "Built, awaiting a test on the device. In a conversation, Fn+; selects the newest message and walks back; Enter opens its details (sender, time, hops, SNR, or delivery state and attempts for your own), and Enter again opens the sender's contact sheet, which now shows the route to that contact. Direct messages link by key. Channel messages only carry a name, so the link is a name match, which says so, reports several matches, and may find nobody. Left out: the route a received message itself took, which needs the path stored with each message and so a new history file format."
+      "details": "Built, awaiting a test on the device. In a conversation, Fn+; selects the newest message and walks back; Enter opens its details (sender, time, hops, SNR, or delivery state and attempts for your own), and Enter again opens the sender's contact sheet, which now shows the route to that contact. Direct messages link by key. Channel messages only carry a name, so the link is a name match, which says so, reports several matches, and may find nobody. The route of the message itself came with MESSAGING-10."
+    },
+    {
+      "id": "MESSAGING-10",
+      "title": "Keep the route of each message",
+      "category": "Messaging",
+      "priority": 1,
+      "size": "M",
+      "status": "in-progress",
+      "requested": true,
+      "depends_on": [],
+      "details": "Built, awaiting a test on the device. Each message record now holds its route (up to 32 bytes: 32 hops with 1 byte IDs, 16 with 2, 10 with 3; longer routes say they were cut) and its RSSI. New file format: the first start after the update erases the older message history and its files; contacts, identity, channels and settings are kept, and an older firmware cannot read the new history. A flood carries the route it took. A direct packet spends its path on the way, so a direct message only has the route stored for that contact, turned around and marked as planned, not as proof. Each record takes about 18 % more flash, so fewer conversations fit on a small partition. PathView reads a path everywhere; NodeLookup finds nodes from an ID, which the packet log already uses for names."
+    },
+    {
+      "id": "MESSAGING-11",
+      "title": "Update a contact's position from a message",
+      "category": "Messaging",
+      "priority": 1,
+      "size": "M",
+      "status": "backlog",
+      "requested": true,
+      "depends_on": [
+        "VALIDATION-1"
+      ],
+      "details": "Requested by the project owner on 2026-11-07: when a contact sends their GPS position in a message, it updates the position on their profile, so the map, the distance and the compass follow without waiting for an advert. First capture what such a message really looks like from the phone app and from other firmwares, as the format is not defined yet. Keep the time of the position, and do not let an older position replace a newer one, from a message or an advert. Only a message authenticated as coming from that contact may update them: a channel message only carries a name, so it must not change a profile."
+    },
+    {
+      "id": "MESSAGING-12",
+      "title": "Keep contacts on the SD card when the list is full",
+      "category": "Messaging",
+      "priority": 1,
+      "size": "L",
+      "status": "backlog",
+      "requested": true,
+      "depends_on": [
+        "VALIDATION-1"
+      ],
+      "details": "Requested by the project owner on 2026-11-07: contacts are also saved on the SD card, and when there is no room left, 100 places are freed and those contacts move to the card. To settle first: the keyboard firmware holds 100 contacts today (MAX_CONTACTS), so freeing 100 places would empty the whole list. Either raise that limit, which costs RAM on a device without PSRAM, or free fewer. Choose which contacts leave: the oldest heard, never favourites. A contact on the card must come back by itself when it is heard again or when a message arrives from it, since a message from a contact that is not in RAM cannot be decrypted, and conversations and routes must still find its name. Without a card, nothing may be lost silently: warn, and keep the current behaviour. The file holds public keys and names only, but it tells who you know, so include it in SECURITY-1's thinking."
     },
     {
       "id": "MAP-1",
@@ -627,8 +677,10 @@
       "size": "M",
       "status": "backlog",
       "requested": false,
-      "depends_on": [],
-      "details": "Record the track to the SD card as GPX and draw it as a breadcrumb on the map. Also the base for range tests and signal hunting."
+      "depends_on": [
+        "MAP-6"
+      ],
+      "details": "Record the track to the SD card as GPX and draw it as a breadcrumb on the map. Also the base for range tests and signal hunting. Draw it as a MapLayer (MAP-6)."
     },
     {
       "id": "MAP-2",
@@ -638,8 +690,10 @@
       "size": "S",
       "status": "backlog",
       "requested": false,
-      "depends_on": [],
-      "details": "Draw a line from my position to the selected contact on the map, with distance and bearing, and switch to the compass in one key."
+      "depends_on": [
+        "MAP-6"
+      ],
+      "details": "Draw a line from my position to the selected contact on the map, with distance and bearing, and switch to the compass in one key. Draw it as a MapLayer (MAP-6)."
     },
     {
       "id": "MAP-3",
@@ -663,7 +717,7 @@
       "status": "backlog",
       "requested": false,
       "depends_on": [],
-      "details": "Tiles are raw RGB565, 128 KB each: four 100 km zones at zoom 10–13 already take 2.7 GB. A simple run-length or palette encoding decodable row by row would cut size and SD copy time several times."
+      "details": "Tiles are raw RGB565, 128 KB each: four 100 km zones at zoom 10–13 already take 2.7 GB. A simple run-length or palette encoding decodable row by row would cut size and SD copy time several times. Only TileSource changes: TileRasterizer reads through it (MAP-6)."
     },
     {
       "id": "MAP-5",
@@ -675,6 +729,31 @@
       "requested": false,
       "depends_on": [],
       "details": "The BMI270 has no magnetometer, so the compass only knows your heading while moving. Support an external magnetometer on the Grove port for a true compass."
+    },
+    {
+      "id": "MAP-6",
+      "title": "Zoom beyond the tiles, and map layers",
+      "category": "GPS & map",
+      "priority": 1,
+      "size": "M",
+      "status": "in-progress",
+      "requested": true,
+      "depends_on": [],
+      "details": "Built, awaiting a test on the device. The map zooms 2 levels past the tiles on the SD card by enlarging them and 2 levels below by reducing them, then shows the grid and markers down to level 3 without touching the card. Enlarging adds no detail: a sharp image still needs more levels from make_tiles.py. Reducing opens more tiles, so its render time must be measured on the device (target under 1.5 s). Everything drawn over the tiles is now a MapLayer (MapCanvas clips lines, so long ones stay safe at low zoom): tracks, coverage or signal dots are new layers, MapScreen does not change. showOverlay() frames a layer and gives the previous view back on leaving."
+    },
+    {
+      "id": "MAP-7",
+      "title": "A message's route on the map",
+      "category": "GPS & map",
+      "priority": 1,
+      "size": "M",
+      "status": "in-progress",
+      "requested": true,
+      "depends_on": [
+        "MAP-6",
+        "MESSAGING-10"
+      ],
+      "details": "Built, awaiting a test on the device. From a message's details, T lists its hops, T again draws them on the map, framed on the route. RouteResolver places each hop from the contacts, and says how far it can be trusted: one known repeater with that ID, several (the one that fits the route best, in orange), or none. Hops with no position leave a dashed gap; a planned route is dashed. Lines are straight: where the signal really went between two repeaters is not known. With 1 byte IDs, ambiguous hops will be common on a large mesh, and an unknown repeater sharing an ID cannot be detected. Firmwares without a map keep the list of hops."
     },
     {
       "id": "CONNECTIVITY-1",

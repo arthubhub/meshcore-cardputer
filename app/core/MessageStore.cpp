@@ -3,8 +3,9 @@
 #include <string.h>
 
 namespace {
-constexpr uint32_t RING_MAGIC = 0x314D5043;    // "CPM1"
-constexpr uint32_t INDEX_MAGIC = 0x31495043;   // "CPI1"
+constexpr uint32_t RING_MAGIC = 0x324D5043;    // "CPM2"
+constexpr uint32_t INDEX_MAGIC = 0x32495043;   // "CPI2"
+constexpr uint32_t OLDER_INDEX_MAGIC = 0x31495043;   // "CPI1": records without route, not read any more
 constexpr const char* INDEX_PATH = "/mindex";
 
 struct RingHeader {
@@ -52,9 +53,13 @@ void MessageStore::begin(Storage* st) {
   _sorted = false;
   for (auto& c : _convs) c = ConvMeta();
   IndexHeader h;
-  if (!_st->read(INDEX_PATH, 0, &h, sizeof(h)) || h.magic != INDEX_MAGIC || h.recordSize != sizeof(ConvMeta) ||
-      h.count > MAX_CONVS) {
-    return;   // no index yet (or from an incompatible version): start empty
+  if (!_st->read(INDEX_PATH, 0, &h, sizeof(h))) return;   // no index yet
+  if (h.magic == OLDER_INDEX_MAGIC && h.recordSize == sizeof(ConvMeta) && h.count <= MAX_CONVS) {
+    purgeOlderFormat(h.count);
+    return;
+  }
+  if (h.magic != INDEX_MAGIC || h.recordSize != sizeof(ConvMeta) || h.count > MAX_CONVS) {
+    return;   // from an incompatible version: start empty
   }
   if (!_st->read(INDEX_PATH, sizeof(h), _convs, h.count * sizeof(ConvMeta))) return;
   _count = h.count;
@@ -62,6 +67,19 @@ void MessageStore::begin(Storage* st) {
     _convs[i].name[sizeof(_convs[i].name) - 1] = 0;
     _convs[i].last[sizeof(_convs[i].last) - 1] = 0;
   }
+}
+
+// The history of an older firmware cannot be read: its files would only take space. The older index still names them.
+void MessageStore::purgeOlderFormat(uint32_t count) {
+  if (_st->read(INDEX_PATH, sizeof(IndexHeader), _convs, count * sizeof(ConvMeta))) {
+    for (uint32_t i = 0; i < count; i++) {
+      char path[24];
+      _convs[i].key.path(path, sizeof(path));
+      _st->remove(path);
+    }
+  }
+  for (auto& c : _convs) c = ConvMeta();
+  _st->remove(INDEX_PATH);
 }
 
 bool MessageStore::flush() {
@@ -107,9 +125,9 @@ ConvMeta* MessageStore::ensure(const ConvKey& k, const char* name) {
   char path[24];
   k.path(path, sizeof(path));
   RingHeader rh;
-  if (_st->read(path, 0, &rh, sizeof(rh)) && rh.magic == RING_MAGIC && rh.recordSize == sizeof(StoredMsg) &&
-      rh.slots == MAX_MSGS) {
-    c.total = rh.total;
+  if (_st->read(path, 0, &rh, sizeof(rh))) {
+    if (rh.magic == RING_MAGIC && rh.recordSize == sizeof(StoredMsg) && rh.slots == MAX_MSGS) c.total = rh.total;
+    else _st->remove(path);   // left by another format
   }
   _dirty = true;
   _sorted = false;

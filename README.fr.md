@@ -7,7 +7,8 @@ Un firmware [MeshCore](https://github.com/meshcore-dev/MeshCore) autonome pour l
 équipé du Cap LoRa-1262. Votre Cardputer devient une messagerie maillée à part entière : vous écrivez et
 lisez vos messages sur son propre clavier et son écran, vous consultez votre position grâce au GPS
 intégré, vous retrouvez vos contacts à la boussole, vous cherchez les routeurs à portée radio et vous
-parcourez des cartes hors ligne enregistrées sur une carte microSD, le tout sans téléphone.
+parcourez des cartes hors ligne enregistrées sur une carte microSD, sur lesquelles vous pouvez aussi suivre
+le trajet d'un message reçu, le tout sans téléphone.
 
 Si vous préférez l'application MeshCore officielle, la même image contient aussi le firmware companion
 d'origine. Passer en « mode téléphone » ne demande qu'une entrée de menu, et trois appuis sur **esc**

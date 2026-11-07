@@ -16,8 +16,11 @@ public:
 
   // ---- scenario hooks ----
   void addContact(const std::string& name, int hops, bool fav, uint8_t type, bool hasPos, double lat, double lon);
-  void receive(const std::string& sender, const std::string& text);                           // direct
-  void receiveChannel(const std::string& channel, const std::string& sender, const std::string& text);
+  // Without a route, one is made up from the repeaters among the contacts.
+  void receive(const std::string& sender, const std::string& text, const MsgRoute* route = nullptr);   // direct
+  void receiveChannel(const std::string& channel, const std::string& sender, const std::string& text,
+                      const MsgRoute* route = nullptr);
+  void setContactKey(const std::string& name, const std::vector<uint8_t>& keyStart);   // the bytes a route would name
   void hear(const std::string& name, float snr);
   // A repeater in direct range: it answers the next discovery requests, through the real NodeDiscovery.
   void addNearby(const std::string& name, float snrThere, float snrHere);
@@ -86,6 +89,7 @@ private:
               bool scoped, bool ourRegion);
   void recordTx(uint8_t payload, const ConvKey& key, bool flood);
   void recordRx(uint8_t payload, const ConvKey& key, int hops, float snr);
+  MsgRoute repeaterRoute(int hops) const;
 
   SystemService& _sys;
   SettingsService& _settings;

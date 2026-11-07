@@ -2,6 +2,7 @@
 #include <CpadvLog.h>
 #if !CPADV_DEMO
 #include "../core/RadioPresets.h"
+#include "MessageRoute.h"
 #include <CpadvDataFs.h>   // the data partition (shared with phone mode)
 #include <helpers/ArduinoHelpers.h>
 #include <helpers/IdentityStore.h>
@@ -234,8 +235,7 @@ void CardputerMesh::toView(const ContactInfo& c, ContactView& out) {
   out.type = c.type;
   out.favourite = c.isFav();
   out.hops = c.out_path_len == OUT_PATH_UNKNOWN ? -1 : (int8_t)(c.out_path_len & 63);
-  out.pathHashBytes = c.out_path_len == OUT_PATH_UNKNOWN ? 1 : (uint8_t)((c.out_path_len >> 6) + 1);
-  if (out.hops > 0) memcpy(out.path, c.out_path, sizeof(out.path));
+  if (out.hops >= 0) out.route.set(PATH_PLANNED, c.out_path_len, c.out_path);
   out.lastHeard = c.lastmod;
   out.hasPos = c.gps_lat != 0 || c.gps_lon != 0;
   out.latE6 = c.gps_lat;
@@ -464,6 +464,7 @@ bool CardputerMesh::transmit(Pending& p, StoredMsg& m, ContactInfo& c) {
   m.attempt = p.attempts;
   m.ackTag = ack;
   m.state = rc == MSG_SEND_SENT_DIRECT ? MSG_SENT_DIRECT : MSG_SENT_FLOOD;
+  MessageRoute::sending(m, rc == MSG_SEND_SENT_DIRECT, c);
   CPLOG_I("MESH", "msg to %s attempt %u (%s), ack %08x, timeout %u ms", c.name, p.attempts,
                 rc == MSG_SEND_SENT_DIRECT ? "direct" : "flood", (unsigned)ack, (unsigned)timeout);
   return true;
@@ -574,9 +575,8 @@ void CardputerMesh::storeIncoming(const ContactInfo& from, mesh::Packet* pkt, ui
   StoredMsg m;
   m.ts = nowUnix();
   m.state = MSG_RECEIVED;
-  m.snrX4 = (int8_t)(pkt->getSNR() * 4);
-  if (pkt->isRouteFlood()) m.hops = pkt->getPathHashCount();
-  else m.hops = from.out_path_len == OUT_PATH_UNKNOWN ? 0xFF : (from.out_path_len & 63);
+  m.rssi = (int16_t)radio_driver.getLastRSSI();
+  MessageRoute::received(m, *pkt, from);
   utf8Copy(m.text, sizeof(m.text), text);
   _store.append(k, from.name, m, true);
   pushEvent(MeshEvent::MESSAGE, k, from.name, m.text);
@@ -602,8 +602,8 @@ void CardputerMesh::onChannelMessageRecv(const mesh::GroupChannel& channel, mesh
   StoredMsg m;
   m.ts = nowUnix();
   m.state = MSG_RECEIVED;
-  m.snrX4 = (int8_t)(pkt->getSNR() * 4);
-  m.hops = pkt->isRouteFlood() ? pkt->getPathHashCount() : 0;
+  m.rssi = (int16_t)radio_driver.getLastRSSI();
+  MessageRoute::receivedOnChannel(m, *pkt);
   // "sender: message"
   const char* sep = strstr(text, ": ");
   if (sep && sep - text < (int)sizeof(m.sender)) {
