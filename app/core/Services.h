@@ -7,7 +7,10 @@
 #include <stddef.h>
 #include "MessageStore.h"
 #include "Nmea.h"
+#include "drivers/AirtimeMeter.h"
+#include "drivers/FloodOptions.h"
 #include "drivers/NodeDiscovery.h"
+#include "drivers/PacketLog.h"
 
 struct DeviceStatus {
   int  batteryPercent = -1;   // -1 = unknown
@@ -31,6 +34,9 @@ struct RadioStats {
   float bandwidthKHz = 0;
   uint8_t spreadingFactor = 0;
   int8_t txPowerDbm = 0;
+  uint32_t txAirMsHour = 0;     // transmit time over the last hour
+  float txAirPercent = 0;       // the same as a share of the hour
+  float txAirLimitPercent = 0;  // duty cycle of this frequency, 0 = no limit known
 };
 
 struct NeighbourInfo {
@@ -48,17 +54,19 @@ struct ContactView {
   uint8_t type;               // ContactType
   bool favourite;
   int8_t hops;                // -1: no known path (messages are flooded)
+  uint8_t pathHashBytes;      // size of each entry of `path`
+  uint8_t path[12];           // start of the route to this contact (first repeater first)
   uint32_t lastHeard;         // unix time (our clock) of the last advert, 0 = never
   bool hasPos;
   int32_t latE6, lonE6;       // position from the contact's advert (degrees * 1e6)
 };
 
 struct MeshEvent {
-  enum Type : uint8_t { NONE = 0, MESSAGE, DELIVERED, FAILED, CONTACT_NEW };
+  enum Type : uint8_t { NONE = 0, MESSAGE, DELIVERED, FAILED, CONTACT_NEW, AIRTIME };
   Type type = NONE;
   ConvKey key;
   char title[32] = {};        // conversation / contact name
-  char text[64] = {};         // message preview
+  char text[64] = {};         // message preview (AIRTIME: "8.1 % / 10 %")
 };
 
 class MeshService {
@@ -98,6 +106,13 @@ public:
   // search (see discovery().secondsUntilNext). Answers appear in discovery() as they arrive.
   virtual bool startDiscovery() = 0;
   virtual const NodeDiscovery& discovery() const = 0;
+
+  // Last packets heard and sent (RADIO-6); always recording. With the capture on, they also go to a CSV file on the
+  // SD card. setPacketCapture(true) is false when that file cannot be opened.
+  virtual const PacketLog& packetLog() const = 0;
+  virtual void clearPacketLog() = 0;
+  virtual bool setPacketCapture(bool on) = 0;
+  virtual bool packetCapture() const = 0;
 };
 
 enum SoundKind : uint8_t { SOUND_DIRECT_MSG, SOUND_CHANNEL_MSG, SOUND_SENT, SOUND_FAIL };
@@ -134,6 +149,11 @@ struct UiSettings {
   bool shareLocation = false;       // include the GPS position in adverts
   uint8_t brightness = 1;           // 0 low, 1 medium, 2 high
   uint8_t language = 0;             // LANG_EN / LANG_FR (core/I18n.h); English by default
+  // Fields are only ever added at the end (DeviceSettings::load keeps the defaults of what an older file lacks).
+  // reserved0 fills what was the padding byte of the older, 44-byte layout: files may hold anything there.
+  uint8_t reserved0 = 0;
+  uint8_t pathHashBytes = 1;        // bytes of each repeater ID in a flood's path (floodopt, RADIO-9)
+  char region[31] = "";             // flood scope, "" = none (floodopt, RADIO-10)
 };
 
 class SettingsService {

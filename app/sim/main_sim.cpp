@@ -16,6 +16,11 @@
 //   nearby <name> <snrThere> <snrHere>  a repeater in direct range answers the next searches (name: no spaces)
 //   nearby none                    no repeater in range
 //   expect-nearby <n>              number of repeaters listed by the search
+//   pkt <type> <from> <hops> <snr> [region]   a packet heard, for the packet log (type: ADV, TXT, GRP, ACK, PATH...)
+//   airtime <ms>                   transmit time added to the airtime meter
+//   sdcapture <0|1>                expect the packet capture to the SD card off / on
+//   expect-packets <n>             packets recorded in the log
+//   expect-last-tx <type> <route> <idBytes>   the newest packet sent (route: F, TF, D)
 //   rxburst <from> <n>             receive n numbered direct messages ("message 1".."message n"), 1 s apart
 //   contact <name> [hops] [fav] [repeater|room] [pos <lat> <lon>]   add a known contact (hops -1 = no path)
 //   net ack on|off                 contacts acknowledge direct messages (off => retries then failure)
@@ -67,6 +72,7 @@
 #include "../core/screens/GpsScreens.h"
 #include "../core/screens/MapScreen.h"
 #include "../core/screens/NearbyScreen.h"
+#include "../core/screens/PacketsScreen.h"
 #include "../core/DemoGps.h"
 #include "../core/KeyMatrix.h"
 #include "SimServices.h"
@@ -185,6 +191,8 @@ int main(int argc, char** argv) {
   TextInputScreen textInput;
   ChatScreen chat;
   ContactDetailScreen contactDetail(chat);
+  MessageDetailScreen messageDetail(chat, contactDetail);
+  chat.setMessageDetail(&messageDetail);
   ContactsScreen contacts(chat, contactDetail);
   ConversationsScreen conversations(chat, contacts, textInput);
   CompassScreen compass;
@@ -193,7 +201,9 @@ int main(int argc, char** argv) {
   GpsScreen gps(compass);
   MapScreen map;
   SystemScreen systemScreen;
-  SettingsScreen settingsScreen(textInput, systemScreen);
+  PacketDetailScreen packetDetail;
+  PacketsScreen packets(packetDetail);
+  SettingsScreen settingsScreen(textInput, systemScreen, packets);
   NearbyScreen nearby(contactDetail);
   HomeScreen home(&conversations, &contacts, &gps, &map, &nearby, &settingsScreen);
   app.begin(&home);
@@ -459,6 +469,8 @@ int main(int argc, char** argv) {
       else if (field == "share") got = std::to_string(s.shareLocation);
       else if (field == "brightness") got = std::to_string(s.brightness);
       else if (field == "lang") got = s.language == LANG_FR ? "fr" : "en";
+      else if (field == "pathbytes") got = std::to_string(s.pathHashBytes);
+      else if (field == "region") got = s.region;
       else got = "<unknown field>";
       if (want != got) { fprintf(stderr, "line %d: FAIL setting %s expected '%s', got '%s'\n", lineNo, field.c_str(), want.c_str(), got.c_str()); g_failures++; }
     } else if (cmd == "expect-convs") {
@@ -467,6 +479,30 @@ int main(int argc, char** argv) {
     } else if (cmd == "expect-contacts") {
       int want = 0; ls >> want;
       if (want != mesh.contactCount()) { fprintf(stderr, "line %d: FAIL expected %d contacts, got %d\n", lineNo, want, mesh.contactCount()); g_failures++; }
+    } else if (cmd == "pkt") {
+      std::string type, from, region; int hops = 0; float snr = 0;
+      ls >> type >> from >> hops >> snr >> region;
+      mesh.hearPacket(type, from, hops, snr, region); runFor(LOOP_MS);
+    } else if (cmd == "airtime") {
+      uint32_t ms = 0; ls >> ms; mesh.addAirtime(ms); runFor(LOOP_MS * 2);
+    } else if (cmd == "sdcapture") {
+      int want = 0; ls >> want;
+      if ((want != 0) != mesh.packetCapture()) { fprintf(stderr, "line %d: FAIL packet capture expected %d\n", lineNo, want); g_failures++; }
+    } else if (cmd == "expect-packets") {
+      uint32_t want = 0; ls >> want;
+      if (want != mesh.packetLog().total()) { fprintf(stderr, "line %d: FAIL expected %u packets, got %u\n", lineNo, want, mesh.packetLog().total()); g_failures++; }
+    } else if (cmd == "expect-last-tx") {
+      std::string type, route; int bytes = 0; ls >> type >> route >> bytes;
+      const PacketRecord* tx = nullptr;
+      for (int i = 0; i < mesh.packetLog().count() && !tx; i++) {
+        const PacketRecord* r = mesh.packetLog().recent(i);
+        if (r->tx()) tx = r;
+      }
+      if (!tx || type != PacketLog::typeName(tx->type) || route != PacketLog::routeName(tx->route) || bytes != tx->hashBytes) {
+        fprintf(stderr, "line %d: FAIL last sent packet expected %s %s %d, got %s %s %d\n", lineNo, type.c_str(), route.c_str(), bytes,
+                tx ? PacketLog::typeName(tx->type) : "none", tx ? PacketLog::routeName(tx->route) : "-", tx ? tx->hashBytes : 0);
+        g_failures++;
+      }
     } else if (cmd == "expect-nearby") {
       int want = 0; ls >> want;
       if (want != mesh.discovery().count()) { fprintf(stderr, "line %d: FAIL expected %d nearby repeaters, got %d\n", lineNo, want, mesh.discovery().count()); g_failures++; }

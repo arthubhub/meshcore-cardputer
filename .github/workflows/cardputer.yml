@@ -91,6 +91,10 @@ jobs:
       - name: Build ${{ matrix.environment }}
         run: pio run -e ${{ matrix.environment }} | tee build.log
 
+      - name: Real MeshCore code on a simulated air
+        if: matrix.environment == 'cardputer_adv_standalone'
+        run: make -C app/sim -j4 wire
+
       - name: Merge flash image
         run: pio run -e ${{ matrix.environment }} -t mergebin
 

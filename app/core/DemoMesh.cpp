@@ -93,6 +93,8 @@ void DemoMesh::addContact(const std::string& name, int hops, bool fav, uint8_t t
   c->v.hasPos = hasPos;
   c->v.latE6 = (int32_t)(lat * 1e6);
   c->v.lonE6 = (int32_t)(lon * 1e6);
+  c->v.pathHashBytes = 1;
+  for (int i = 0; i < hops && i < (int)sizeof(c->v.path); i++) c->v.path[i] = (uint8_t)(k.id[i % 6] ^ (i * 37));
   c->heardAtMs = _sys.millis();
   c->snr = 7.25f;
   sortContacts();
@@ -109,6 +111,7 @@ void DemoMesh::hear(const std::string& name, float snr) {
   c->snr = snr;
   c->heardAtMs = _sys.millis();
   c->v.lastHeard = nowUnix();
+  recordRx(wire::PL_ADVERT, k, std::max<int>(0, c->v.hops), snr);
   sortContacts();
 }
 
@@ -124,6 +127,7 @@ void DemoMesh::receive(const std::string& sender, const std::string& text) {
   utf8Copy(m.text, sizeof(m.text), text.c_str());
   _store.append(k, sender.c_str(), m, true);
   _rx++;
+  recordRx(wire::PL_TXT, k, m.hops, m.snrX4 / 4.0f);
   push(MeshEvent::MESSAGE, k, sender, text);
   logf("rx %s: %s", sender.c_str(), text.c_str());
 }
@@ -143,6 +147,7 @@ void DemoMesh::receiveChannel(const std::string& channel, const std::string& sen
   utf8Copy(m.text, sizeof(m.text), text.c_str());
   _store.append(k, channel.c_str(), m, true);
   _rx++;
+  recordRx(wire::PL_GRP_TXT, k, m.hops, m.snrX4 / 4.0f);
   push(MeshEvent::MESSAGE, k, channel, sender + ": " + text);
   logf("rx #%s <%s>: %s", channel.c_str(), sender.c_str(), text.c_str());
 }
@@ -159,6 +164,7 @@ void DemoMesh::transmit(Pending& p, StoredMsg& m) {
   p.deadline = _sys.millis() + 4000;
   p.ackAt = netAcks ? _sys.millis() + netDelayMs : 0;
   sentPackets++;
+  recordTx(wire::PL_TXT, p.key, m.state == MSG_SENT_FLOOD);
   logf("tx attempt %u to %s (%s)", m.attempt, c ? c->v.name : "?",
          m.state == MSG_SENT_DIRECT ? "direct" : "flood");
 }
@@ -174,6 +180,7 @@ bool DemoMesh::sendText(const ConvKey& to, const char* text) {
   if (to.kind == ConvKey::CHANNEL) {
     m.state = MSG_CHANNEL_SENT;
     sentPackets++;
+    recordTx(wire::PL_GRP_TXT, to, true);
     if (_bot && rnd() % 2 == 0) scheduleReply(to, m.text);   // someone answers on the channel
     return _store.append(to, name.c_str(), m, false) >= 0;
   }
@@ -195,6 +202,70 @@ void DemoMesh::addNearby(const std::string& name, float snrThere, float snrHere)
 void DemoMesh::clearNearby() {
   _nearby.clear();
   _answers.clear();
+}
+
+// ------------------------------------------------------------------ packet log, airtime
+
+// Real wire fields go through the real decoder of PacketLog
+void DemoMesh::record(uint8_t route, uint8_t payload, const std::vector<uint8_t>& body, int hops, int hashBytes, float snr,
+                      bool tx, bool scoped, bool ourRegion) {
+  uint8_t path[64];
+  for (size_t i = 0; i < sizeof(path); i++) path[i] = (uint8_t)(0xA1 + i * 29);
+  PacketLog::Frame f;
+  f.header = wire::header(scoped ? wire::ROUTE_TRANSPORT_FLOOD : route, payload);
+  f.pathLen = (uint8_t)(((hashBytes - 1) << 6) | (hops & 63));
+  f.path = path;
+  f.payload = body.data();
+  f.payloadLen = body.size();
+  f.transportCode = scoped ? 0x5A17 : 0;
+  f.rawLen = 2 + hops * hashBytes + (int)body.size() + 40;
+  f.snr = snr;
+  f.rssi = tx ? 0 : -110 + snr;
+  f.ms = _sys.millis();
+  f.unixTime = nowUnix();
+  f.tx = tx;
+  f.ourRegion = ourRegion;
+  _packets.add(f);
+}
+
+void DemoMesh::recordTx(uint8_t payload, const ConvKey& key, bool flood) {
+  const UiSettings& s = _settings.get();
+  std::vector<uint8_t> body;
+  if (payload == wire::PL_ADVERT) body.assign(key.id, key.id + sizeof(key.id));
+  else if (payload == wire::PL_GRP_TXT) body = {key.id[0]};
+  else body = {key.id[0], 0x42};
+  record(flood ? wire::ROUTE_FLOOD : wire::ROUTE_DIRECT, payload, body, 0, flood ? floodopt::validPathBytes(s.pathHashBytes) : 1, 0, true,
+         flood && s.region[0], flood && s.region[0]);
+  addAirtime(600);
+}
+
+void DemoMesh::recordRx(uint8_t payload, const ConvKey& key, int hops, float snr) {
+  std::vector<uint8_t> body;
+  if (payload == wire::PL_ADVERT) body.assign(key.id, key.id + sizeof(key.id));
+  else if (payload == wire::PL_GRP_TXT) body = {key.id[0]};
+  else body = {0x42, key.id[0]};
+  record(wire::ROUTE_FLOOD, payload, body, hops, 1, snr, false, false, false);
+}
+
+void DemoMesh::hearPacket(const std::string& type, const std::string& from, int hops, float snr, const std::string& region) {
+  ConvKey k = keyFromName(ConvKey::DIRECT, from);
+  for (uint8_t t = 0; t < 16; t++) {
+    if (type != PacketLog::typeName(t)) continue;
+    std::vector<uint8_t> body;
+    if (t == wire::PL_ADVERT) body.assign(k.id, k.id + sizeof(k.id));
+    else if (t == wire::PL_GRP_TXT) body = {k.id[0]};
+    else body = {0x42, k.id[0]};
+    bool scoped = !region.empty();
+    bool ours = scoped && region == _settings.get().region;
+    record(wire::ROUTE_FLOOD, t, body, hops, 1, snr, false, scoped, ours);
+    return;
+  }
+  logf("unknown packet type %s", type.c_str());
+}
+
+void DemoMesh::addAirtime(uint32_t ms) {
+  _airTotalMs += ms;
+  _airtime.update(_airTotalMs, _sys.millis());
 }
 
 bool DemoMesh::startDiscovery() {
@@ -230,6 +301,13 @@ bool DemoMesh::startDiscovery() {
 void DemoMesh::tick() {
   uint32_t now = _sys.millis();
   if (_bot) botTick();
+  _airtime.update(_airTotalMs, now);
+  AirtimeMeter::Alert alert = _airtime.pollAlert(radioStats().txAirLimitPercent);
+  if (alert != AirtimeMeter::Alert::None) {
+    char text[32];
+    snprintf(text, sizeof(text), "%.1f %% / %g %%", _airtime.percent(), radioStats().txAirLimitPercent);
+    push(MeshEvent::AIRTIME, ConvKey(), "", text);
+  }
   for (size_t i = 0; i < _answers.size();) {
     if ((int32_t)(now - _answers[i].at) >= 0) {
       _discovery.accept(_answers[i].frame.data(), _answers[i].frame.size(), _answers[i].snrHere, -100 + _answers[i].snrHere, now);
@@ -247,6 +325,7 @@ void DemoMesh::tick() {
     if (p.ackAt && (int32_t)(now - p.ackAt) >= 0) {
       m.state = MSG_DELIVERED;
       _store.update(p.key, p.seq, m);
+      recordRx(wire::PL_ACK, p.key, 1, 5.0f);
       push(MeshEvent::DELIVERED, p.key, name, m.text);
       if (_bot) scheduleReply(p.key, m.text);
       _pending.erase(_pending.begin() + i);
@@ -309,6 +388,7 @@ bool DemoMesh::resetPath(const ConvKey& key) {
 
 bool DemoMesh::sendAdvert(bool flood, bool withPosition) {
   sentPackets++;
+  recordTx(wire::PL_ADVERT, keyFromName(ConvKey::DIRECT, selfName()), flood);
   bool pos = withPosition && gps && gps->state().valid;
   if (pos) advertsWithPosition++;
   if (pos) logf("advert (%s) with position %.5f, %.5f", flood ? "flood" : "zero hop", gps->state().lat, gps->state().lon);
@@ -367,6 +447,9 @@ RadioStats DemoMesh::radioStats() {
   r.txPowerDbm = s.txPowerDbm;
   r.lastSnr = 6.5f;
   r.lastRssi = -92;
+  r.txAirMsHour = _airtime.lastHourMs();
+  r.txAirPercent = _airtime.percent();
+  r.txAirLimitPercent = AirtimeMeter::limitPercent(p.freqMHz);
   return r;
 }
 

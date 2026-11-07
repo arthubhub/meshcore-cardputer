@@ -95,6 +95,10 @@ its configuration after a power glitch, a full event FIFO. `run` replays scripte
 the real interface and saves screenshots in `app/sim/build/`. Each session runs twice: once with keys
 injected directly, once with every key press going through the emulated keyboard controller.
 
+`make -C app/sim wire` compiles MeshCore's real network code on the PC, unchanged, and makes nodes and a repeater
+talk over a simulated radio: packets with a region, IDs of 1 to 3 bytes, messages finding their route. It needs the
+libraries PlatformIO installs (`pio pkg install -e cardputer_adv_standalone`).
+
 The radio, the audio codec and the battery are not emulated; those still need a real device.
 
 ## Project layout

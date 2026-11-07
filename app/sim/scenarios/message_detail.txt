@@ -1,0 +1,174 @@
+# From a message to its details and the sender's profile (MESSAGING-9).
+name Cardputer
+time 1793541600
+contact Bob 2 pos 43.60 1.44
+contact Relais-Colomiers 0 repeater
+contact Very-long-name-of-a-contact-x 1
+contact Very-long-name-of-a-contact-y 1
+contact Rene-du-Sud 1
+rx Bob first message
+rx Bob second message
+rxch Public Bob hello from the channel
+rxch Public Stranger who am I
+rxch Public Rene-du-Sud bonjour
+rxch Public Very-long-name-of-a-contact-x same start
+wait 3000
+
+# Direct conversation (the second one in the list): Fn+; selects the newest message, Enter opens it
+key m
+key .
+key enter
+wait 40
+expect-screen Bob
+shot m1_chat
+key enter
+expect-screen Bob
+key fn+;
+wait 40
+shot m2_selected
+key enter
+expect-screen Message
+shot m3_detail_direct
+key enter
+expect-screen Contact
+shot m4_profile
+key `
+expect-screen Message
+key `
+expect-screen Bob
+shot m5_back_selected
+
+# Walk back to the older message, then leave the selection by moving down
+key fn+;
+wait 40
+shot m6_older
+key enter
+expect-screen Message
+shot m7_detail_older
+key `
+key fn+.
+key fn+.
+wait 40
+shot m8_unselected
+
+# Typing leaves the selection: Enter sends instead of opening
+key fn+;
+type ok
+key enter
+wait 40
+expect-screen Bob
+expect-last Bob sent ok
+wait 2000
+expect-last Bob delivered ok
+
+# Own message: delivery details
+key fn+;
+wait 40
+key enter
+expect-screen Message
+shot m9_detail_outgoing
+key `
+key fn+.
+
+# A message arriving while one is selected does not move the selection
+key fn+;
+rx Bob third message
+wait 40
+key enter
+expect-screen Message
+shot m10_kept_selected
+key `
+key esc
+wait 3000
+key `
+expect-screen Home
+
+# Channel (now second in the list): profile found through the name. Newest first: long name, Rene, Stranger, Bob
+key m
+key .
+key enter
+wait 40
+expect-screen Public
+key fn+;
+wait 40
+shot m11_selected_channel
+key enter
+expect-screen Message
+shot m12_same_names
+key enter
+expect-screen Contact
+wait 40
+shot m13_same_names_notice
+wait 3500
+key `
+key `
+expect-screen Public
+
+key fn+;*3
+wait 40
+key enter
+expect-screen Message
+shot m14_channel_known
+key enter
+expect-screen Contact
+key m
+expect-screen Bob
+key esc
+expect-screen Contact
+key `
+expect-screen Message
+
+# Back in the channel, not in Bob's conversation
+key `
+expect-screen Public
+shot m15_back_in_channel
+
+# Channel, unknown name: explained, and the screen stays
+key fn+.
+wait 40
+key enter
+expect-screen Message
+shot m16_channel_unknown
+key enter
+expect-screen Message
+wait 40
+shot m17_not_in_contacts
+wait 3500
+key `
+key esc
+key `
+
+# A deleted contact: the message stays, the link says so
+key c
+key d
+key d
+wait 2000
+expect-contacts 4
+key `
+key m
+key enter
+wait 40
+expect-screen Bob
+key fn+;
+key enter
+expect-screen Message
+shot m18_contact_deleted
+key enter
+expect-screen Message
+wait 3500
+key `
+key esc
+key `
+
+lang fr
+wait 40
+key m
+key .
+key enter
+key fn+;
+wait 40
+key enter
+shot m19_detail_fr
+key `
+key esc
+key `

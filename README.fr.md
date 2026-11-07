@@ -99,6 +99,11 @@ contrôleur de clavier qui perd sa configuration après une micro-coupure, une f
 d'écran dans `app/sim/build/`. Chaque session est jouée deux fois : une fois avec des touches injectées
 directement, une fois en faisant passer chaque appui par le contrôleur de clavier émulé.
 
+`make -C app/sim wire` compile le vrai code réseau de MeshCore sur le PC, sans le modifier, et fait dialoguer
+des nœuds et un routeur sur une radio simulée : paquets avec une région, identifiants de 1 à 3 octets, messages
+qui trouvent leur route. Il a besoin des bibliothèques installées par PlatformIO
+(`pio pkg install -e cardputer_adv_standalone`).
+
 La radio, le codec audio et la batterie ne sont pas émulés : il faut toujours un véritable appareil pour
 les valider.
 

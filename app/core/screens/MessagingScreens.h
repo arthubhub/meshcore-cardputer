@@ -11,7 +11,11 @@ struct ConfirmPress {
   bool check(App& app, int t, const char* what);
 };
 
+class MessageDetailScreen;
+
 // Conversation thread: bubbles, delivery status, compose line.
+// Fn+; selects the newest message and then walks back: the selected message is always the lowest bubble, and Enter
+// opens its details. Typing leaves the selection.
 class ChatScreen : public Screen {
 public:
   static constexpr int WINDOW = 10;          // messages loaded at once (~2 KB)
@@ -20,9 +24,16 @@ public:
   // Prepares the screen for a conversation; then App::push(&chat).
   void open(App& app, const ConvKey& key, const char* name);
   const ConvKey& key() const { return _key; }
+  void setMessageDetail(MessageDetailScreen* detail) { _detail = detail; }
+  // Selected message, as messages back from the newest; selectAt() comes back to it after open().
+  int selectedPosition() const { return _scroll; }
+  void selectAt(int position) { _scroll = position; _selecting = true; }
 
   const char* title() const override { return _title; }
-  const char* help() const override { return tr("Enter:send Fn+;.:scroll Fn+`:back", "Entrée:envoi Fn+;.:défiler Fn+`:retour"); }
+  const char* help() const override {
+    return _selecting ? tr("Enter:details Fn+;.:move Fn+`:back", "Entrée:détail Fn+;.:bouger Fn+`:retour")
+                      : tr("Enter:send Fn+;:select Fn+`:back", "Entrée:envoi Fn+;:choisir Fn+`:retour");
+  }
   bool wantsText() const override { return true; }
   void onEnter(App& app) override;
   void onResume(App& app) override { reload(app); }
@@ -43,6 +54,8 @@ private:
   void drawBubble(App& app, lgfx::LovyanGFX& g, const StoredMsg& m, const Layout& l, int y);
   void drawCompose(App& app, lgfx::LovyanGFX& g);
 
+  MessageDetailScreen* _detail = nullptr;
+  bool _selecting = false;    // the lowest bubble (the newest of those shown) is selected
   ConvKey _key;
   char _title[32] = {};
   StoredMsg _msgs[WINDOW];
@@ -104,6 +117,34 @@ private:
   CompassScreen* _compass = nullptr;
   ConvKey _key;
   uint32_t _lastRefresh = 0;
+};
+
+// One message: who, when, how it travelled; Enter opens the sender's contact sheet. A direct conversation knows its
+// contact by key. A channel message only carries a name, so there it is a match on that name, and may find nobody.
+class MessageDetailScreen : public Screen {
+public:
+  MessageDetailScreen(ChatScreen& chat, ContactDetailScreen& contact) : _chat(chat), _contact(contact) {}
+  void show(const ConvKey& conv, const char* convName, const StoredMsg& m, int position);
+
+  const char* title() const override { return "Message"; }
+  const char* help() const override { return tr("Enter:profile  ;.:scroll  `:back", "Entrée:profil  ;.:défiler  `:retour"); }
+  void onEnter(App& app) override { _list = ListState(); }
+  bool onKey(App& app, const KeyEvent& e) override;
+  void draw(App& app, lgfx::LovyanGFX& g) override;
+
+private:
+  static constexpr int MAX_ROWS = 8;
+  enum class Link : uint8_t { None, ByKey, ByName, Self };
+  Link findProfile(App& app, ContactView& out, int* matches);
+  int fillRows(App& app, const char** labels, char (*values)[48]);
+
+  ChatScreen& _chat;
+  ContactDetailScreen& _contact;
+  ConvKey _conv;
+  char _convName[32] = {};
+  StoredMsg _m;
+  int _position = 0;
+  ListState _list;
 };
 
 class ConversationsScreen : public Screen {

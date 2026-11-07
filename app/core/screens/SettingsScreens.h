@@ -39,25 +39,30 @@ private:
   uint32_t _lastRefresh = 0;
 };
 
+class PacketsScreen;
+
 class SettingsScreen : public Screen {
 public:
-  SettingsScreen(TextInputScreen& input, SystemScreen& system) : _input(input), _system(system) {}
+  SettingsScreen(TextInputScreen& input, SystemScreen& system, PacketsScreen& packets)
+    : _input(input), _system(system), _packets(packets) {}
   const char* title() const override { return tr("Settings", "Réglages"); }
   const char* help() const override { return tr(";. select  ,/ change  Enter: edit", ";. choisir  ,/ changer  Entrée: modif."); }
   void onEnter(App& app) override;
   bool onKey(App& app, const KeyEvent& e) override;
   void draw(App& app, lgfx::LovyanGFX& g) override;
 
-  enum Item { LANGUAGE, NAME, RADIO, RADIO_INFO, TX_POWER, TIMEZONE, SCREEN_TIMEOUT, BRIGHTNESS, SOUND, SHARE_LOCATION,
-              BACKUP, RESTORE, PHONE_MODE, SYSTEM, COUNT };
+  enum Item { LANGUAGE, NAME, RADIO, RADIO_INFO, TX_POWER, REGION, PATH_ID, TIMEZONE, SCREEN_TIMEOUT, BRIGHTNESS, SOUND,
+              SHARE_LOCATION, BACKUP, RESTORE, PACKETS, PHONE_MODE, SYSTEM, COUNT };
 
 private:
   void change(App& app, int item, int delta);
   void formatValue(App& app, int item, char* out, size_t n);
   static void onNameDone(App& app, const char* text, void* ctx);
+  static void onRegionDone(App& app, const char* text, void* ctx);
 
   TextInputScreen& _input;
   SystemScreen& _system;
+  PacketsScreen& _packets;
   ListState _list;
   uint32_t _confirmUntil = 0;
   int _confirmItem = -1;

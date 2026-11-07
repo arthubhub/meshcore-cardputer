@@ -21,8 +21,8 @@ Last updated 2026-11-07 · 59 open items · 12 done.
 | Validation & bugs | · | · | 3 | 6 |
 | Release & CI | · | · | 5 | 4 |
 | Companion sync | · | 2 | 5 | 1 |
-| Radio tools | 1 | · | 9 | · |
-| Messaging | · | · | 9 | · |
+| Radio tools | 5 | · | 5 | · |
+| Messaging | 1 | · | 8 | · |
 | GPS & map | · | · | 5 | · |
 | Connectivity | · | · | 4 | · |
 | Power | · | · | 4 | · |
@@ -32,7 +32,12 @@ Last updated 2026-11-07 · 59 open items · 12 done.
 
 ## In progress
 
+- **[MESSAGING-9](#messaging-9)** From a message to the sender's profile · P1 · M
 - **[RADIO-8](#radio-8)** Nearby repeater search · P1 · M
+- **[RADIO-9](#radio-9)** Configurable path hash size · P1 · M
+- **[RADIO-10](#radio-10)** Region setting (flood scope, e.g. fr / eu) · P1 · M
+- **[RADIO-4](#radio-4)** Airtime and duty-cycle meter · P2 · S
+- **[RADIO-6](#radio-6)** Packet sniffer log · P2 · M
 
 ## Next up
 
@@ -246,13 +251,13 @@ Settings › Phone mode, back with esc ×3; shared radio identity.
 | [RADIO-1](#radio-1) | Signal finder (fox hunt) ★ | P1 | M | Backlog | VALIDATION-1 |
 | [RADIO-2](#radio-2) | Signal finder: estimate the source on the map ★ | P2 | L | Backlog | RADIO-1, MAP-1 |
 | [RADIO-3](#radio-3) | Range test mode with GPS logging | P1 | M | Backlog | VALIDATION-1 |
-| [RADIO-4](#radio-4) | Airtime and duty-cycle meter | P2 | S | Backlog | · |
+| [RADIO-4](#radio-4) | Airtime and duty-cycle meter | P2 | S | In progress | · |
 | [RADIO-5](#radio-5) | Noise floor and channel scanner | P2 | M | Backlog | · |
-| [RADIO-6](#radio-6) | Packet sniffer log | P2 | M | Backlog | · |
+| [RADIO-6](#radio-6) | Packet sniffer log | P2 | M | In progress | · |
 | [RADIO-7](#radio-7) | Temporary repeater mode | P3 | M | Backlog | RADIO-4 |
 | [RADIO-8](#radio-8) | Nearby repeater search ★ | P1 | M | In progress | VALIDATION-1 |
-| [RADIO-9](#radio-9) | Configurable path hash size ★ | P1 | M | Backlog | VALIDATION-1 |
-| [RADIO-10](#radio-10) | Region setting (flood scope, e.g. fr / eu) ★ | P1 | M | Backlog | VALIDATION-1 |
+| [RADIO-9](#radio-9) | Configurable path hash size ★ | P1 | M | In progress | VALIDATION-1 |
+| [RADIO-10](#radio-10) | Region setting (flood scope, e.g. fr / eu) ★ | P1 | M | In progress | VALIDATION-1 |
 
 #### RADIO-1
 
@@ -274,9 +279,9 @@ Send periodic pings to a chosen node, log ACK/no-ACK, RSSI, SNR and position to 
 
 #### RADIO-4
 
-**Airtime and duty-cycle meter** · P2 · S · Backlog
+**Airtime and duty-cycle meter** · P2 · S · In progress
 
-EU 868 MHz sub-bands have 1 % or 10 % duty-cycle limits. Track transmit time per hour, show it in System, and warn before range tests or repeating exceed it.
+Built, awaiting a test on the device. Transmit time over a sliding hour from MeshCore's own counter, in System and in the heartbeat. A warning at 80 % of the limit and another at the limit, each reported once. The limit depends on the frequency (10 % for the three EU presets); figures from ERC 70-03 are indicative and national rules can differ. It warns only and never blocks a message. Range tests (RADIO-5) can use the same meter.
 
 #### RADIO-5
 
@@ -286,9 +291,9 @@ Sweep the band with the SX1262's instantaneous RSSI and draw a waterfall. Shows 
 
 #### RADIO-6
 
-**Packet sniffer log** · P2 · M · Backlog
+**Packet sniffer log** · P2 · M · In progress
 
-A screen listing every packet heard (type, route, hops, SNR, sender prefix), with optional logging to SD. A debugging tool for the mesh and for this firmware.
+Built, awaiting a test on the device. Settings > Packet log: the last 48 packets heard or sent, with type, route, hops, sender, SNR, and the repeater it came through. The cursor or P freezes the list, Enter opens a packet, C clears, L copies packets to cardputer_packets.csv on the SD card (written every 5 s, stops at 16 MB, forgotten at restart). Damaged packets never reach it: they stay in the radio monitor of the serial log. Payloads are never stored.
 
 #### RADIO-7
 
@@ -304,15 +309,15 @@ A keyboard-mode screen, like the search in the phone app: send MeshCore's zero-h
 
 #### RADIO-9
 
-**Configurable path hash size** ★ · P1 · M · Backlog · after VALIDATION-1
+**Configurable path hash size** ★ · P1 · M · In progress · after VALIDATION-1
 
-Choose how many bytes of each node's public key identify it in a packet's path: 1, 2 or 3 (MeshCore's path hash size; the phone app sets it with CMD_SET_PATH_HASH_MODE). More bytes mean fewer collisions between nodes on a large mesh, but longer packets. Keyboard mode always floods with the default of 1 byte today: add a setting in Settings, pass it to every flood (sendFlood takes path_hash_size), and check that repeaters on older firmware forward such packets. Later, with SYNC-1, share the value with phone mode. Reported by the project owner on 2026-11-07: the node's ID is on 1 byte, which is why this moved up to P1.
+Built, awaiting a test on the device. Settings > Path ID size (1, 2, 3 bytes, default 1): app/device/FloodPolicy applies it to every flood started here (messages, ACKs, returned paths, channels, adverts). The value of a contact's path comes from the flood that created it, so direct messages follow by themselves. Repeaters before firmware 1.14 silently drop 2 and 3 byte packets (meshcore/docs/faq.md 3.9.1), so the setting warns and the default stays 1. Verified on real MeshCore code (app/sim/wire): all three sizes flood, cross a repeater, return a path and then work in direct. Sharing the value with phone mode belongs to SYNC-1.
 
 #### RADIO-10
 
-**Region setting (flood scope, e.g. fr / eu)** ★ · P1 · M · Backlog · after VALIDATION-1
+**Region setting (flood scope, e.g. fr / eu)** ★ · P1 · M · In progress · after VALIDATION-1
 
-Reported by the project owner on 2026-11-07: no region is recorded on the node (fr / eu). MeshCore calls this the flood scope: a named region with a key, whose transport code on each flood lets repeaters decide whether to forward it. The companion stores it (default_scope_name, default_scope_key) and the app sets it with CMD_SET_DEFAULT_FLOOD_SCOPE; keyboard mode has neither, so its floods are never scoped. Add a region setting to Settings, save it, and override sendFloodScoped() in CardputerMesh, as companion_radio/MyMesh.cpp does (TransportKeyStore, RegionMap). Check how the local mesh names its regions first. Keyboard and phone mode keep separate settings today: sharing the region belongs with SYNC-1. Combine with RADIO-9, since both go through the same flood call.
+Built, awaiting a test on the device. Settings > Region: free name, '#' optional, empty for none. The key is SHA-256 of "#name" (first 16 bytes), the same as companion_radio and repeaters; the case counts, and private '$' regions are refused because their key cannot be derived from the name. Warning for the user: a repeater that does not know the region does not forward at all (no fallback), and on a repeater a region must be both added and allowed (`region put`, `region allowf`). Before relying on a name, open the packet log: scoped packets from neighbours show `=` when they match it and `~` when they do not. Reported by the project owner on 2026-11-07. Sharing the region with phone mode belongs to SYNC-1.
 
 ### Messaging
 
@@ -326,7 +331,7 @@ Reported by the project owner on 2026-11-07: no region is recorded on the node (
 | [MESSAGING-6](#messaging-6) | Unread messages on the RGB LED | P2 | S | Backlog | VALIDATION-1 |
 | [MESSAGING-7](#messaging-7) | Search and export conversations | P3 | M | Backlog | · |
 | [MESSAGING-8](#messaging-8) | Emoji and other scripts | P3 | M | Backlog | · |
-| [MESSAGING-9](#messaging-9) | From a message to the sender's profile ★ | P1 | M | Backlog | VALIDATION-1 |
+| [MESSAGING-9](#messaging-9) | From a message to the sender's profile ★ | P1 | M | In progress | VALIDATION-1 |
 
 #### MESSAGING-1
 
@@ -378,9 +383,9 @@ Messages from phones often contain emoji. Show a readable fallback glyph instead
 
 #### MESSAGING-9
 
-**From a message to the sender's profile** ★ · P1 · M · Backlog · after VALIDATION-1
+**From a message to the sender's profile** ★ · P1 · M · In progress · after VALIDATION-1
 
-In a conversation, select a message and open its details and the sender's profile: name, contact sheet (key, position, compass, write to them), number of hops, SNR, time, delivery attempts. Hops and SNR are already stored with each received message (StoredMsg), so a message-selection mode in ChatScreen and a detail screen are the main work, reusing ContactDetailScreen. Direct messages link to the contact by key; channel messages only carry the sender's name, so the link there is a name match and may find nobody. Showing the route itself, not just the hop count, needs the path to be stored with the message.
+Built, awaiting a test on the device. In a conversation, Fn+; selects the newest message and walks back; Enter opens its details (sender, time, hops, SNR, or delivery state and attempts for your own), and Enter again opens the sender's contact sheet, which now shows the route to that contact. Direct messages link by key. Channel messages only carry a name, so the link is a name match, which says so, reports several matches, and may find nobody. Left out: the route a received message itself took, which needs the path stored with each message and so a new history file format.
 
 ### GPS & map
 

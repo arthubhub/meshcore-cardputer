@@ -433,10 +433,10 @@
       "category": "Radio tools",
       "priority": 2,
       "size": "S",
-      "status": "backlog",
+      "status": "in-progress",
       "requested": false,
       "depends_on": [],
-      "details": "EU 868 MHz sub-bands have 1 % or 10 % duty-cycle limits. Track transmit time per hour, show it in System, and warn before range tests or repeating exceed it."
+      "details": "Built, awaiting a test on the device. Transmit time over a sliding hour from MeshCore's own counter, in System and in the heartbeat. A warning at 80 % of the limit and another at the limit, each reported once. The limit depends on the frequency (10 % for the three EU presets); figures from ERC 70-03 are indicative and national rules can differ. It warns only and never blocks a message. Range tests (RADIO-5) can use the same meter."
     },
     {
       "id": "RADIO-5",
@@ -455,10 +455,10 @@
       "category": "Radio tools",
       "priority": 2,
       "size": "M",
-      "status": "backlog",
+      "status": "in-progress",
       "requested": false,
       "depends_on": [],
-      "details": "A screen listing every packet heard (type, route, hops, SNR, sender prefix), with optional logging to SD. A debugging tool for the mesh and for this firmware."
+      "details": "Built, awaiting a test on the device. Settings > Packet log: the last 48 packets heard or sent, with type, route, hops, sender, SNR, and the repeater it came through. The cursor or P freezes the list, Enter opens a packet, C clears, L copies packets to cardputer_packets.csv on the SD card (written every 5 s, stops at 16 MB, forgotten at restart). Damaged packets never reach it: they stay in the radio monitor of the serial log. Payloads are never stored."
     },
     {
       "id": "RADIO-7",
@@ -492,12 +492,12 @@
       "category": "Radio tools",
       "priority": 1,
       "size": "M",
-      "status": "backlog",
+      "status": "in-progress",
       "requested": true,
       "depends_on": [
         "VALIDATION-1"
       ],
-      "details": "Choose how many bytes of each node's public key identify it in a packet's path: 1, 2 or 3 (MeshCore's path hash size; the phone app sets it with CMD_SET_PATH_HASH_MODE). More bytes mean fewer collisions between nodes on a large mesh, but longer packets. Keyboard mode always floods with the default of 1 byte today: add a setting in Settings, pass it to every flood (sendFlood takes path_hash_size), and check that repeaters on older firmware forward such packets. Later, with SYNC-1, share the value with phone mode. Reported by the project owner on 2026-11-07: the node's ID is on 1 byte, which is why this moved up to P1."
+      "details": "Built, awaiting a test on the device. Settings > Path ID size (1, 2, 3 bytes, default 1): app/device/FloodPolicy applies it to every flood started here (messages, ACKs, returned paths, channels, adverts). The value of a contact's path comes from the flood that created it, so direct messages follow by themselves. Repeaters before firmware 1.14 silently drop 2 and 3 byte packets (meshcore/docs/faq.md 3.9.1), so the setting warns and the default stays 1. Verified on real MeshCore code (app/sim/wire): all three sizes flood, cross a repeater, return a path and then work in direct. Sharing the value with phone mode belongs to SYNC-1."
     },
     {
       "id": "RADIO-10",
@@ -505,12 +505,12 @@
       "category": "Radio tools",
       "priority": 1,
       "size": "M",
-      "status": "backlog",
+      "status": "in-progress",
       "requested": true,
       "depends_on": [
         "VALIDATION-1"
       ],
-      "details": "Reported by the project owner on 2026-11-07: no region is recorded on the node (fr / eu). MeshCore calls this the flood scope: a named region with a key, whose transport code on each flood lets repeaters decide whether to forward it. The companion stores it (default_scope_name, default_scope_key) and the app sets it with CMD_SET_DEFAULT_FLOOD_SCOPE; keyboard mode has neither, so its floods are never scoped. Add a region setting to Settings, save it, and override sendFloodScoped() in CardputerMesh, as companion_radio/MyMesh.cpp does (TransportKeyStore, RegionMap). Check how the local mesh names its regions first. Keyboard and phone mode keep separate settings today: sharing the region belongs with SYNC-1. Combine with RADIO-9, since both go through the same flood call."
+      "details": "Built, awaiting a test on the device. Settings > Region: free name, '#' optional, empty for none. The key is SHA-256 of \"#name\" (first 16 bytes), the same as companion_radio and repeaters; the case counts, and private '$' regions are refused because their key cannot be derived from the name. Warning for the user: a repeater that does not know the region does not forward at all (no fallback), and on a repeater a region must be both added and allowed (`region put`, `region allowf`). Before relying on a name, open the packet log: scoped packets from neighbours show `=` when they match it and `~` when they do not. Reported by the project owner on 2026-11-07. Sharing the region with phone mode belongs to SYNC-1."
     },
     {
       "id": "MESSAGING-1",
@@ -612,12 +612,12 @@
       "category": "Messaging",
       "priority": 1,
       "size": "M",
-      "status": "backlog",
+      "status": "in-progress",
       "requested": true,
       "depends_on": [
         "VALIDATION-1"
       ],
-      "details": "In a conversation, select a message and open its details and the sender's profile: name, contact sheet (key, position, compass, write to them), number of hops, SNR, time, delivery attempts. Hops and SNR are already stored with each received message (StoredMsg), so a message-selection mode in ChatScreen and a detail screen are the main work, reusing ContactDetailScreen. Direct messages link to the contact by key; channel messages only carry the sender's name, so the link there is a name match and may find nobody. Showing the route itself, not just the hop count, needs the path to be stored with the message."
+      "details": "Built, awaiting a test on the device. In a conversation, Fn+; selects the newest message and walks back; Enter opens its details (sender, time, hops, SNR, or delivery state and attempts for your own), and Enter again opens the sender's contact sheet, which now shows the route to that contact. Direct messages link by key. Channel messages only carry a name, so the link is a name match, which says so, reports several matches, and may find nobody. Left out: the route a received message itself took, which needs the path stored with each message and so a new history file format."
     },
     {
       "id": "MAP-1",

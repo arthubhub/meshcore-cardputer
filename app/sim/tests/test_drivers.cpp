@@ -2,9 +2,13 @@
 // Layer 1 of the test pyramid: each hardware block alone, no UI.
 //   make -C app/sim test        (CORE_LOG=1 to see the driver logs)
 #include "../../core/KeyMatrix.h"
+#include "../../core/Services.h"
+#include "../../core/drivers/AirtimeMeter.h"
 #include "../../core/drivers/FlashFsProbe.h"
+#include "../../core/drivers/FloodOptions.h"
 #include "../../core/drivers/GpsLink.h"
 #include "../../core/drivers/NodeDiscovery.h"
+#include "../../core/drivers/PacketLog.h"
 #include "../../core/drivers/Pi4ioe.h"
 #include "../../core/drivers/Tca8418.h"
 #include "../fakes/FakeGpsUart.h"
@@ -586,6 +590,314 @@ TEST(discovery_window_and_pause) {
   CHECK(!d.canStart(5000 + NodeDiscovery::MIN_INTERVAL_MS - 1));
   CHECK_EQ(d.secondsUntilNext(5000 + NodeDiscovery::MIN_INTERVAL_MS - 1), 1u);
   CHECK(d.canStart(5000 + NodeDiscovery::MIN_INTERVAL_MS));
+}
+
+// ============================================================ FloodOptions (RADIO-9, RADIO-10)
+
+TEST(flood_path_bytes_stay_in_range) {
+  using namespace floodopt;
+  CHECK_EQ(validPathBytes(1), 1);
+  CHECK_EQ(validPathBytes(3), 3);
+  CHECK_EQ(validPathBytes(0), 1);     // a damaged file falls back to the compatible value
+  CHECK_EQ(validPathBytes(4), 1);
+  CHECK_EQ(validPathBytes(255), 1);
+  CHECK_EQ(stepPathBytes(1, 1), 2);
+  CHECK_EQ(stepPathBytes(3, 1), 1);
+  CHECK_EQ(stepPathBytes(1, -1), 3);
+  CHECK_EQ(stepPathBytes(0, 1), 2);
+}
+
+TEST(flood_region_names) {
+  using namespace floodopt;
+  char out[REGION_MAX + 1];
+  CHECK(normalizeRegion("", out, sizeof(out)) == RegionName::None);
+  CHECK(normalizeRegion("   ", out, sizeof(out)) == RegionName::None);
+  CHECK(normalizeRegion("#", out, sizeof(out)) == RegionName::None);
+  CHECK(normalizeRegion(nullptr, out, sizeof(out)) == RegionName::None);
+
+  CHECK(normalizeRegion("fr", out, sizeof(out)) == RegionName::Ok);
+  CHECK(strcmp(out, "fr") == 0);
+  CHECK(normalizeRegion(" #eu ", out, sizeof(out)) == RegionName::Ok);
+  CHECK(strcmp(out, "eu") == 0);
+  CHECK(normalizeRegion("FR", out, sizeof(out)) == RegionName::Ok);   // the key depends on the case: kept
+  CHECK(strcmp(out, "FR") == 0);
+  CHECK(normalizeRegion("fr-31", out, sizeof(out)) == RegionName::Ok);
+  CHECK(normalizeRegion("Île-de-France", out, sizeof(out)) == RegionName::Ok);
+
+  CHECK(normalizeRegion("$club", out, sizeof(out)) == RegionName::Private);
+  CHECK(out[0] == 0);
+  CHECK(normalizeRegion("fr eu", out, sizeof(out)) == RegionName::Invalid);
+  CHECK(normalizeRegion("*", out, sizeof(out)) == RegionName::Invalid);
+  CHECK(normalizeRegion("a.b", out, sizeof(out)) == RegionName::Invalid);
+  CHECK(out[0] == 0);
+  std::string max(REGION_MAX, 'x');
+  CHECK(normalizeRegion(max.c_str(), out, sizeof(out)) == RegionName::Ok);
+  CHECK(normalizeRegion((max + "x").c_str(), out, sizeof(out)) == RegionName::Invalid);
+}
+
+// Settings files saved before these options hold the first 44 bytes of UiSettings: they must load with new defaults,
+// and the padding byte of that older layout must not land in a new field.
+static_assert(offsetof(UiSettings, language) == 42, "fields of the older settings file moved");
+static_assert(offsetof(UiSettings, reserved0) == 43, "reserved0 must sit on the old padding byte");
+static_assert(offsetof(UiSettings, pathHashBytes) == 44, "new fields start after the older layout");
+
+TEST(older_settings_files_keep_the_flood_defaults) {
+  UiSettings older;
+  strcpy(older.nodeName, "Saved");
+  uint8_t file[44];
+  memcpy(file, &older, sizeof(file));
+  file[43] = 0xA5;                       // whatever the padding byte held
+  UiSettings s;                          // what DeviceSettings::load does
+  memcpy(&s, file, sizeof(file));
+  CHECK(strcmp(s.nodeName, "Saved") == 0);
+  CHECK_EQ(s.pathHashBytes, 1);
+  CHECK_EQ(s.region[0], 0);
+}
+
+// ============================================================ AirtimeMeter (RADIO-4)
+
+TEST(airtime_limits_of_the_presets) {
+  CHECK_EQ(AirtimeMeter::limitPercent(869.618f), 10);    // MeshCore EU narrow
+  CHECK_EQ(AirtimeMeter::limitPercent(869.525f), 10);
+  CHECK_EQ(AirtimeMeter::limitPercent(868.3f), 1);
+  CHECK_EQ(AirtimeMeter::limitPercent(869.85f), 1);
+  CHECK(AirtimeMeter::limitPercent(868.9f) < 0.2f);
+  CHECK(AirtimeMeter::limitPercent(864.0f) < 0.2f);
+  CHECK_EQ(AirtimeMeter::limitPercent(915.0f), 0);       // no table outside Europe: no alert
+}
+
+TEST(airtime_counts_the_last_hour) {
+  AirtimeMeter m;
+  m.update(5000, 1000);                 // what was sent before the first call does not count
+  CHECK_EQ(m.lastHourMs(), 0u);
+  m.update(5600, 2000);
+  CHECK_EQ(m.lastHourMs(), 600u);
+  m.update(6600, 30 * 60000);
+  CHECK_EQ(m.lastHourMs(), 1600u);
+  CHECK(m.percent() > 0.04f && m.percent() < 0.05f);
+  m.update(6600, 59 * 60000);
+  CHECK_EQ(m.lastHourMs(), 1600u);
+  m.update(6600, 61 * 60000 + 2000);    // the first minute left the window
+  CHECK_EQ(m.lastHourMs(), 1000u);
+  m.update(6600, 200 * 60000);          // long silence: everything left
+  CHECK_EQ(m.lastHourMs(), 0u);
+}
+
+TEST(airtime_survives_counter_and_clock_rollover) {
+  AirtimeMeter m;
+  uint32_t t = 0xFFFFFFFFu - 30000;
+  uint32_t total = 0xFFFFFFFFu - 100;
+  m.update(total, t);
+  m.update(total + 300, t + 60000 + 1000);    // both wrap around 2^32
+  CHECK_EQ(m.lastHourMs(), 300u);
+}
+
+TEST(airtime_one_minute_cannot_exceed_a_minute) {
+  AirtimeMeter m;
+  m.update(0, 0);
+  m.update(500000, 1000);
+  CHECK_EQ(m.lastHourMs(), AirtimeMeter::BUCKET_MS);
+}
+
+TEST(airtime_alerts_once_with_hysteresis) {
+  using A = AirtimeMeter::Alert;
+  AirtimeMeter m;
+  uint32_t total = 0, t = 0;
+  m.update(0, 0);
+  const auto minute = [&](uint32_t ms) { total += ms; t += 60000; m.update(total, t); };   // one minute of the radio's life
+  minute(60000);  minute(60000);                    // 3.3 %
+  CHECK(m.pollAlert(10) == A::None);
+  minute(60000);  minute(60000);                    // 6.7 %
+  CHECK(m.pollAlert(0) == A::None);                 // no known limit: silent
+  CHECK(m.pollAlert(10) == A::None);
+  minute(48000);                                    // 8.0 %
+  CHECK(m.pollAlert(10) == A::Near);
+  CHECK(m.pollAlert(10) == A::None);                // reported once
+  minute(60000);                                    // 9.7 %
+  CHECK(m.pollAlert(10) == A::None);
+  minute(12000);                                    // 10.0 %
+  CHECK(m.pollAlert(10) == A::Over);
+  CHECK(m.pollAlert(10) == A::None);
+  // the hour slides: below the limit but above 80 %, no new warning, and Over does not repeat when hovering
+  AirtimeMeter h;
+  h.update(0, 0);
+  h.update(60000, 1000); h.update(120000, 62000); h.update(180000, 123000); h.update(240000, 184000);
+  h.update(300000, 245000); h.update(360000, 306000);
+  CHECK(h.pollAlert(10) == A::Over);
+  h.update(360000, 59 * 60000 + 2000 + 60000);   // the first minute left: 8.3 %
+  CHECK(h.pollAlert(10) == A::None);
+  h.update(360000, 200 * 60000);               // all gone: armed again
+  CHECK(h.pollAlert(10) == A::None);
+  h.update(420000, 201 * 60000); h.update(480000, 202 * 60000); h.update(540000, 203 * 60000);
+  h.update(600000, 204 * 60000); h.update(660000, 205 * 60000);
+  CHECK(h.pollAlert(10) == A::Near);
+}
+
+// ============================================================ PacketLog (RADIO-6)
+
+static PacketLog::Frame frame(uint8_t route, uint8_t type, uint8_t pathLen, const uint8_t* path, const std::vector<uint8_t>& body) {
+  PacketLog::Frame f;
+  f.header = wire::header(route, type);
+  f.pathLen = pathLen;
+  f.path = path;
+  f.payload = body.data();
+  f.payloadLen = body.size();
+  f.rawLen = 2 + (int)body.size();
+  f.snr = -9.25f;
+  f.rssi = -112;
+  f.ms = 1234;
+  f.unixTime = 1793541600;
+  return f;
+}
+
+TEST(packet_log_decodes_each_kind) {
+  PacketLog log;
+  const uint8_t path[] = {0xA1, 0xB2, 0xC3, 0xD4, 0xE5, 0xF6};
+  std::vector<uint8_t> txt = {0x11, 0x22, 0, 0, 9, 9};
+  log.add(frame(wire::ROUTE_FLOOD, wire::PL_TXT, 2, path, txt));
+  const PacketRecord* r = log.recent(0);
+  CHECK(r && r->type == wire::PL_TXT && r->route == wire::ROUTE_FLOOD && r->flood());
+  CHECK_EQ(r->hops, 2);
+  CHECK_EQ(r->hashBytes, 1);
+  CHECK_EQ(r->to, 0x11);
+  CHECK(r->flags & PacketRecord::HAS_TO);
+  CHECK_EQ(r->from[0], 0x22);
+  CHECK_EQ(r->fromLen, 1);
+  CHECK_EQ(r->lastHop[0], 0xB2);        // the repeater that sent it to us: last entry of the path
+  CHECK_EQ(r->snrX4, -37);
+  CHECK_EQ(r->rssi, -112);
+
+  std::vector<uint8_t> adv = {0x61, 0x20, 0x18, 0x69, 1, 2, 3};
+  log.add(frame(wire::ROUTE_FLOOD, wire::PL_ADVERT, (1 << 6) | 2, path, adv));   // 2 hops, 2 bytes each
+  r = log.recent(0);
+  CHECK_EQ(r->hops, 2);
+  CHECK_EQ(r->hashBytes, 2);
+  CHECK_EQ(r->lastHop[0], 0xC3);
+  CHECK_EQ(r->lastHop[1], 0xD4);
+  CHECK_EQ(r->fromLen, 3);
+  CHECK_EQ(r->from[2], 0x18);
+  CHECK(r->source == PacketRecord::SRC_NODE);
+
+  std::vector<uint8_t> grp = {0x7C, 0, 0, 0};
+  log.add(frame(wire::ROUTE_FLOOD, wire::PL_GRP_TXT, (2 << 6) | 1, path, grp));  // 1 hop, 3 bytes
+  r = log.recent(0);
+  CHECK(r->source == PacketRecord::SRC_CHANNEL);
+  CHECK_EQ(r->from[0], 0x7C);
+  CHECK_EQ(r->lastHop[2], 0xC3);
+
+  std::vector<uint8_t> ack = {1, 2, 3, 4};
+  log.add(frame(wire::ROUTE_DIRECT, wire::PL_ACK, 0, path, ack));
+  r = log.recent(0);
+  CHECK(r->source == PacketRecord::SRC_NONE);
+  CHECK(!r->flood());
+
+  std::vector<uint8_t> anon = {0x33, 0x44, 0x55, 0x66, 0x77};
+  log.add(frame(wire::ROUTE_FLOOD, wire::PL_ANON_REQ, 0, path, anon));
+  r = log.recent(0);
+  CHECK_EQ(r->to, 0x33);
+  CHECK_EQ(r->from[0], 0x44);
+  CHECK_EQ(r->fromLen, 3);
+
+  std::vector<uint8_t> found(14, 0);
+  found[0] = 0x92; found[6] = 0xAB; found[7] = 0xCD; found[8] = 0xEF;
+  log.add(frame(wire::ROUTE_DIRECT, wire::PL_CONTROL, 0, path, found));
+  r = log.recent(0);
+  CHECK_EQ(r->from[0], 0xAB);
+  std::vector<uint8_t> request = {0x81, 0x04, 1, 2, 3, 4};
+  log.add(frame(wire::ROUTE_DIRECT, wire::PL_CONTROL, 0, path, request));
+  CHECK(log.recent(0)->source == PacketRecord::SRC_NONE);   // a request has no key in it
+}
+
+TEST(packet_log_short_payloads_are_safe) {
+  PacketLog log;
+  std::vector<uint8_t> one = {0x11}, none;
+  log.add(frame(wire::ROUTE_FLOOD, wire::PL_TXT, 0, nullptr, one));
+  CHECK_EQ(log.recent(0)->fromLen, 0);
+  log.add(frame(wire::ROUTE_FLOOD, wire::PL_ADVERT, 0, nullptr, none));
+  CHECK_EQ(log.recent(0)->fromLen, 0);
+  log.add(frame(wire::ROUTE_FLOOD, wire::PL_GRP_TXT, 0, nullptr, none));
+  CHECK(log.recent(0)->source == PacketRecord::SRC_NONE);
+  log.add(frame(wire::ROUTE_DIRECT, wire::PL_CONTROL, 0, nullptr, one));
+  CHECK(log.recent(0)->source == PacketRecord::SRC_NONE);
+  std::vector<uint8_t> two = {0x90, 0};
+  log.add(frame(wire::ROUTE_DIRECT, wire::PL_CONTROL, 0, nullptr, two));
+  CHECK(log.recent(0)->source == PacketRecord::SRC_NONE);
+  PacketLog::Frame bad = frame(wire::ROUTE_FLOOD, wire::PL_ACK, (3 << 6) | 1, (const uint8_t*)"abcd", one);   // reserved size
+  log.add(bad);
+  CHECK_EQ(log.recent(0)->hashBytes, 1);
+}
+
+TEST(packet_log_region_flags) {
+  PacketLog log;
+  std::vector<uint8_t> body = {1, 2};
+  PacketLog::Frame f = frame(wire::ROUTE_TRANSPORT_FLOOD, wire::PL_TXT, 0, nullptr, body);
+  f.transportCode = 0xBEEF;
+  f.ourRegion = true;
+  log.add(f);
+  CHECK(log.recent(0)->scoped() && log.recent(0)->ourRegion() && log.recent(0)->flood());
+  CHECK_EQ(log.recent(0)->transportCode, 0xBEEF);
+  f.ourRegion = false;
+  log.add(f);
+  CHECK(log.recent(0)->scoped() && !log.recent(0)->ourRegion());
+  log.add(frame(wire::ROUTE_FLOOD, wire::PL_TXT, 0, nullptr, body));
+  CHECK(!log.recent(0)->scoped());
+}
+
+TEST(packet_log_ring) {
+  PacketLog log;
+  std::vector<uint8_t> body = {1, 2};
+  CHECK_EQ(log.count(), 0);
+  CHECK(log.recent(0) == nullptr);
+  for (int i = 0; i < PacketLog::CAPACITY + 5; i++) log.add(frame(wire::ROUTE_FLOOD, wire::PL_TXT, 0, nullptr, body));
+  CHECK_EQ(log.count(), PacketLog::CAPACITY);
+  CHECK_EQ(log.total(), (uint32_t)PacketLog::CAPACITY + 5);
+  CHECK_EQ(log.recent(0)->seq, (uint32_t)PacketLog::CAPACITY + 4);
+  CHECK_EQ(log.recent(PacketLog::CAPACITY - 1)->seq, 5u);
+  CHECK(log.recent(PacketLog::CAPACITY) == nullptr);
+  CHECK(log.bySeq(4) == nullptr);       // overwritten
+  CHECK(log.bySeq(5) != nullptr && log.bySeq(5)->seq == 5);
+  CHECK(log.bySeq(log.total()) == nullptr);
+  log.clear();
+  CHECK_EQ(log.count(), 0);
+  CHECK_EQ(log.total(), 0u);
+}
+
+TEST(packet_log_csv) {
+  PacketLog log;
+  const uint8_t path[] = {0xC3, 0xD4};
+  std::vector<uint8_t> body = {0x11, 0x22};
+  log.add(frame(wire::ROUTE_FLOOD, wire::PL_TXT, (1 << 6) | 1, path, body));
+  char line[PacketLog::CSV_LINE_MAX];
+  PacketLog::formatCsv(*log.recent(0), line, sizeof(line));
+  CHECK(std::string(line) == "0,1234,1793541600,rx,TXT,F,1,2,22,11,c3d4,-9.25,-112,4,");
+  // the widest line fits
+  PacketRecord w;
+  w.seq = 4294967295u; w.ms = 4294967295u; w.unixTime = 4294967295u; w.type = wire::PL_MULTIPART; w.route = wire::ROUTE_TRANSPORT_DIRECT;
+  w.hops = 63; w.hashBytes = 3; w.fromLen = 3; w.flags = PacketRecord::HAS_TO | PacketRecord::HAS_CODE; w.snrX4 = -128; w.rssi = -32768; w.len = 255;
+  PacketLog::formatCsv(w, line, sizeof(line));
+  CHECK(strlen(line) < sizeof(line) - 1);
+  CHECK(std::string(line).find("other") != std::string::npos);
+  int commas = 0;
+  for (const char* c = PacketLog::csvHeader(); *c; c++) commas += *c == ',';
+  int got = 0;
+  for (const char* c = line; *c; c++) got += *c == ',';
+  CHECK_EQ(commas, got);
+}
+
+TEST(path_hashes_text) {
+  const uint8_t p[] = {0xA1, 0xB2, 0xC3, 0xD4};
+  char out[32];
+  formatPathHashes(p, sizeof(p), 0, 1, out, sizeof(out));
+  CHECK(strcmp(out, "") == 0);
+  formatPathHashes(p, sizeof(p), 3, 1, out, sizeof(out));
+  CHECK(strcmp(out, "a1>b2>c3") == 0);
+  formatPathHashes(p, sizeof(p), 2, 2, out, sizeof(out));
+  CHECK(strcmp(out, "a1b2>c3d4") == 0);
+  formatPathHashes(p, sizeof(p), 5, 1, out, sizeof(out));   // more hops than the bytes kept
+  CHECK(strcmp(out, "a1>b2>c3>d4..") == 0);
+  char tiny[8];
+  formatPathHashes(p, sizeof(p), 4, 1, tiny, sizeof(tiny));
+  CHECK(strlen(tiny) < sizeof(tiny));
 }
 
 // ============================================================ main
