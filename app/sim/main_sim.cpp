@@ -16,8 +16,17 @@
 //   nearby <name> <snrThere> <snrHere>  a repeater in direct range answers the next searches (name: no spaces)
 //   nearby none                    no repeater in range
 //   expect-nearby <n>              number of repeaters listed by the search
+//   pkt <type> <from> <hops> <snr> [region]   a packet heard, for the packet log (type: ADV, TXT, GRP, ACK, PATH...)
+//   airtime <ms>                   transmit time added to the airtime meter
+//   sdcapture <0|1>                expect the packet capture to the SD card off / on
+//   expect-packets <n>             packets recorded in the log
+//   expect-last-tx <type> <route> <idBytes>   the newest packet sent (route: F, TF, D)
+//   rxroute <channel|-> <from> <taken|planned> <idBytes> <hex,hex...|none> <text...>   a message with its route, in travel
+//                                  order, each ID as hex ("a1", or "a1b2" with idBytes 2); "-": a direct message
+//   expect-route <points> <placed> <ambiguous> <unknown>   the route screen: points include the two ends
 //   rxburst <from> <n>             receive n numbered direct messages ("message 1".."message n"), 1 s apart
-//   contact <name> [hops] [fav] [repeater|room] [pos <lat> <lon>]   add a known contact (hops -1 = no path)
+//   contact <name> [hops] [fav] [repeater|room] [pos <lat> <lon>] [key <hex>]   add a known contact (hops -1 = no path);
+//                                  key: the first bytes of its public key, to make IDs match or collide
 //   net ack on|off                 contacts acknowledge direct messages (off => retries then failure)
 //   net delay <ms>                 ACK round trip;  net busy on|off: the radio refuses to send
 //   reboot                         flush and reload the message store from disk, back to the home screen
@@ -35,6 +44,7 @@
 //   sd on|off                      SD card present (backup / restore)
 //   tiles <dir>                    use the map tiles of <dir>/tiles (made by tools/tiles/make_tiles.py)
 //   expect-tiles-read <n>          number of tile files opened so far (render cost / caching checks)
+//   expect-zoom <z>                zoom level of the map
 //   nmea-bad <sentence>            the sentence must be rejected (bad checksum / malformed)
 //   expect-adverts-pos <n>         number of adverts sent with the GPS position
 //   ble on|off|connected
@@ -67,6 +77,8 @@
 #include "../core/screens/GpsScreens.h"
 #include "../core/screens/MapScreen.h"
 #include "../core/screens/NearbyScreen.h"
+#include "../core/screens/PacketsScreen.h"
+#include "../core/screens/RouteScreen.h"
 #include "../core/DemoGps.h"
 #include "../core/KeyMatrix.h"
 #include "SimServices.h"
@@ -101,6 +113,12 @@ static bool writePng(const std::string& path) {
     }
   }
   return png::write(path, W, H, rgb);
+}
+
+static std::vector<uint8_t> hexBytes(const std::string& hex) {
+  std::vector<uint8_t> out;
+  for (size_t i = 0; i + 1 < hex.size(); i += 2) out.push_back((uint8_t)strtol(hex.substr(i, 2).c_str(), nullptr, 16));
+  return out;
 }
 
 static bool parseKey(std::string k, KeyEvent& e) {
@@ -185,6 +203,10 @@ int main(int argc, char** argv) {
   TextInputScreen textInput;
   ChatScreen chat;
   ContactDetailScreen contactDetail(chat);
+  MessageDetailScreen messageDetail(chat, contactDetail);
+  chat.setMessageDetail(&messageDetail);
+  RouteScreen routeScreen(contactDetail);
+  messageDetail.setRouteScreen(&routeScreen);
   ContactsScreen contacts(chat, contactDetail);
   ConversationsScreen conversations(chat, contacts, textInput);
   CompassScreen compass;
@@ -192,8 +214,11 @@ int main(int argc, char** argv) {
   contactDetail.setCompass(&compass);
   GpsScreen gps(compass);
   MapScreen map;
+  routeScreen.setMap(&map);
   SystemScreen systemScreen;
-  SettingsScreen settingsScreen(textInput, systemScreen);
+  PacketDetailScreen packetDetail;
+  PacketsScreen packets(packetDetail);
+  SettingsScreen settingsScreen(textInput, systemScreen, packets);
   NearbyScreen nearby(contactDetail);
   HomeScreen home(&conversations, &contacts, &gps, &map, &nearby, &settingsScreen);
   app.begin(&home);
@@ -269,21 +294,42 @@ int main(int argc, char** argv) {
       std::string from; ls >> from; mesh.receive(from, rest(ls)); runFor(LOOP_MS);
     } else if (cmd == "rxch") {
       std::string ch, from; ls >> ch >> from; mesh.receiveChannel(ch, from, rest(ls)); runFor(LOOP_MS);
+    } else if (cmd == "rxroute") {
+      std::string ch, from, kind, hashes; int idBytes = 1;
+      ls >> ch >> from >> kind >> idBytes >> hashes;
+      std::vector<uint8_t> path;
+      int hops = 0;
+      if (hashes != "none") {
+        std::string joined;
+        for (char c : hashes) if (c == ',') hops++; else joined += c;
+        hops++;
+        path = hexBytes(joined);
+      }
+      path.resize(64);
+      MsgRoute r;
+      r.set(kind == "planned" ? PATH_PLANNED : PATH_TAKEN, (uint8_t)(((idBytes - 1) << 6) | hops), path.data());
+      if (ch == "-") mesh.receive(from, rest(ls), &r);
+      else mesh.receiveChannel(ch, from, rest(ls), &r);
+      runFor(LOOP_MS);
     } else if (cmd == "rxburst") {
       std::string from; int n = 0; ls >> from >> n;
       for (int i = 1; i <= n; i++) { mesh.receive(from, "message " + std::to_string(i)); runFor(1000); }
     } else if (cmd == "contact") {
       std::string name, w; ls >> name;
       int hops = 1; bool fav = false, hasPos = false; uint8_t type = CONTACT_CHAT; double lat = 0, lon = 0;
+      std::string key;
       if (ls >> hops) {
         while (ls >> w) {
           if (w == "fav") fav = true;
           else if (w == "repeater") type = CONTACT_REPEATER;
           else if (w == "room") type = CONTACT_ROOM;
           else if (w == "pos") { ls >> lat >> lon; hasPos = true; }
+          else if (w == "key") ls >> key;
         }
       }
-      mesh.addContact(name, hops, fav, type, hasPos, lat, lon); app.invalidate(); runFor(LOOP_MS);
+      mesh.addContact(name, hops, fav, type, hasPos, lat, lon);
+      if (!key.empty()) mesh.setContactKey(name, hexBytes(key));
+      app.invalidate(); runFor(LOOP_MS);
     } else if (cmd == "net") {
       std::string what, v; ls >> what >> v;
       if (what == "ack") mesh.netAcks = (v == "on");
@@ -400,6 +446,18 @@ int main(int argc, char** argv) {
     } else if (cmd == "tiles") {
       std::string d; ls >> d;
       if (!tiles.open(d)) { fprintf(stderr, "line %d: no tiles in %s\n", lineNo, d.c_str()); g_failures++; }
+    } else if (cmd == "expect-route") {
+      int points = 0, placed = 0, ambiguous = 0, unknown = 0;
+      ls >> points >> placed >> ambiguous >> unknown;
+      const ResolvedRoute& r = routeScreen.route();
+      if (points != r.count || placed != r.placed || ambiguous != r.ambiguous || unknown != r.unknown) {
+        fprintf(stderr, "line %d: FAIL route expected %d %d %d %d, got %d %d %d %d\n", lineNo, points, placed, ambiguous, unknown,
+                r.count, r.placed, r.ambiguous, r.unknown);
+        g_failures++;
+      }
+    } else if (cmd == "expect-zoom") {
+      int want = 0; ls >> want;
+      if (want != map.zoom()) { fprintf(stderr, "line %d: FAIL expected zoom %d, got %d\n", lineNo, want, map.zoom()); g_failures++; }
     } else if (cmd == "expect-tiles-read") {
       int want = 0; ls >> want;
       if (want != tiles.tilesRead) { fprintf(stderr, "line %d: FAIL expected %d tile reads, got %d\n", lineNo, want, tiles.tilesRead); g_failures++; }
@@ -459,6 +517,8 @@ int main(int argc, char** argv) {
       else if (field == "share") got = std::to_string(s.shareLocation);
       else if (field == "brightness") got = std::to_string(s.brightness);
       else if (field == "lang") got = s.language == LANG_FR ? "fr" : "en";
+      else if (field == "pathbytes") got = std::to_string(s.pathHashBytes);
+      else if (field == "region") got = s.region;
       else got = "<unknown field>";
       if (want != got) { fprintf(stderr, "line %d: FAIL setting %s expected '%s', got '%s'\n", lineNo, field.c_str(), want.c_str(), got.c_str()); g_failures++; }
     } else if (cmd == "expect-convs") {
@@ -467,6 +527,30 @@ int main(int argc, char** argv) {
     } else if (cmd == "expect-contacts") {
       int want = 0; ls >> want;
       if (want != mesh.contactCount()) { fprintf(stderr, "line %d: FAIL expected %d contacts, got %d\n", lineNo, want, mesh.contactCount()); g_failures++; }
+    } else if (cmd == "pkt") {
+      std::string type, from, region; int hops = 0; float snr = 0;
+      ls >> type >> from >> hops >> snr >> region;
+      mesh.hearPacket(type, from, hops, snr, region); runFor(LOOP_MS);
+    } else if (cmd == "airtime") {
+      uint32_t ms = 0; ls >> ms; mesh.addAirtime(ms); runFor(LOOP_MS * 2);
+    } else if (cmd == "sdcapture") {
+      int want = 0; ls >> want;
+      if ((want != 0) != mesh.packetCapture()) { fprintf(stderr, "line %d: FAIL packet capture expected %d\n", lineNo, want); g_failures++; }
+    } else if (cmd == "expect-packets") {
+      uint32_t want = 0; ls >> want;
+      if (want != mesh.packetLog().total()) { fprintf(stderr, "line %d: FAIL expected %u packets, got %u\n", lineNo, want, mesh.packetLog().total()); g_failures++; }
+    } else if (cmd == "expect-last-tx") {
+      std::string type, route; int bytes = 0; ls >> type >> route >> bytes;
+      const PacketRecord* tx = nullptr;
+      for (int i = 0; i < mesh.packetLog().count() && !tx; i++) {
+        const PacketRecord* r = mesh.packetLog().recent(i);
+        if (r->tx()) tx = r;
+      }
+      if (!tx || type != PacketLog::typeName(tx->type) || route != PacketLog::routeName(tx->route) || bytes != tx->hashBytes) {
+        fprintf(stderr, "line %d: FAIL last sent packet expected %s %s %d, got %s %s %d\n", lineNo, type.c_str(), route.c_str(), bytes,
+                tx ? PacketLog::typeName(tx->type) : "none", tx ? PacketLog::routeName(tx->route) : "-", tx ? tx->hashBytes : 0);
+        g_failures++;
+      }
     } else if (cmd == "expect-nearby") {
       int want = 0; ls >> want;
       if (want != mesh.discovery().count()) { fprintf(stderr, "line %d: FAIL expected %d nearby repeaters, got %d\n", lineNo, want, mesh.discovery().count()); g_failures++; }

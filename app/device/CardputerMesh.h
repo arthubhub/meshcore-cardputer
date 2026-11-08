@@ -8,7 +8,9 @@
 #include <helpers/SimpleMeshTables.h>
 #include "../core/Services.h"
 #include "DeviceServices.h"
+#include "FloodPolicy.h"
 #include "LittleFsStorage.h"
+#include "PacketSdLogger.h"
 
 class CardputerMesh : public BaseChatMesh, public MeshService {
 public:
@@ -40,12 +42,21 @@ public:
   RadioStats radioStats() override;
   bool startDiscovery() override;
   const NodeDiscovery& discovery() const override { return _discovery; }
+  const PacketLog& packetLog() const override { return _packets; }
+  void clearPacketLog() override { _packets.clear(); }
+  bool setPacketCapture(bool on) override;
+  bool packetCapture() const override { return _capture.active(); }
+  const FloodPolicy& floods() { syncFloods(); return _floods; }
 
 protected:
   // ---- BaseChatMesh / Mesh ----
   float getAirtimeBudgetFactor() const override { return 1.0f; }
   int calcRxDelay(float score, uint32_t air_time) const override { return 0; }
   bool allowPacketForward(const mesh::Packet* packet) override { return false; }   // client, not a repeater
+  void sendFloodScoped(const ContactInfo& recipient, mesh::Packet* pkt, uint32_t delay_millis = 0) override;
+  void sendFloodScoped(const mesh::GroupChannel& channel, mesh::Packet* pkt, uint32_t delay_millis = 0) override;
+  void logRx(mesh::Packet* packet, int len, float score) override;
+  void logTx(mesh::Packet* packet, int len) override;
   void onControlDataRecv(mesh::Packet* packet) override;
   void onAdvertRecv(mesh::Packet* packet, const mesh::Identity& id, uint32_t timestamp, const uint8_t* app_data,
                     size_t app_data_len) override;
@@ -93,6 +104,9 @@ private:
   bool transmit(Pending& p, StoredMsg& m, ContactInfo& c);
   void checkPending();
   void pushEvent(MeshEvent::Type t, const ConvKey& k, const char* title, const char* text);
+  void syncFloods();                  // follows the settings
+  void recordPacket(const mesh::Packet& p, int len, bool tx);
+  void checkAirtime(uint32_t now);
 
   void loadIdentity();
   void loadContacts();
@@ -106,6 +120,11 @@ private:
   GpsService* _gps = nullptr;
   LittleFsStorage _storage;
   NodeDiscovery _discovery;
+  FloodPolicy _floods;
+  PacketLog _packets;
+  PacketSdLogger _capture;
+  AirtimeMeter _airtime;
+  uint32_t _lastAirtimeCheck = 0;
   MessageStore _store;
   bool _started = false;
 

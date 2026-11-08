@@ -93,6 +93,80 @@ MeshCore affiche aussi `readData(-7)` (paquet abîmé en l'air) ou `readData(-70
       que son nom arrivera avec sa prochaine annonce.
 - [ ] Aucun routeur à portée : « No router answered » à la fin des 15 s.
 
+## Région et taille d'identifiant (RADIO-9, RADIO-10)
+
+Valeurs par défaut : aucune région, 1 octet. Ce sont les seules qui passent par tous les routeurs. Une fois les
+essais finis, revenir à ces valeurs si le réseau local n'utilise ni région ni identifiants longs.
+
+- [ ] Au démarrage, le log affiche `floods: path ID 1 byte(s), region none`. La commande série `flood` donne la même chose.
+- [ ] Après une mise à jour : nom, puissance et autres réglages sont conservés.
+- [ ] Réglages → *Path ID size* : `/` passe à 2 octets, avec l'avertissement « Repeaters must be 1.14+ ».
+- [ ] S'annoncer (Contacts → `A`), puis dans le journal radio : la ligne `>ADV` (`>` = envoyé), `Entrée` : « ID on 2 byte(s) ».
+- [ ] Un autre nœud reçoit l'annonce au travers d'un routeur 1.14 ou plus. Refaire avec 3 octets.
+- [ ] Réglages → *Region* : taper le nom utilisé localement (ex. `fr`), `Entrée` : bannière, puis la valeur dans la liste.
+      La casse compte : `FR` et `fr` sont deux régions. Le log `settings saved (ok)` apparaît.
+- [ ] Après redémarrage, le log affiche `floods: path ID … region fr`.
+- [ ] S'annoncer : dans le journal, `>ADV` avec `TF` et `=` (flood avec notre région). Un message de canal aussi.
+- [ ] **Vérifier le nom de région :** dans le journal, les paquets des voisins avec `TF` et `=` portent notre région ; avec
+      `~`, une autre. Si un autre nœud n'entend plus rien, le routeur ne connaît pas ce nom : il lui faut
+      `region put <nom>` puis `region allowf <nom>`. Effacer le texte et valider enlève la région.
+- [ ] Un nom `$prive` ou `fr eu` est refusé avec un message, la région ne change pas.
+- [ ] Message vers un contact sans chemin, avec 2 octets : il arrive, l'accusé revient, et la fiche du contact affiche
+      une route en groupes de 4 chiffres, par ex. `a1b2>c3d4`. Le message suivant part en direct.
+
+## Depuis un message vers le profil (MESSAGING-9)
+
+- [ ] Dans une conversation, `Fn+;` encadre le dernier message et l'aide devient « Enter:details ». `Fn+;` recule, `Fn+.` avance.
+- [ ] `Entrée` : expéditeur, heure, sauts, SNR, profil. Les valeurs sont celles de la bulle.
+- [ ] `Entrée` encore : la fiche du contact, avec sa route. `` ` `` deux fois : retour à la conversation, même message encadré.
+- [ ] Taper une lettre quitte la sélection : `Entrée` envoie le message, il n'ouvre pas de détail.
+- [ ] Sur son propre message : état, nombre d'essais, destinataire.
+- [ ] Message reçu pendant une sélection : le même message reste encadré.
+- [ ] Canal, expéditeur connu : « name match » et sa fiche. `M` depuis la fiche, retour : on revient bien au canal.
+- [ ] Canal, expéditeur inconnu : message « Channels only give a name ».
+
+## Temps d'émission (RADIO-4)
+
+- [ ] Système → *Transmit, 1 h* : la valeur monte après quelques annonces, avec `/ 10 %` sur les réglages EU.
+- [ ] Le log `BEAT` contient `air x.xx%/10%`. Les deux valeurs sont cohérentes.
+- [ ] Une heure après le dernier envoi, la valeur est revenue à zéro ou presque.
+- Alerte à 8 % puis à 10 % : vérifiée au simulateur. Sur l'appareil, il faudrait émettre plus de 5 minutes en une heure.
+
+## Journal radio (RADIO-6)
+
+- [ ] Réglages → *Packet log* : les paquets s'ajoutent en haut, avec heure, type, expéditeur, route et SNR.
+- [ ] Les SNR sont proches de ceux des lignes de réception du log série.
+- [ ] Le curseur (`.`) ou `P` affiche « paused » : la liste ne bouge plus et le total continue de monter. `P` repart du plus récent.
+- [ ] `Entrée` : le détail du paquet. « Heard via » est l'identifiant du routeur d'où il vient.
+- [ ] Avec carte SD, `L` : « SD » dans le titre, log `packet capture on`. Après quelques minutes, `L` à nouveau.
+      Sur un PC, `cardputer_packets.csv` a une ligne d'en-tête et une ligne par paquet.
+- [ ] Pendant la capture, messages et réception continuent. Comparer le taux d'erreurs du `BEAT` avec et sans capture.
+- [ ] Sans carte SD, `L` affiche « No SD card ». `C` vide la liste.
+
+## Zoom de la carte (MAP-6)
+
+Il faut le firmware avec carte et des tuiles sur la SD. Le log de démarrage donne les niveaux présents (`map tiles zoom a-b`).
+
+- [ ] `=` deux fois au-delà du niveau maximum : la carte reste affichée, plus pixelisée, avec `x2` puis `x4` en haut à droite. Un `=` de plus ne change rien.
+- [ ] `-` deux fois en dessous du niveau minimum : `/2` puis `/4`. Noter le temps d'affichage à chaque niveau. L'objectif est moins de 1,5 s.
+- [ ] Pendant un affichage en `/4`, un message reçu arrive normalement, et le taux d'erreurs du `BEAT` reste comparable.
+- [ ] Encore plus bas : grille et marqueurs seuls, instantané, jusqu'à `z3`.
+- [ ] Déplacement `;.,/` à chaque échelle, puis `0` pour revenir à sa position.
+
+## Route d'un message et trajet sur la carte (MESSAGING-10, MAP-7)
+
+- [ ] **Première mise à jour :** l'historique des messages repart de zéro. Les contacts, la clé (même identifiant), les canaux et les réglages sont intacts.
+      Dans le log : `storage … KB -> up to … conversations kept`, avec moins de conversations qu'avant si la partition est petite.
+- [ ] Message reçu par inondation à travers un ou plusieurs routeurs : dans son détail, *Hops* et *Route* (`a1>b2`) concordent.
+- [ ] `T` : les sauts, de l'expéditeur vers toi, avec `ok`, `uncertain (n)`, `no position` ou `?`. `Entrée` sur un routeur ouvre sa fiche.
+- [ ] `T` encore (firmware avec carte) : la carte cadre tout le trajet. `+` `-` et les flèches marchent, `R` recadre, `` ` `` revient et ta vue d'avant est retrouvée.
+- [ ] Les points et les traits correspondent aux vrais routeurs que tu connais sur ton réseau. Un saut orange est une supposition : la vérifier dans la liste.
+- [ ] Message reçu en direct : *Route, planned* (« prévue »), trait en pointillés.
+- [ ] Après un redémarrage, la route d'un ancien message est toujours là.
+- [ ] Sans position pour aucun point : message « Nothing to show ».
+- [ ] Firmware sans carte : la liste des sauts s'ouvre, le second `T` affiche « Map not included ».
+- [ ] Journal radio : les noms des contacts remplacent les identifiants quand un seul contact correspond.
+
 ## Phase 1 — firmware companion (`cardputer_adv_companion_ble`)
 
 - [ ] Au démarrage, le log contient `BOARD  board begin` puis `M5Unified board id=... (ADV=...)` avec les deux nombres identiques.

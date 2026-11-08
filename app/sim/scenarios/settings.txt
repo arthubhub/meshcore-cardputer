@@ -41,7 +41,7 @@ expect-setting preset 0
 key .
 key ,*3
 expect-setting tx 19
-key .
+key .*3
 key /
 expect-setting tz 120
 key .
@@ -74,9 +74,8 @@ key enter
 expect-setting name Raphaël-CPADV
 shot 17_restored
 
-# System screen (after "Mode téléphone")
-key .
-key .
+# System screen (after "Journal radio" and "Mode téléphone")
+key .*3
 key enter
 expect-screen Système
 wait 5000

@@ -16,12 +16,18 @@ public:
 
   // ---- scenario hooks ----
   void addContact(const std::string& name, int hops, bool fav, uint8_t type, bool hasPos, double lat, double lon);
-  void receive(const std::string& sender, const std::string& text);                           // direct
-  void receiveChannel(const std::string& channel, const std::string& sender, const std::string& text);
+  // Without a route, one is made up from the repeaters among the contacts.
+  void receive(const std::string& sender, const std::string& text, const MsgRoute* route = nullptr);   // direct
+  void receiveChannel(const std::string& channel, const std::string& sender, const std::string& text,
+                      const MsgRoute* route = nullptr);
+  void setContactKey(const std::string& name, const std::vector<uint8_t>& keyStart);   // the bytes a route would name
   void hear(const std::string& name, float snr);
   // A repeater in direct range: it answers the next discovery requests, through the real NodeDiscovery.
   void addNearby(const std::string& name, float snrThere, float snrHere);
   void clearNearby();
+  // A packet heard on the air, for the packet log: payload type name, as in PacketLog::typeName ("ADV", "TXT"...).
+  void hearPacket(const std::string& type, const std::string& from, int hops, float snr, const std::string& region);
+  void addAirtime(uint32_t ms);   // transmit time, as if the radio had sent that long
   void reboot();              // flush + reload the message store from the files
   void tick();                // advances the fake network (ACKs, retries, demo bot)
   // Demo firmware: characters chat on Public, reply to direct messages, adverts... (off in tests)
@@ -55,6 +61,10 @@ public:
   RadioStats radioStats() override;
   bool startDiscovery() override;
   const NodeDiscovery& discovery() const override { return _discovery; }
+  const PacketLog& packetLog() const override { return _packets; }
+  void clearPacketLog() override { _packets.clear(); }
+  bool setPacketCapture(bool on) override { _capture = on; return true; }
+  bool packetCapture() const override { return _capture; }
 
 private:
   void logf(const char* fmt, ...);
@@ -75,6 +85,11 @@ private:
   void sortContacts();
   void push(MeshEvent::Type t, const ConvKey& k, const std::string& title, const std::string& text);
   void transmit(Pending& p, StoredMsg& m);
+  void record(uint8_t route, uint8_t payload, const std::vector<uint8_t>& body, int hops, int hashBytes, float snr, bool tx,
+              bool scoped, bool ourRegion);
+  void recordTx(uint8_t payload, const ConvKey& key, bool flood);
+  void recordRx(uint8_t payload, const ConvKey& key, int hops, float snr);
+  MsgRoute repeaterRoute(int hops) const;
 
   SystemService& _sys;
   SettingsService& _settings;
@@ -89,5 +104,9 @@ private:
   std::vector<Nearby> _nearby;
   std::vector<Answer> _answers;
   NodeDiscovery _discovery;
+  PacketLog _packets;
+  bool _capture = false;
+  AirtimeMeter _airtime;
+  uint32_t _airTotalMs = 0;
   uint32_t _rx = 0;
 };

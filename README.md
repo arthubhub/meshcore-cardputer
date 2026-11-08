@@ -6,8 +6,8 @@
 A standalone [MeshCore](https://github.com/meshcore-dev/MeshCore) firmware for the M5Stack Cardputer ADV
 fitted with the Cap LoRa-1262. Your Cardputer becomes a self-contained mesh messenger: you type and read
 messages on its own keyboard and screen, check your position on the built-in GPS, find your contacts with
-a compass, search for the repeaters within radio range, and browse offline maps stored on a microSD card — no
-phone required.
+a compass, search for the repeaters within radio range, and browse offline maps stored on a microSD card, where
+you can also follow the route a received message took — no phone required.
 
 If you would rather use the official MeshCore app, the same image also contains the stock companion
 firmware. Switching to "phone mode" is a single menu entry, and pressing **esc** three times brings you
@@ -94,6 +94,10 @@ including the awkward cases: a GPS talking at an unexpected baud rate, a keyboar
 its configuration after a power glitch, a full event FIFO. `run` replays scripted user sessions through
 the real interface and saves screenshots in `app/sim/build/`. Each session runs twice: once with keys
 injected directly, once with every key press going through the emulated keyboard controller.
+
+`make -C app/sim wire` compiles MeshCore's real network code on the PC, unchanged, and makes nodes and a repeater
+talk over a simulated radio: packets with a region, IDs of 1 to 3 bytes, messages finding their route. It needs the
+libraries PlatformIO installs (`pio pkg install -e cardputer_adv_standalone`).
 
 The radio, the audio codec and the battery are not emulated; those still need a real device.
 

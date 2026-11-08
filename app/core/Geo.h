@@ -60,4 +60,46 @@ inline double metersPerPixel(double lat, int z) {
   return 156543.03392 * cos(lat * DEG) / (double)(1u << z);
 }
 
+// The rectangle around a set of positions, and the closest zoom that shows it whole. A set crossing the 180th
+// meridian is seen as spanning the whole world: no mesh does.
+class Bounds {
+public:
+  void add(double lat, double lon) {
+    if (!_any) { _south = _north = lat; _west = _east = lon; _any = true; return; }
+    if (lat < _south) _south = lat;
+    if (lat > _north) _north = lat;
+    if (lon < _west) _west = lon;
+    if (lon > _east) _east = lon;
+  }
+  void add(const Bounds& o) {
+    if (!o._any) return;
+    add(o._south, o._west);
+    add(o._north, o._east);
+  }
+  bool empty() const { return !_any; }
+
+  // Centre of the rectangle on the map, which is not the middle of the latitudes (Mercator).
+  void center(double& lat, double& lon) const {
+    double x0, y0, x1, y1;
+    toPixel(_north, _west, 0, x0, y0);
+    toPixel(_south, _east, 0, x1, y1);
+    fromPixel((x0 + x1) / 2, (y0 + y1) / 2, 0, lat, lon);
+  }
+
+  // Highest zoom in [zmin, zmax] where the rectangle fits in w x h pixels, leaving `margin` pixels on each side.
+  int fitZoom(int w, int h, int margin, int zmin, int zmax) const {
+    for (int z = zmax; z > zmin; z--) {
+      double x0, y0, x1, y1;
+      toPixel(_north, _west, z, x0, y0);
+      toPixel(_south, _east, z, x1, y1);
+      if (x1 - x0 <= w - 2 * margin && y1 - y0 <= h - 2 * margin) return z;
+    }
+    return zmin;
+  }
+
+private:
+  bool _any = false;
+  double _south = 0, _north = 0, _west = 0, _east = 0;
+};
+
 }  // namespace geo

@@ -1,0 +1,130 @@
+# Region and path ID size (RADIO-9, RADIO-10): the settings, and what the floods really carry.
+name Cardputer
+time 1793541600
+contact Bob -1
+contact Alice 2
+sd off
+
+# Defaults: compatible with everything
+expect-setting pathbytes 1
+expect-setting region
+key s
+key .*4
+shot f1_flood_defaults
+
+# Region: free text, '#' removed, kept as typed
+key enter
+wait 40
+shot f2_region_input
+type #fr
+key enter
+wait 40
+expect-setting region fr
+shot f3_region_warning
+wait 4500
+
+# Refused names leave the region alone and say why
+key enter
+key bksp*2
+type $club
+key enter
+wait 40
+expect-setting region fr
+shot f4_region_private
+wait 3500
+key enter
+key bksp*2
+type fr eu
+key enter
+wait 40
+expect-setting region fr
+wait 3500
+
+# Cancelling keeps it too
+key enter
+key bksp*2
+type xx
+key esc
+expect-setting region fr
+
+# Path ID: 1 > 2 > 3 > 1, with a warning on the larger sizes
+key .
+key /
+expect-setting pathbytes 2
+wait 40
+shot f5_path_warning
+wait 4000
+key /
+expect-setting pathbytes 3
+key /
+expect-setting pathbytes 1
+key ,
+expect-setting pathbytes 3
+key ,
+expect-setting pathbytes 2
+wait 4000
+shot f6_flood_set
+key `
+expect-screen Home
+
+# Every kind of flood uses both settings: advert...
+key c
+key a
+wait 40
+expect-last-tx ADV TF 2
+wait 2500
+key `
+
+# ...channel message...
+key m
+key enter
+type hello
+key enter
+wait 40
+expect-last-tx GRP TF 2
+key esc
+key `
+
+# ...and a contact with no path (Bob). Alice has a path: direct, the settings do not apply
+key c
+wait 40
+key m
+type to bob
+key enter
+wait 40
+expect-last-tx TXT TF 2
+key esc
+key .
+key m
+type to alice
+key enter
+wait 40
+expect-last-tx TXT D 1
+key esc
+key `
+
+# Back to no region: a plain flood (the settings keep their cursor, on Path ID)
+key s
+key ;
+key enter
+key bksp*2
+key enter
+wait 40
+expect-setting region
+shot f7_region_cleared
+wait 3500
+key `
+key c
+key a
+wait 40
+expect-last-tx ADV F 2
+wait 2500
+key `
+
+# In French
+lang fr
+wait 40
+key s
+wait 40
+shot f8_flood_fr
+key `

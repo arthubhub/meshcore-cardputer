@@ -2,6 +2,7 @@
 #include <CpadvLog.h>
 #if !CPADV_DEMO
 #include "../core/RadioPresets.h"
+#include "MessageRoute.h"
 #include <CpadvDataFs.h>   // the data partition (shared with phone mode)
 #include <helpers/ArduinoHelpers.h>
 #include <helpers/IdentityStore.h>
@@ -76,8 +77,10 @@ void CardputerMesh::begin() {
   }
   _store.flush();
   _started = true;
+  syncFloods();
   CPLOG_I("MESH", "mesh ready: %d contacts, %d conversations, %d unread", getNumContacts(), _store.count(),
                 _store.unreadTotal());
+  CPLOG_I("MESH", "floods: path ID %u byte(s), region %s", _floods.pathHashBytes(), _floods.scoped() ? _floods.region() : "none");
 }
 
 void CardputerMesh::loadIdentity() {
@@ -232,6 +235,7 @@ void CardputerMesh::toView(const ContactInfo& c, ContactView& out) {
   out.type = c.type;
   out.favourite = c.isFav();
   out.hops = c.out_path_len == OUT_PATH_UNKNOWN ? -1 : (int8_t)(c.out_path_len & 63);
+  if (out.hops >= 0) out.route.set(PATH_PLANNED, c.out_path_len, c.out_path);
   out.lastHeard = c.lastmod;
   out.hasPos = c.gps_lat != 0 || c.gps_lon != 0;
   out.latE6 = c.gps_lat;
@@ -311,11 +315,73 @@ bool CardputerMesh::sendAdvert(bool flood, bool withPosition) {
   mesh::Packet* pkt = pos ? createSelfAdvert(selfName(), _gps->state().lat, _gps->state().lon)
                           : createSelfAdvert(selfName());
   if (!pkt) return false;
-  if (flood) sendFlood(pkt); else sendZeroHop(pkt);
+  if (flood) { syncFloods(); _floods.send(*this, pkt); }
+  else sendZeroHop(pkt);
   if (pos) CPLOG_I("MESH", "advert sent (%s) as '%s' at %.5f, %.5f", flood ? "flood" : "zero hop", selfName(),
                          _gps->state().lat, _gps->state().lon);
   else CPLOG_I("MESH", "advert sent (%s) as '%s'", flood ? "flood" : "zero hop", selfName());
   return true;
+}
+
+// ================================================================ how floods leave this node (RADIO-9, RADIO-10)
+
+void CardputerMesh::syncFloods() {
+  const UiSettings& s = _settings.get();
+  _floods.configure(s.pathHashBytes, s.region);
+}
+
+// Everything BaseChatMesh floods (messages, ACKs, returned paths) arrives here
+void CardputerMesh::sendFloodScoped(const ContactInfo&, mesh::Packet* pkt, uint32_t delay_millis) {
+  syncFloods();
+  _floods.send(*this, pkt, delay_millis);
+}
+
+void CardputerMesh::sendFloodScoped(const mesh::GroupChannel&, mesh::Packet* pkt, uint32_t delay_millis) {
+  syncFloods();
+  _floods.send(*this, pkt, delay_millis);
+}
+
+// ================================================================ packet log (RADIO-6), airtime (RADIO-4)
+
+void CardputerMesh::recordPacket(const mesh::Packet& p, int len, bool tx) {
+  syncFloods();     // the region may have just changed: packets are compared with the current one
+  PacketLog::Frame f;
+  f.header = p.header;
+  f.pathLen = (uint8_t)p.path_len;
+  f.path = p.path;
+  f.payload = p.payload;
+  f.payloadLen = p.payload_len;
+  f.transportCode = p.transport_codes[0];
+  f.rawLen = len;
+  f.snr = tx ? 0 : p.getSNR();
+  f.rssi = tx ? 0 : radio_driver.getLastRSSI();
+  f.ms = millis();
+  f.unixTime = nowUnix();
+  f.tx = tx;
+  f.ourRegion = _floods.isOurRegion(p);
+  _packets.add(f);
+}
+
+void CardputerMesh::logRx(mesh::Packet* packet, int len, float) { recordPacket(*packet, len, false); }
+void CardputerMesh::logTx(mesh::Packet* packet, int len) { recordPacket(*packet, len, true); }
+
+bool CardputerMesh::setPacketCapture(bool on) {
+  if (on) return _capture.start(_packets);
+  _capture.stop(_packets);
+  return true;
+}
+
+void CardputerMesh::checkAirtime(uint32_t now) {
+  if (now - _lastAirtimeCheck < 1000) return;
+  _lastAirtimeCheck = now;
+  _airtime.update((uint32_t)getTotalAirTime(), now);
+  float limit = radioStats().txAirLimitPercent;
+  AirtimeMeter::Alert alert = _airtime.pollAlert(limit);
+  if (alert == AirtimeMeter::Alert::None) return;
+  char text[32];
+  snprintf(text, sizeof(text), "%.1f %% / %g %%", _airtime.percent(), limit);
+  pushEvent(MeshEvent::AIRTIME, ConvKey(), "", text);
+  CPLOG_W("MESH", "airtime %s the limit: %s over the last hour", alert == AirtimeMeter::Alert::Over ? "over" : "near", text);
 }
 
 // ================================================================ nearby repeaters (RADIO-8)
@@ -398,6 +464,7 @@ bool CardputerMesh::transmit(Pending& p, StoredMsg& m, ContactInfo& c) {
   m.attempt = p.attempts;
   m.ackTag = ack;
   m.state = rc == MSG_SEND_SENT_DIRECT ? MSG_SENT_DIRECT : MSG_SENT_FLOOD;
+  MessageRoute::sending(m, rc == MSG_SEND_SENT_DIRECT, c);
   CPLOG_I("MESH", "msg to %s attempt %u (%s), ack %08x, timeout %u ms", c.name, p.attempts,
                 rc == MSG_SEND_SENT_DIRECT ? "direct" : "flood", (unsigned)ack, (unsigned)timeout);
   return true;
@@ -508,9 +575,8 @@ void CardputerMesh::storeIncoming(const ContactInfo& from, mesh::Packet* pkt, ui
   StoredMsg m;
   m.ts = nowUnix();
   m.state = MSG_RECEIVED;
-  m.snrX4 = (int8_t)(pkt->getSNR() * 4);
-  if (pkt->isRouteFlood()) m.hops = pkt->getPathHashCount();
-  else m.hops = from.out_path_len == OUT_PATH_UNKNOWN ? 0xFF : (from.out_path_len & 63);
+  m.rssi = (int16_t)radio_driver.getLastRSSI();
+  MessageRoute::received(m, *pkt, from);
   utf8Copy(m.text, sizeof(m.text), text);
   _store.append(k, from.name, m, true);
   pushEvent(MeshEvent::MESSAGE, k, from.name, m.text);
@@ -536,8 +602,8 @@ void CardputerMesh::onChannelMessageRecv(const mesh::GroupChannel& channel, mesh
   StoredMsg m;
   m.ts = nowUnix();
   m.state = MSG_RECEIVED;
-  m.snrX4 = (int8_t)(pkt->getSNR() * 4);
-  m.hops = pkt->isRouteFlood() ? pkt->getPathHashCount() : 0;
+  m.rssi = (int16_t)radio_driver.getLastRSSI();
+  MessageRoute::receivedOnChannel(m, *pkt);
   // "sender: message"
   const char* sep = strstr(text, ": ");
   if (sep && sep - text < (int)sizeof(m.sender)) {
@@ -614,6 +680,8 @@ void CardputerMesh::loop() {
   BaseChatMesh::loop();
   checkPending();
   uint32_t now = millis();
+  checkAirtime(now);
+  _capture.loop(_packets, now);
   // Deferred writes: group bursts of adverts / messages into one flash write
   if (_contactsDirty && now - _contactsDirtySince > 10000) saveContacts();
   if (_store.dirty() && now - _lastFlush > 3000) {
@@ -657,6 +725,9 @@ RadioStats CardputerMesh::radioStats() {
   r.rxErrors = radio_driver.getPacketsRecvErrors();
   r.lastRssi = radio_driver.getLastRSSI();
   r.lastSnr = radio_driver.getLastSNR();
+  r.txAirMsHour = _airtime.lastHourMs();
+  r.txAirPercent = _airtime.percent();
+  r.txAirLimitPercent = AirtimeMeter::limitPercent(p.freqMHz);
   return r;
 }
 

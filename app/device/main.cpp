@@ -17,6 +17,8 @@
 #include "../core/screens/MessagingScreens.h"
 #include "../core/screens/SettingsScreens.h"
 #include "../core/screens/NearbyScreen.h"
+#include "../core/screens/PacketsScreen.h"
+#include "../core/screens/RouteScreen.h"
 #include "DebugConsole.h"
 #include <CpadvBoot.h>
 #include "DeviceBackup.h"
@@ -81,12 +83,16 @@ static App app(Services{&meshNode, &sys, &settings, &gpsDev, tileSource, &backup
 static TextInputScreen textInput;
 static ChatScreen chatScreen;
 static ContactDetailScreen contactDetail(chatScreen);
+static MessageDetailScreen messageDetail(chatScreen, contactDetail);
+static RouteScreen routeScreen(contactDetail);
 static ContactsScreen contactsScreen(chatScreen, contactDetail);
 static ConversationsScreen conversations(chatScreen, contactsScreen, textInput);
 static CompassScreen compassScreen;
 static GpsScreen gpsScreen(compassScreen);
 static SystemScreen systemScreen;
-static SettingsScreen settingsScreen(textInput, systemScreen);
+static PacketDetailScreen packetDetail;
+static PacketsScreen packetsScreen(packetDetail);
+static SettingsScreen settingsScreen(textInput, systemScreen, packetsScreen);
 static NearbyScreen nearbyScreen(contactDetail);
 #if CPADV_MAP
 static HomeScreen home(&conversations, &contactsScreen, &gpsScreen, &mapScreen, &nearbyScreen, &settingsScreen);
@@ -167,12 +173,14 @@ static void heartbeat() {
   // Radio part: same summary as phone mode (variant/CpadvRadioMonitor), so both modes compare directly
   char radio[120] = "radio NOT READY";
   if (cpadv::RadioMonitor* m = board.radioMonitor()) m->summary(radio, sizeof(radio), millis());
+  RadioStats rs = meshNode.radioStats();
   CPLOG_I("BEAT", "up %lus heap %u min %u | bat %d%% %umV | screen %s | keys %s %lu ev %lu err INT %s | %s | "
-          "gps %s %lu B %lu sent %s %u sats",
+          "air %.2f%%/%g%% pkts %lu | gps %s %lu B %lu sent %s %u sats",
           millis() / 1000UL, ESP.getFreeHeap(), ESP.getMinFreeHeap(), M5.Power.getBatteryLevel(),
           board.getBattMilliVolts(), screenAsleep ? "off" : "on", keyboard.ok() ? "ok" : "NO",
           (unsigned long)keyboard.eventsRead(), (unsigned long)keyboard.i2cErrors(), keyboard.intLevel() ? "hi" : "LOW",
-          radio, gpsDev.searching() ? "searching" : "locked", (unsigned long)gpsDev.bytesReceived(),
+          radio, rs.txAirPercent, rs.txAirLimitPercent, (unsigned long)meshNode.packetLog().total(),
+          gpsDev.searching() ? "searching" : "locked", (unsigned long)gpsDev.bytesReceived(),
           (unsigned long)g.sentences, g.valid ? "FIX" : "nofix", g.sats);
 #endif
 }
@@ -189,6 +197,10 @@ static void setupConsole() {
             keyboard.ok() ? "ok" : "NOT RESPONDING", (unsigned long)keyboard.eventsRead());
   });
 #if !CPADV_DEMO
+  console.add("flood", "how this node floods: path ID size and region", [](const char*) {
+    const FloodPolicy& f = meshNode.floods();
+    CPLOG_I("MESH", "floods: path ID %u byte(s), region %s", f.pathHashBytes(), f.scoped() ? f.region() : "none");
+  });
   console.add("gps", "raw on|off: copy NMEA lines to the log; cold: cold restart", [](const char* a) {
     if (!strncmp(a, "raw", 3)) gpsDev.setRawEcho(argOn(a + (a[3] ? 4 : 3)));
     else if (!strcmp(a, "cold")) gpsDev.coldRestart();
@@ -223,10 +235,8 @@ void setup() {
   if (!cpadv::dataFs().mount(true, "keyboard")) CPLOG_E("MAIN", "data partition unavailable: nothing will be saved");
   settings.load();
   {
-    // ~16 KB of flash per conversation history (64 messages + file system overhead)
     int total = (int)(cpadv::dataFs().totalBytes() / 1024);
-    int convs = (total - 96) / 16;
-    meshNode.messages().setCapacity(convs);
+    meshNode.messages().setCapacityFromFlash(total);
     CPLOG_I("MAIN", "storage %d KB -> up to %d conversations kept", total,
                   meshNode.messages().capacity());
   }
@@ -263,6 +273,11 @@ void setup() {
 
   compassScreen.setChat(&chatScreen);
   contactDetail.setCompass(&compassScreen);
+  chatScreen.setMessageDetail(&messageDetail);
+  messageDetail.setRouteScreen(&routeScreen);
+#if CPADV_MAP
+  routeScreen.setMap(&mapScreen);
+#endif
   keyboard.begin();
 
   M5.Display.setRotation(1);

@@ -1,5 +1,6 @@
 #include "MessagingScreens.h"
 #include "GpsScreens.h"
+#include "RouteScreen.h"
 #include "../Geo.h"
 #include <stdio.h>
 #include <string.h>
@@ -15,6 +16,18 @@ void hopsLabel(int8_t hops, char* out, size_t n) {
   if (hops < 0) snprintf(out, n, "%s", tr("path ?", "chemin ?"));
   else if (hops == 0) snprintf(out, n, "direct");
   else snprintf(out, n, tr("%d hop%s", "%d saut%s"), hops, hops > 1 ? "s" : "");
+}
+
+const char* deliveryStatus(const StoredMsg& m, uint16_t* color) {
+  switch (m.state) {
+    case MSG_PENDING: return tr("sending...", "envoi...");
+    case MSG_SENT_FLOOD:
+    case MSG_SENT_DIRECT: return m.attempt > 1 ? tr("resent", "renvoyé") : tr("sent", "envoyé");
+    case MSG_DELIVERED: *color = COLOR_OK; return tr("delivered", "reçu");
+    case MSG_FAILED: *color = COLOR_BAD; return tr("failed", "échec");
+    case MSG_CHANNEL_SENT: return tr("sent", "envoyé");
+    default: return "";
+  }
 }
 
 const char* typePrefix(uint8_t type) {
@@ -65,6 +78,7 @@ void ChatScreen::open(App& app, const ConvKey& key, const char* name) {
   _key = key;
   utf8Copy(_title, sizeof(_title), name);
   _scroll = 0;
+  _selecting = false;
   _maxLen = app.services().mesh->maxTextLen(key);
   if (_maxLen > MSG_TEXT_MAX) _maxLen = MSG_TEXT_MAX;
 }
@@ -86,6 +100,13 @@ bool ChatScreen::onKey(App& app, const KeyEvent& e) {
   _lastBlink = app.now();
   switch (e.code) {
     case KeyCode::Enter: {
+      if (_selecting) {
+        if (_detail && _n > 0) {
+          _detail->show(_key, _title, _msgs[_n - 1], _scroll);
+          app.push(_detail);
+        }
+        return true;
+      }
       // trim trailing spaces
       size_t n = strlen(_draft);
       while (n && _draft[n - 1] == ' ') _draft[--n] = 0;
@@ -100,15 +121,19 @@ bool ChatScreen::onKey(App& app, const KeyEvent& e) {
       return true;
     }
     case KeyCode::Backspace:
+      _selecting = false;
       utf8PopBack(_draft);
       return true;
     case KeyCode::Up:
-      if ((uint32_t)_scroll + 1 < _total) { _scroll++; reload(app); }
+      if (!_selecting) { _selecting = _n > 0; }
+      else if ((uint32_t)_scroll + 1 < _total) { _scroll++; reload(app); }
       return true;
     case KeyCode::Down:
       if (_scroll > 0) { _scroll--; reload(app); }
+      else _selecting = false;
       return true;
     case KeyCode::Char: {
+      _selecting = false;
       size_t cap = _maxLen + 1;
       if (e.mods & MOD_ALT) composeAccent(_draft, cap, e.ch);
       else if (e.ch >= 0x20 && e.ch < 0x7F) {
@@ -134,8 +159,8 @@ bool ChatScreen::tick(App& app) {
 bool ChatScreen::onEvent(App& app, const MeshEvent& ev) {
   if (ev.key != _key) return false;
   if (ev.type == MeshEvent::MESSAGE) {
-    if (_scroll == 0) reload(app);   // keep the reading position when scrolled back
-    else app.services().mesh->messages().markRead(_key);
+    if (_selecting || _scroll > 0) _scroll++;   // the same message stays on screen, one more is now newer
+    reload(app);
     app.services().sys->playSound(SOUND_CHANNEL_MSG);   // discreet: the message is on screen
     return true;
   }
@@ -185,16 +210,7 @@ void ChatScreen::drawBubble(App& app, lgfx::LovyanGFX& g, const StoredMsg& m, co
   formatWhen(m.ts, nowUnix(app), utcOffset(app), when, sizeof(when));
   uint16_t statusColor = DIM;
   if (m.outgoing) {
-    const char* st = "";
-    switch (m.state) {
-      case MSG_PENDING: st = tr("sending...", "envoi..."); break;
-      case MSG_SENT_FLOOD:
-      case MSG_SENT_DIRECT: st = m.attempt > 1 ? tr("resent", "renvoyé") : tr("sent", "envoyé"); break;
-      case MSG_DELIVERED: st = tr("delivered", "reçu"); statusColor = COLOR_OK; break;
-      case MSG_FAILED: st = tr("failed", "échec"); statusColor = COLOR_BAD; break;
-      case MSG_CHANNEL_SENT: st = tr("sent", "envoyé"); break;
-    }
-    snprintf(meta, sizeof(meta), "%s \xC2\xB7 %s", when, st);
+    snprintf(meta, sizeof(meta), "%s \xC2\xB7 %s", when, deliveryStatus(m, &statusColor));
   } else if (m.hops == 0xFF) {
     snprintf(meta, sizeof(meta), "%s", when);
   } else {
@@ -279,6 +295,7 @@ void ChatScreen::draw(App& app, lgfx::LovyanGFX& g) {
   for (int i = _n - 1; i >= 0 && y > top; i--) {
     y -= _lay[i].height;
     drawBubble(app, g, _msgs[i], _lay[i], y);
+    if (_selecting && i == _n - 1) g.drawRect(0, y - 1, SCREEN_W - 4, _lay[i].height + 2, ACCENT);
     y -= 3;
   }
   // Scrollbar: position of the loaded window in the history
@@ -418,6 +435,165 @@ void ContactsScreen::draw(App& app, lgfx::LovyanGFX& g) {
   drawScrollbar(g, _list.top, LIST_VISIBLE_ROWS, n);
 }
 
+// =============================================================== MessageDetailScreen
+
+void MessageDetailScreen::show(const ConvKey& conv, const char* convName, const StoredMsg& m, int position) {
+  _position = position;
+  _conv = conv;
+  utf8Copy(_convName, sizeof(_convName), convName);
+  _m = m;
+}
+
+MessageDetailScreen::Link MessageDetailScreen::findProfile(App& app, ContactView& out, int* matches) {
+  MeshService& mesh = *app.services().mesh;
+  *matches = 0;
+  if (_conv.kind == ConvKey::DIRECT) {
+    if (!mesh.findContact(_conv, out)) return Link::None;
+    *matches = 1;
+    return Link::ByKey;
+  }
+  if (_m.outgoing) return Link::Self;
+  if (!_m.sender[0]) return Link::None;
+  // StoredMsg::sender is cut to its size: compare with contact names cut the same way
+  char cut[sizeof(_m.sender)];
+  ContactView c;
+  for (int i = 0; i < mesh.contactCount(); i++) {
+    if (!mesh.contactAt(i, c)) continue;
+    utf8Copy(cut, sizeof(cut), c.name);
+    if (strcmp(cut, _m.sender) == 0) {
+      if (!*matches) out = c;
+      (*matches)++;
+    }
+  }
+  return *matches ? Link::ByName : Link::None;
+}
+
+int MessageDetailScreen::fillRows(App& app, const char** labels, char (*v)[48]) {
+  int n = 0;
+  const auto row = [&](const char* label) -> char* {
+    labels[n] = label;
+    return v[n++];
+  };
+  bool channel = _conv.kind == ConvKey::CHANNEL;
+  if (_m.outgoing) {
+    snprintf(row(tr("To", "À")), 48, "%s", _convName);
+  } else {
+    snprintf(row(tr("From", "De")), 48, "%s", _m.sender[0] ? _m.sender : _convName);
+    if (channel) snprintf(row(tr("Channel", "Canal")), 48, "%s", _convName);
+  }
+  char clock[12], day[12];
+  formatClock(_m.ts, utcOffset(app), clock, sizeof(clock));
+  formatWhen(_m.ts, _m.ts + 2 * 86400, utcOffset(app), day, sizeof(day));
+  snprintf(row(tr("Time", "Heure")), 48, "%s %s", clockValid(_m.ts) ? day : "", clock);
+  if (_m.outgoing) {
+    uint16_t color = DIM;
+    snprintf(row(tr("Status", "État")), 48, "%s", deliveryStatus(_m, &color));
+    if (!channel) {
+      snprintf(row(tr("Attempts", "Essais")), 48, "%u", _m.attempt);
+    }
+  } else {
+    if (_m.hops == 0xFF) snprintf(row(tr("Hops", "Sauts")), 48, "%s", tr("unknown", "inconnu"));
+    else hopsLabel((int8_t)_m.hops, row(tr("Hops", "Sauts")), 48);
+    if (_m.rssi) snprintf(row("Signal"), 48, "%.1f dB  %d dBm", _m.snrX4 / 4.0f, _m.rssi);
+    else snprintf(row("Signal"), 48, "%.1f dB", _m.snrX4 / 4.0f);
+  }
+  if (_m.route.known()) {
+    char* out = row(_m.route.kind == PATH_PLANNED ? tr("Route, planned", "Route prévue") : "Route");
+    if (_m.route.view().hops()) _m.route.view().format(out, 48);
+    else snprintf(out, 48, "direct");
+  } else if (!channel || !_m.outgoing) {
+    snprintf(row("Route"), 48, "%s", _m.state == MSG_SENT_FLOOD ? "flood" : tr("unknown", "inconnue"));
+  }
+  ContactView c;
+  int matches = 0;
+  Link link = findProfile(app, c, &matches);
+  if (link != Link::Self) {
+    char* out = row(tr("Profile", "Profil"));
+    if (link == Link::None) snprintf(out, 48, "%s", tr("not in contacts", "pas dans les contacts"));
+    else if (link == Link::ByKey) snprintf(out, 48, "%s >", c.name);
+    else if (matches == 1) snprintf(out, 48, "%s", tr("name match >", "même nom >"));
+    else snprintf(out, 48, tr("%d same names >", "%d noms identiques >"), matches);
+  }
+  utf8Copy(row(tr("Text", "Texte")), 48, _m.text);
+  return n;
+}
+
+void MessageDetailScreen::openRoute(App& app) {
+  if (!_m.route.known() || !_route) {
+    app.notify(tr("No route for this message", "Pas de route pour ce message"),
+               tr("Floods only show theirs on arrival", "Un flood ne la donne qu'à l'arrivée"), 3000);
+    return;
+  }
+  DeviceStatus st = app.services().sys->status();
+  RouteEndpoint me;
+  me.name = tr("Me", "Moi");
+  me.hasPos = st.hasPosition;
+  me.lat = st.lat;
+  me.lon = st.lon;
+  RouteEndpoint other;
+  other.name = _m.sender[0] ? _m.sender : _convName;
+  ContactView c;
+  int matches = 0;
+  if (findProfile(app, c, &matches) != Link::None && matches == 1) {   // with several, its position would be a guess
+    other.key = c.key;
+    other.hasPos = c.hasPos;
+    other.lat = c.latE6 / 1e6;
+    other.lon = c.lonE6 / 1e6;
+  }
+  _route->show(app, _m.route, _m.outgoing ? me : other, _m.outgoing ? other : me);
+  app.push(_route);
+}
+
+bool MessageDetailScreen::onKey(App& app, const KeyEvent& e) {
+  const char* labels[MAX_ROWS];
+  char v[MAX_ROWS][48];
+  int n = fillRows(app, labels, v);
+  if (e.code == KeyCode::Up) { _list.move(-1, n, LIST_VISIBLE_ROWS); return true; }
+  if (e.code == KeyCode::Down) { _list.move(1, n, LIST_VISIBLE_ROWS); return true; }
+  if (e.code == KeyCode::Esc) {
+    // The contact sheet may have moved the chat to another conversation
+    if (_chat.key() != _conv) {
+      _chat.open(app, _conv, _convName);
+      _chat.selectAt(_position);
+    }
+    return false;
+  }
+  if (e.is('t')) {
+    openRoute(app);
+    return true;
+  }
+  if (e.code == KeyCode::Enter || e.is('p')) {
+    ContactView c;
+    int matches = 0;
+    Link link = findProfile(app, c, &matches);
+    if (link == Link::Self) {
+      app.notify(tr("That is you", "C'est toi"), tr("Your own message", "Ton propre message"), 1500);
+    } else if (link == Link::None) {
+      app.notify(tr("Not in your contacts", "Pas dans tes contacts"),
+                 _conv.kind == ConvKey::CHANNEL ? tr("Channels only give a name", "Un canal ne donne que le nom")
+                                                : tr("The contact was removed", "Le contact a été supprimé"), 3000);
+    } else {
+      _contact.show(c.key);
+      app.push(&_contact);
+      if (matches > 1) app.notify(tr("Same name: several contacts", "Même nom : plusieurs contacts"), c.name, 3000);
+    }
+    return true;
+  }
+  return false;
+}
+
+void MessageDetailScreen::draw(App& app, lgfx::LovyanGFX& g) {
+  const char* labels[MAX_ROWS];
+  char v[MAX_ROWS][48];
+  int n = fillRows(app, labels, v);
+  _list.clamp(n, LIST_VISIBLE_ROWS);
+  for (int i = 0; i < LIST_VISIBLE_ROWS && _list.top + i < n; i++) {
+    int k = _list.top + i;
+    drawListRow(g, CONTENT_Y + 1 + i * LINE_H, labels[k], v[k], k == _list.sel, FG, true);
+  }
+  drawScrollbar(g, _list.top, LIST_VISIBLE_ROWS, n);
+}
+
 // =============================================================== ContactDetailScreen
 
 bool ContactDetailScreen::onKey(App& app, const KeyEvent& e) {
@@ -462,9 +638,9 @@ void ContactDetailScreen::draw(App& app, lgfx::LovyanGFX& g) {
     return;
   }
   DeviceStatus st = app.services().sys->status();
-  char v[7][48];
-  const char* labels[7] = {tr("Name", "Nom"), "Type", tr("Key", "Clé"), tr("Path", "Chemin"), tr("Heard", "Entendu"),
-                           "Position", "Distance"};
+  char v[8][48];
+  const char* labels[8] = {tr("Name", "Nom"), "Type", tr("Key", "Clé"), tr("Path", "Chemin"), tr("Heard", "Entendu"),
+                           "Position", "Distance", "Route"};
   snprintf(v[0], 48, "%s%s", c.favourite ? "* " : "", c.name);
   snprintf(v[1], 48, "%s", typeName(c.type));
   snprintf(v[2], 48, "%02x%02x%02x%02x%02x%02x..", c.pubKey[0], c.pubKey[1], c.pubKey[2], c.pubKey[3], c.pubKey[4],
@@ -489,7 +665,9 @@ void ContactDetailScreen::draw(App& app, lgfx::LovyanGFX& g) {
   } else {
     snprintf(v[6], 48, "%s", c.hasPos ? tr("my position?", "ma position ?") : "-");
   }
-  for (int i = 0; i < 7; i++) {
+  if (c.hops > 0) c.route.view().format(v[7], 48);
+  else snprintf(v[7], 48, "-");
+  for (int i = 0; i < 8; i++) {
     drawListRow(g, CONTENT_Y + 1 + i * LINE_H, labels[i], v[i], false, i == 0 ? ACCENT : FG, true);
   }
 }

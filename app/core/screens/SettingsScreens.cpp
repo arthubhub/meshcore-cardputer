@@ -1,4 +1,5 @@
 #include "SettingsScreens.h"
+#include "PacketsScreen.h"
 #include "../RadioPresets.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -86,7 +87,7 @@ void TextInputScreen::draw(App&, lgfx::LovyanGFX& g) {
 // ---------------------------------------------------------------- SystemScreen
 
 namespace {
-constexpr int SYSTEM_ROWS = 12;
+constexpr int SYSTEM_ROWS = 13;
 }
 
 bool SystemScreen::onKey(App&, const KeyEvent& e) {
@@ -109,7 +110,8 @@ void SystemScreen::draw(App& app, lgfx::LovyanGFX& g) {
                                      tr("Uptime", "Allumé depuis"), tr("Battery", "Batterie"),
                                      tr("Packets received", "Paquets reçus"), tr("Packets sent", "Paquets émis"),
                                      tr("Radio errors", "Erreurs radio"), tr("Last RSSI", "Dernier RSSI"),
-                                     tr("Last SNR", "Dernier SNR"), "Radio", tr("SD card", "Carte SD")};
+                                     tr("Last SNR", "Dernier SNR"), tr("Transmit, 1 h", "Émission, 1 h"), "Radio",
+                                     tr("SD card", "Carte SD")};
   snprintf(v[0], 40, "%s", sys.firmwareVersion());
   snprintf(v[1], 40, tr("%u KB", "%u Ko"), (unsigned)(sys.freeHeap() / 1024));
   snprintf(v[2], 40, tr("%u KB", "%u Ko"), (unsigned)(sys.minFreeHeap() / 1024));
@@ -123,16 +125,22 @@ void SystemScreen::draw(App& app, lgfx::LovyanGFX& g) {
   snprintf(v[7], 40, "%u", (unsigned)rs.rxErrors);
   snprintf(v[8], 40, "%.0f dBm", rs.lastRssi);
   snprintf(v[9], 40, "%.1f dB", rs.lastSnr);
-  snprintf(v[10], 40, "%.3f SF%u", rs.freqMHz, rs.spreadingFactor);
+  if (rs.txAirLimitPercent > 0) {
+    snprintf(v[10], 40, "%us  %.2f %% / %g %%", (unsigned)(rs.txAirMsHour / 1000), rs.txAirPercent, rs.txAirLimitPercent);
+  } else {
+    snprintf(v[10], 40, "%us  %.2f %%", (unsigned)(rs.txAirMsHour / 1000), rs.txAirPercent);
+  }
+  snprintf(v[11], 40, "%.3f SF%u", rs.freqMHz, rs.spreadingFactor);
   BackupService* bk = app.services().backup;
   TileSource* tl = app.services().tiles;
-  if (!bk || !bk->available()) snprintf(v[11], 40, "%s", tr("missing", "absente"));
-  else snprintf(v[11], 40, "ok%s", tl ? (tl->available() ? tr(", map ok", ", carte ok") : tr(", no map", ", sans carte")) : "");
+  if (!bk || !bk->available()) snprintf(v[12], 40, "%s", tr("missing", "absente"));
+  else snprintf(v[12], 40, "ok%s", tl ? (tl->available() ? tr(", map ok", ", carte ok") : tr(", no map", ", sans carte")) : "");
 
   _list.clamp(SYSTEM_ROWS, LIST_VISIBLE_ROWS);
   for (int i = 0; i < LIST_VISIBLE_ROWS && _list.top + i < SYSTEM_ROWS; i++) {
     int k = _list.top + i;
-    drawListRow(g, CONTENT_Y + 1 + i * LINE_H, labels[k], v[k], k == _list.sel, FG);
+    bool hot = k == 10 && rs.txAirLimitPercent > 0 && rs.txAirPercent >= rs.txAirLimitPercent * AirtimeMeter::WARN_SHARE;
+    drawListRow(g, CONTENT_Y + 1 + i * LINE_H, labels[k], v[k], k == _list.sel, hot ? COLOR_WARN : FG);
   }
   drawScrollbar(g, _list.top, LIST_VISIBLE_ROWS, SYSTEM_ROWS);
 }
@@ -150,6 +158,8 @@ const char* label(int item) {
     case SettingsScreen::RADIO: return tr("Radio preset", "Réglage radio");
     case SettingsScreen::RADIO_INFO: return tr("  Details", "  Détail");
     case SettingsScreen::TX_POWER: return tr("TX power", "Puissance émission");
+    case SettingsScreen::REGION: return tr("Region", "Région");
+    case SettingsScreen::PATH_ID: return tr("Path ID size", "Taille ID chemin");
     case SettingsScreen::TIMEZONE: return tr("Time zone", "Fuseau horaire");
     case SettingsScreen::SCREEN_TIMEOUT: return tr("Screen timeout", "Veille écran");
     case SettingsScreen::BRIGHTNESS: return tr("Brightness", "Luminosité");
@@ -157,6 +167,7 @@ const char* label(int item) {
     case SettingsScreen::SHARE_LOCATION: return tr("Share location", "Partager position");
     case SettingsScreen::BACKUP: return tr("Back up to SD", "Sauvegarder sur SD");
     case SettingsScreen::RESTORE: return tr("Restore from SD", "Restaurer depuis SD");
+    case SettingsScreen::PACKETS: return tr("Packet log", "Journal radio");
     case SettingsScreen::PHONE_MODE: return tr("Phone mode", "Mode téléphone");
     case SettingsScreen::SYSTEM: return tr("System", "Système");
     default: return "";
@@ -172,6 +183,23 @@ void SettingsScreen::onNameDone(App& app, const char* text, void*) {
   strncpy(s.nodeName, text, sizeof(s.nodeName) - 1);
   s.nodeName[sizeof(s.nodeName) - 1] = 0;
   app.services().settings->save(s);
+}
+
+void SettingsScreen::onRegionDone(App& app, const char* text, void*) {
+  char name[sizeof(UiSettings::region)];
+  floodopt::RegionName r = floodopt::normalizeRegion(text, name, sizeof(name));
+  if (r == floodopt::RegionName::Private || r == floodopt::RegionName::Invalid) {
+    app.notify(tr("Region not changed", "Région inchangée"),
+               r == floodopt::RegionName::Private ? tr("Private regions need their key", "Région privée : il faut sa clé")
+                                                  : tr("Letters, digits and - only", "Lettres, chiffres et - seulement"), 3000);
+    return;
+  }
+  UiSettings s = app.services().settings->get();
+  if (strcmp(s.region, name) == 0) return;
+  strcpy(s.region, name);
+  app.services().settings->save(s);
+  if (name[0]) app.notify(name, tr("Repeaters must know this region", "Les routeurs doivent la connaître"), 4000);
+  else app.notify(tr("No region", "Aucune région"), tr("Every repeater forwards you", "Tous les routeurs te relaient"), 3000);
 }
 
 void SettingsScreen::change(App& app, int item, int delta) {
@@ -201,6 +229,13 @@ void SettingsScreen::change(App& app, int item, int delta) {
       s.screenTimeoutSecs = TIMEOUTS[(i + delta + TIMEOUT_COUNT) % TIMEOUT_COUNT];
       break;
     }
+    case PATH_ID:
+      s.pathHashBytes = floodopt::stepPathBytes(s.pathHashBytes, delta);
+      if (s.pathHashBytes > 1) {
+        app.notify(tr("Repeaters must be 1.14+", "Routeurs 1.14+ obligatoires"),
+                   tr("Older ones drop these packets", "Les anciens jettent ces paquets"), 3500);
+      }
+      break;
     case BRIGHTNESS: s.brightness = (s.brightness + delta + 3) % 3; break;
     case SOUND: s.sound = !s.sound; break;
     case SHARE_LOCATION: s.shareLocation = !s.shareLocation; break;
@@ -230,8 +265,14 @@ bool SettingsScreen::onKey(App& app, const KeyEvent& e) {
         _input.setup(tr("Device name", "Nom de l'appareil"), app.services().settings->get().nodeName,
                      sizeof(UiSettings::nodeName) - 1, onNameDone, this);
         app.push(&_input);
+      } else if (_list.sel == REGION) {
+        _input.setup(tr("Region (empty = none)", "Région (vide = aucune)"), app.services().settings->get().region,
+                     floodopt::REGION_MAX, onRegionDone, this);
+        app.push(&_input);
       } else if (_list.sel == SYSTEM) {
         app.push(&_system);
+      } else if (_list.sel == PACKETS) {
+        app.push(&_packets);
       } else if (_list.sel == PHONE_MODE) {
         SystemService* sys = app.services().sys;
         if (!sys->companionInstalled()) {
@@ -286,6 +327,12 @@ void SettingsScreen::formatValue(App& app, int item, char* out, size_t n) {
     case RADIO: snprintf(out, n, "< %s >", p.name); break;
     case RADIO_INFO: snprintf(out, n, "%.3f BW%g SF%u", p.freqMHz, p.bwKHz, p.sf); break;
     case TX_POWER: snprintf(out, n, "< %d dBm >", s.txPowerDbm); break;
+    case REGION: snprintf(out, n, "%s", s.region[0] ? s.region : tr("none", "aucune")); break;
+    case PATH_ID: {
+      int bytes = floodopt::validPathBytes(s.pathHashBytes);
+      snprintf(out, n, tr("< %d byte%s >", "< %d octet%s >"), bytes, bytes > 1 ? "s" : "");
+      break;
+    }
     case TIMEZONE:
       if (s.utcOffsetMinutes % 60) snprintf(out, n, "< UTC%+d:%02d >", s.utcOffsetMinutes / 60, abs(s.utcOffsetMinutes % 60));
       else snprintf(out, n, "< UTC%+d >", s.utcOffsetMinutes / 60);
@@ -309,6 +356,7 @@ void SettingsScreen::formatValue(App& app, int item, char* out, size_t n) {
       break;
     }
     case PHONE_MODE: snprintf(out, n, "%s", app.services().sys->companionInstalled() ? "Bluetooth >" : tr("(not installed)", "(non installé)")); break;
+    case PACKETS:
     case SYSTEM: snprintf(out, n, ">"); break;
   }
 }

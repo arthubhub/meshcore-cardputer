@@ -63,6 +63,10 @@ bool App::pollEvents() {
         _svc.sys->playSound(SOUND_FAIL);
         break;
       }
+      case MeshEvent::AIRTIME:
+        notify(tr("Transmit time is high", "Temps d'émission élevé"), ev.text, 5000);
+        _svc.sys->playSound(SOUND_FAIL);
+        break;
       case MeshEvent::CONTACT_NEW:
         notify(tr("New contact", "Nouveau contact"), ev.title, 2000);
         break;

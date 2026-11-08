@@ -1,0 +1,180 @@
+# The route of a message, from its details to the map (MESSAGING-10, MAP-7).
+name Cardputer
+time 1793541600
+tiles build/maptiles
+gps fix 9
+pos 43.6116 1.3346
+contact Bob 3 pos 43.6420 1.4800
+contact Colomiers 0 repeater pos 43.6108 1.3409 key a1
+contact Blagnac 1 repeater pos 43.6378 1.3906 key b2
+contact NoPosition 1 repeater key c3
+contact Toulouse 1 repeater pos 43.6047 1.4442 key d4
+contact Lille 1 repeater pos 50.6292 3.0573 key d4
+
+# Bob's flood went through Toulouse (one ID, two repeaters), Blagnac, then Colomiers next to us
+rxroute - Bob taken 1 d4,b2,a1 three hops
+wait 40
+key m
+key enter
+wait 40
+expect-screen Bob
+key fn+;
+wait 40
+key enter
+expect-screen Message
+shot r1_message
+key t
+expect-screen Route, 3/3 placed
+expect-route 5 3 1 0
+shot r2_hops
+
+# A hop opens its repeater; the ambiguous one kept the repeater on the way, not the one in Lille
+key .*3
+key enter
+expect-screen Contact
+shot r3_hop_contact
+key `
+expect-screen Route, 3/3 placed
+
+# On the map, framed on the whole route; the view comes back afterwards
+key t
+expect-screen Map
+wait 100
+shot r4_map
+key =
+key -*2
+wait 100
+shot r5_map_zoomed_out
+key r
+wait 100
+shot r6_map_framed
+key `
+expect-screen Route, 3/3 placed
+key `
+key `
+key esc
+key `
+expect-screen Home
+key k
+wait 100
+expect-zoom 14
+shot r7_map_view_back
+key `
+
+# Hops with no position leave a gap; an unknown ID is shown as such
+rxroute - Bob taken 1 a1,99,c3,b2 gaps in the route
+wait 40
+key m
+key enter
+key fn+;
+key enter
+key t
+expect-route 6 2 0 1
+shot r8_hops_gaps
+key t
+wait 100
+shot r9_map_gaps
+key `
+key `
+key `
+key esc
+key `
+
+# Two byte IDs
+contact Twin1 1 repeater pos 43.60 1.30 key a1aa
+contact Twin2 1 repeater pos 43.65 1.35 key a1bb
+rxroute - Bob taken 2 a1bb two byte id
+wait 40
+key m
+key enter
+key fn+;
+key enter
+key t
+expect-route 3 1 0 0
+shot r10_two_bytes
+key `
+key `
+key esc
+key `
+
+# A planned route says so and is dashed
+rxroute - Bob planned 1 a1,b2 planned route
+wait 40
+key m
+key enter
+key fn+;
+key enter
+shot r11_detail_planned
+key t
+expect-screen Planned, 2/2 placed
+key t
+wait 100
+shot r12_map_planned
+key `
+key `
+key `
+key esc
+key `
+
+# Channel: an unknown sender has no position. a1 is now shared with the two byte contacts above: ambiguous
+rxroute Public Stranger taken 1 b2,a1 from a channel
+wait 40
+key m
+key enter
+key fn+;
+key enter
+key t
+expect-route 4 2 1 0
+key t
+wait 100
+shot r13_map_channel
+key `
+key `
+key `
+key esc
+key `
+
+# No position on the route at all
+rxroute - Bob taken 1 c3 nothing to draw
+wait 40
+gps none
+pos none
+contact Bob 3
+key m
+key .
+key enter
+key fn+;
+key enter
+key t
+key t
+wait 40
+expect-screen Route, 0/1 placed
+shot r14_nothing_to_show
+wait 3000
+key `
+key `
+key esc
+key `
+
+# A long route is cut in the record, and says so
+rxroute - Bob taken 1 01,02,03,04,05,06,07,08,09,0a,0b,0c,0d,0e,0f,10,11,12,13,14,15,16,17,18,19,1a,1b,1c,1d,1e,1f,20,21,22,23,24,25 long
+wait 40
+key m
+key enter
+key fn+;
+key enter
+key t
+expect-route 34 0 0 32
+key ;
+wait 40
+shot r15_cut_route
+
+lang fr
+wait 40
+shot r16_fr
+key `
+wait 40
+shot r17_detail_fr
+key `
+key esc
+key `

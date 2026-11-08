@@ -54,7 +54,7 @@ shot e08_settings
 key up
 key up
 shot e09_settings_bottom
-key up*11
+key up*14
 key /
 expect-setting lang fr
 expect-screen Réglages

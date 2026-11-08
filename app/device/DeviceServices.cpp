@@ -13,6 +13,8 @@ namespace {
 constexpr const char* SETTINGS_PATH = "/cpadv_settings.bin";
 constexpr uint32_t SETTINGS_MAGIC = 0x43504144;   // "CPAD"
 constexpr uint16_t SETTINGS_VERSION = 1;
+// Settings files written before RADIO-9 hold 44 bytes: new fields must start after them.
+static_assert(offsetof(UiSettings, pathHashBytes) >= 44, "new settings must not overlap the older layout");
 
 struct SettingsFile {
   uint32_t magic;
@@ -67,8 +69,11 @@ void DeviceSettings::load() {
   memcpy(&s, buf + 8, size);
   _s = s;
   _s.nodeName[sizeof(_s.nodeName) - 1] = 0;
-  CPLOG_I("SET", "settings loaded (%u/%u bytes): name='%s' preset=%u tx=%d share=%d", size,
-                (unsigned)sizeof(UiSettings), _s.nodeName, _s.radioPreset, _s.txPowerDbm, _s.shareLocation);
+  _s.pathHashBytes = floodopt::validPathBytes(_s.pathHashBytes);
+  _s.region[sizeof(_s.region) - 1] = 0;
+  CPLOG_I("SET", "settings loaded (%u/%u bytes): name='%s' preset=%u tx=%d share=%d path-id=%u region='%s'", size,
+                (unsigned)sizeof(UiSettings), _s.nodeName, _s.radioPreset, _s.txPowerDbm, _s.shareLocation,
+                _s.pathHashBytes, _s.region);
 }
 
 bool DeviceSettings::save(const UiSettings& s) {

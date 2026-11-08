@@ -7,7 +7,8 @@ Un firmware [MeshCore](https://github.com/meshcore-dev/MeshCore) autonome pour l
 équipé du Cap LoRa-1262. Votre Cardputer devient une messagerie maillée à part entière : vous écrivez et
 lisez vos messages sur son propre clavier et son écran, vous consultez votre position grâce au GPS
 intégré, vous retrouvez vos contacts à la boussole, vous cherchez les routeurs à portée radio et vous
-parcourez des cartes hors ligne enregistrées sur une carte microSD, le tout sans téléphone.
+parcourez des cartes hors ligne enregistrées sur une carte microSD, sur lesquelles vous pouvez aussi suivre
+le trajet d'un message reçu, le tout sans téléphone.
 
 Si vous préférez l'application MeshCore officielle, la même image contient aussi le firmware companion
 d'origine. Passer en « mode téléphone » ne demande qu'une entrée de menu, et trois appuis sur **esc**
@@ -98,6 +99,11 @@ contrôleur de clavier qui perd sa configuration après une micro-coupure, une f
 `run` rejoue des sessions d'utilisation scriptées sur la véritable interface et enregistre des captures
 d'écran dans `app/sim/build/`. Chaque session est jouée deux fois : une fois avec des touches injectées
 directement, une fois en faisant passer chaque appui par le contrôleur de clavier émulé.
+
+`make -C app/sim wire` compile le vrai code réseau de MeshCore sur le PC, sans le modifier, et fait dialoguer
+des nœuds et un routeur sur une radio simulée : paquets avec une région, identifiants de 1 à 3 octets, messages
+qui trouvent leur route. Il a besoin des bibliothèques installées par PlatformIO
+(`pio pkg install -e cardputer_adv_standalone`).
 
 La radio, le codec audio et la batterie ne sont pas émulés : il faut toujours un véritable appareil pour
 les valider.
