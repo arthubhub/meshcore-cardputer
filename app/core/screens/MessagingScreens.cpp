@@ -1,7 +1,9 @@
 #include "MessagingScreens.h"
 #include "GpsScreens.h"
+#include "MapScreen.h"
 #include "RouteScreen.h"
 #include "../Geo.h"
+#include "../drivers/GeoText.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -618,12 +620,57 @@ bool ContactDetailScreen::onKey(App& app, const KeyEvent& e) {
     app.push(_compass);
     return true;
   }
+  if (e.is('k')) {
+    openMap(app, c);
+    return true;
+  }
+  if (e.is('p')) {
+    sendPosition(app, c);
+    return true;
+  }
   if (e.is('x')) {
     mesh.resetPath(c.key);
     app.notify(c.name, tr("Path reset (next message floods)", "Chemin réinitialisé (prochain envoi en flood)"), 2500);
     return true;
   }
   return false;
+}
+
+void ContactDetailScreen::openMap(App& app, const ContactView& c) {
+  if (!_map) {
+    app.notify(tr("Map not included", "Carte non incluse"), tr("This build has no map", "Firmware sans carte"), 2500);
+    return;
+  }
+  if (!c.hasPos) {
+    app.notify(c.name, tr("Position unknown (not shared)", "Position inconnue (il ne la partage pas)"), 2500);
+    return;
+  }
+  _nav.setTarget(c.key);
+  _nav.refresh(app);
+  _map->showOverlay(&_nav);
+  app.push(_map);
+}
+
+void ContactDetailScreen::sendPosition(App& app, const ContactView& c) {
+  DeviceStatus st = app.services().sys->status();
+  if (c.type != CONTACT_CHAT) {
+    app.notify(c.name, tr("Only people receive messages", "Seules les personnes reçoivent des messages"), 2500);
+    return;
+  }
+  if (!st.hasPosition) {
+    app.notify(tr("No position", "Pas de position"), tr("Wait for a GPS fix (outdoors)", "Attendre le fix GPS (en extérieur)"), 2500);
+    return;
+  }
+  if ((int32_t)(app.now() - _sendArmedUntil) >= 0) {
+    _sendArmedUntil = app.now() + 3000;
+    app.notify(tr("Send your position?", "Envoyer ta position ?"), tr("P again to send it", "P encore pour l'envoyer"), 3000);
+    return;
+  }
+  _sendArmedUntil = app.now();
+  char text[48];
+  geotext::format(st.lat, st.lon, text, sizeof(text));
+  bool ok = app.services().mesh->sendText(c.key, text);
+  app.notify(ok ? tr("Position sent", "Position envoyée") : tr("Cannot send", "Envoi impossible"), c.name, 2000);
 }
 
 bool ContactDetailScreen::tick(App& app) {

@@ -1,6 +1,8 @@
 #include "DemoMesh.h"
 #include "I18n.h"
 #include "RadioPresets.h"
+#include "drivers/GeoText.h"
+#include <math.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
@@ -93,6 +95,8 @@ void DemoMesh::addContact(const std::string& name, int hops, bool fav, uint8_t t
   c->v.hasPos = hasPos;
   c->v.latE6 = (int32_t)(lat * 1e6);
   c->v.lonE6 = (int32_t)(lon * 1e6);
+  c->v.posTime = hasPos ? nowUnix() : 0;
+  c->v.posSource = (uint8_t)(hasPos ? PositionSource::Advert : PositionSource::None);
   uint8_t path[64];
   for (size_t i = 0; i < sizeof(path); i++) path[i] = (uint8_t)(k.id[i % 6] ^ (i * 37));
   if (hops >= 0) c->v.route.set(PATH_PLANNED, (uint8_t)hops, path);
@@ -151,6 +155,23 @@ void DemoMesh::receive(const std::string& sender, const std::string& text, const
   _store.append(k, sender.c_str(), m, true);
   _rx++;
   recordRx(wire::PL_TXT, k, m.hops, m.snrX4 / 4.0f);
+  double lat, lon;
+  if (c && geotext::find(m.text, lat, lon)) {   // a direct message is authenticated (MESSAGING-11)
+    ContactPosition pos;
+    pos.latE6 = c->v.latE6;
+    pos.lonE6 = c->v.lonE6;
+    pos.time = c->v.posTime;
+    pos.source = (PositionSource)c->v.posSource;
+    bool taken = pos.offer((int32_t)lround(lat * 1e6), (int32_t)lround(lon * 1e6), nowUnix(), PositionSource::Message);
+    if (taken) {
+      c->v.latE6 = pos.latE6;
+      c->v.lonE6 = pos.lonE6;
+      c->v.posTime = pos.time;
+      c->v.posSource = (uint8_t)pos.source;
+      c->v.hasPos = true;
+    }
+    logf("position from %s in a message: %.5f, %.5f (%s)", sender.c_str(), lat, lon, taken ? "updated" : "older, ignored");
+  }
   push(MeshEvent::MESSAGE, k, sender, text);
   logf("rx %s: %s", sender.c_str(), text.c_str());
 }

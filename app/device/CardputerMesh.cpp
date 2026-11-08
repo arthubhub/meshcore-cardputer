@@ -2,6 +2,7 @@
 #include <CpadvLog.h>
 #if !CPADV_DEMO
 #include "../core/RadioPresets.h"
+#include "ContactFile.h"
 #include "MessageRoute.h"
 #include <CpadvDataFs.h>   // the data partition (shared with phone mode)
 #include <helpers/ArduinoHelpers.h>
@@ -15,19 +16,8 @@ StaticPoolPacketManager g_packets(16);
 
 constexpr const char* CONTACTS_PATH = "/contacts.cp";
 constexpr const char* CHANNELS_PATH = "/channels.cp";
-constexpr uint32_t CONTACTS_MAGIC = 0x31434350;   // "PCC1"
 constexpr uint32_t CHANNELS_MAGIC = 0x31484350;   // "PCH1"
 constexpr const char* PUBLIC_PSK_B64 = "izOH6cXN6mrJ5e26oRXNcg==";   // MeshCore "Public" channel
-
-// Persisted contact record (only what is needed to restore a ContactInfo)
-struct ContactRecord {
-  uint8_t pubKey[PUB_KEY_SIZE];
-  char name[32];
-  uint8_t type, flags, outPathLen, reserved;
-  uint8_t outPath[MAX_PATH_SIZE];
-  uint32_t lastAdvertTs, lastmod;
-  int32_t lat, lon;
-};
 
 struct ChannelRecord {
   char name[32];
@@ -101,58 +91,31 @@ void CardputerMesh::loadIdentity() {
 }
 
 void CardputerMesh::loadContacts() {
-  File f = cpadv::dataFs().openIfExists(CONTACTS_PATH);
-  if (!f) return;
-  uint32_t magic = 0;
-  if (f.read((uint8_t*)&magic, 4) != 4 || magic != CONTACTS_MAGIC) { f.close(); return; }
-  ContactRecord r;
-  int n = 0;
-  while (f.read((uint8_t*)&r, sizeof(r)) == sizeof(r)) {
-    ContactInfo c;
-    memset(&c, 0, sizeof(c));
-    c.id = mesh::Identity(r.pubKey);
-    memcpy(c.name, r.name, sizeof(c.name));
-    c.name[sizeof(c.name) - 1] = 0;
-    c.type = r.type;
-    c.flags = r.flags;
-    c.out_path_len = r.outPathLen;
-    memcpy(c.out_path, r.outPath, sizeof(c.out_path));
-    c.last_advert_timestamp = r.lastAdvertTs;
-    c.lastmod = r.lastmod;
-    c.gps_lat = r.lat;
-    c.gps_lon = r.lon;
-    if (!addContact(c)) break;
-    n++;
-  }
-  f.close();
+  ContactFile file(_storage, CONTACTS_PATH);
+  _positions.book().clear();
+  int n = file.load([this](const ContactEntry& e) {
+    if (!addContact(e.info)) return false;   // the table is full
+    if (e.position.source != PositionSource::None) _positions.book().set(e.info.id.pub_key, e.position);
+    return true;
+  });
   _orderDirty = true;
-  CPLOG_I("MESH", "%d contacts loaded", n);
+  CPLOG_I("MESH", "%d contacts loaded (file version %d)", n, file.lastFormat());
 }
 
 void CardputerMesh::saveContacts() {
-  File f = cpadv::dataFs().open(CONTACTS_PATH, "w");
-  if (!f) { CPLOG_E("MESH", "cannot save contacts"); return; }
-  f.write((const uint8_t*)&CONTACTS_MAGIC, 4);
+  ContactFile file(_storage, CONTACTS_PATH);
+  file.begin();
   ContactsIterator it = startContactsIterator();
-  ContactInfo c;
+  ContactEntry e;
   int n = 0;
-  while (it.hasNext(this, c)) {
-    ContactRecord r;
-    memset(&r, 0, sizeof(r));
-    memcpy(r.pubKey, c.id.pub_key, PUB_KEY_SIZE);
-    memcpy(r.name, c.name, sizeof(r.name));
-    r.type = c.type;
-    r.flags = c.flags;
-    r.outPathLen = c.out_path_len;
-    memcpy(r.outPath, c.out_path, sizeof(r.outPath));
-    r.lastAdvertTs = c.last_advert_timestamp;
-    r.lastmod = c.lastmod;
-    r.lat = c.gps_lat;
-    r.lon = c.gps_lon;
-    if (f.write((const uint8_t*)&r, sizeof(r)) != sizeof(r)) break;
+  bool ok = true;
+  while (ok && it.hasNext(this, e.info)) {
+    e.position = _positions.book().get(e.info.id.pub_key);
+    ok = file.add(e);
     n++;
   }
-  f.close();
+  ok = ok && file.commit();
+  if (!ok) { CPLOG_E("MESH", "cannot save contacts: the previous list is kept"); return; }
   _contactsDirty = false;
   CPLOG_I("MESH", "%d contacts saved", n);
 }
@@ -238,6 +201,9 @@ void CardputerMesh::toView(const ContactInfo& c, ContactView& out) {
   if (out.hops >= 0) out.route.set(PATH_PLANNED, c.out_path_len, c.out_path);
   out.lastHeard = c.lastmod;
   out.hasPos = c.gps_lat != 0 || c.gps_lon != 0;
+  const PositionBook::Meta pos = _positions.meta(c);
+  out.posTime = pos.time;
+  out.posSource = (uint8_t)pos.source;
   out.latE6 = c.gps_lat;
   out.lonE6 = c.gps_lon;
 }
@@ -295,6 +261,7 @@ bool CardputerMesh::setFavourite(const ConvKey& key, bool fav) {
 bool CardputerMesh::removeContact(const ConvKey& key) {
   ContactInfo* c = contactFor(key);
   if (!c) return false;
+  _positions.book().remove(c->id.pub_key);
   bool ok = BaseChatMesh::removeContact(*c);
   _orderDirty = true;
   saveContacts();
@@ -586,7 +553,25 @@ void CardputerMesh::storeIncoming(const ContactInfo& from, mesh::Packet* pkt, ui
 
 void CardputerMesh::onMessageRecv(const ContactInfo& contact, mesh::Packet* pkt, uint32_t ts, const char* text) {
   storeIncoming(contact, pkt, ts, text);
+  // A direct message is authenticated: its position may update the contact (never a channel message, never a room
+  // post, whose sender is someone else)
+  ContactInfo* c = contactFor(directKey(contact.id.pub_key));
+  bool found = false;
+  if (!c) return;
+  if (_positions.fromMessage(*c, text, ts, found)) {
+    markContactsDirty();
+    CPLOG_I("MESH", "position of %s updated from a message: %.5f, %.5f", c->name, c->gps_lat / 1e6, c->gps_lon / 1e6);
+  } else if (found) {
+    CPLOG_I("MESH", "position in a message from %s ignored: older than the one known", c->name);
+  }
 }
+
+void CardputerMesh::markContactsDirty() {
+  _orderDirty = true;
+  if (!_contactsDirty) _contactsDirtySince = millis();
+  _contactsDirty = true;
+}
+
 
 void CardputerMesh::onSignedMessageRecv(const ContactInfo& contact, mesh::Packet* pkt, uint32_t ts,
                                         const uint8_t*, const char* text) {
@@ -635,7 +620,13 @@ void CardputerMesh::onAdvertRecv(mesh::Packet* packet, const mesh::Identity& id,
   memcpy(_nbs[slot].prefix, id.pub_key, 6);
   _nbs[slot].snrX4 = (int8_t)(packet->getSNR() * 4);
   _nbs[slot].heardMs = millis() | 1;
+
+  // MeshCore writes the advert's position over the contact's. A position from a later message must win: keep what was
+  // there, then offer the advert's position with its own time (MESSAGING-11).
+  const ContactPositions::Before before = ContactPositions::before(lookupContactByPubKey(id.pub_key, PUB_KEY_SIZE));
   BaseChatMesh::onAdvertRecv(packet, id, timestamp, app_data, app_data_len);
+  ContactInfo* c = lookupContactByPubKey(id.pub_key, PUB_KEY_SIZE);
+  if (_positions.afterAdvert(before, c, timestamp, app_data, app_data_len)) markContactsDirty();
 }
 
 void CardputerMesh::onDiscoveredContact(ContactInfo& contact, bool is_new, uint8_t, const uint8_t*) {

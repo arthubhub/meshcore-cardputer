@@ -8,10 +8,12 @@ using namespace theme;
 
 namespace {
 
-void formatDistance(double m, char* out, size_t n) {
-  if (m < 1000) snprintf(out, n, "%.0f m", m);
-  else if (m < 10000) snprintf(out, n, "%.2f km", m / 1000);
-  else snprintf(out, n, "%.1f km", m / 1000);
+// The number and its unit apart: the unit is written in the normal font (VALIDATION-4: doubled in bold, "m" became a
+// solid block)
+void formatDistance(double m, char* value, size_t n, const char** unit) {
+  if (m < 1000) { snprintf(value, n, "%.0f", m); *unit = "m"; }
+  else if (m < 10000) { snprintf(value, n, "%.2f", m / 1000); *unit = "km"; }
+  else { snprintf(value, n, "%.1f", m / 1000); *unit = "km"; }
 }
 
 void formatCoord(double v, bool lat, char* out, size_t n) {
@@ -153,8 +155,11 @@ bool CompassScreen::onKey(App& app, const KeyEvent& e) {
 }
 
 bool CompassScreen::tick(App& app) {
-  if (app.now() - _lastRefresh >= 500) { _lastRefresh = app.now(); return true; }
-  return false;
+  if (app.now() - _lastRefresh < 500) return false;
+  _lastRefresh = app.now();
+  const GpsState& s = app.services().gps->state();
+  _heading.update(s.valid, s.speedKmh, s.courseDeg, app.now());
+  return true;
 }
 
 void CompassScreen::draw(App& app, lgfx::LovyanGFX& g) {
@@ -169,7 +174,6 @@ void CompassScreen::draw(App& app, lgfx::LovyanGFX& g) {
     g.setTextDatum(lgfx::top_left);
     return;
   }
-  const GpsState& s = app.services().gps->state();
   DeviceStatus st = app.services().sys->status();
   const bool me = st.hasPosition;
   const double tlat = c.latE6 / 1e6, tlon = c.lonE6 / 1e6;
@@ -178,8 +182,8 @@ void CompassScreen::draw(App& app, lgfx::LovyanGFX& g) {
   const int cx = 58, cy = CONTENT_Y + CONTENT_H / 2, r = 50;
   g.drawCircle(cx, cy, r, DIM);
   g.drawCircle(cx, cy, r - 1, BAR_BG);
-  const bool moving = s.valid && s.speedKmh >= 3.0f;
-  const double ref = moving ? s.courseDeg : 0;   // what "up" means
+  const bool moving = _heading.headingUp();
+  const double ref = _heading.heading();   // what "up" means
   // tick marks every 45 degrees, north marker
   for (int k = 0; k < 8; k++) {
     double a = (k * 45 - ref) * geo::DEG;
@@ -230,13 +234,19 @@ void CompassScreen::draw(App& app, lgfx::LovyanGFX& g) {
   g.drawString(line, x, y);
   y += LINE_H + 4;
   if (me) {
-    formatDistance(dist, buf, sizeof(buf));
+    const char* unit = "";
+    formatDistance(dist, buf, sizeof(buf), &unit);
+    g.setFont(&fontText);
+    const int unitW = g.textWidth(unit) + 3;
     g.setFont(&fontBold);
     g.setTextSize(2);
     g.setTextColor(ACCENT);
-    fitText(g, buf, w, line, sizeof(line));
+    fitText(g, buf, w - unitW, line, sizeof(line));
     g.drawString(line, x, y);
+    const int numberW = g.textWidth(line);
     g.setTextSize(1);
+    g.setFont(&fontText);
+    g.drawString(unit, x + numberW + 3, y + LINE_H);   // on the baseline of the big number
     y += 2 * LINE_H + 2;
     g.setFont(&fontText);
     g.setTextColor(FG);
@@ -252,16 +262,20 @@ void CompassScreen::draw(App& app, lgfx::LovyanGFX& g) {
   y += LINE_H + 2;
   g.setFont(&fontSmall);
   g.setTextColor(DIM);
+  // The age of the position itself, not of the last advert (VALIDATION-10). Its time is the contact's clock.
   uint32_t now = st.unixTime;
-  if (c.lastHeard && clockValid(now) && now >= c.lastHeard) {
+  if (c.posTime && clockValid(now) && clockValid(c.posTime)) {
     char ago[12];
-    formatAgo(now - c.lastHeard, ago, sizeof(ago));
-    snprintf(buf, sizeof(buf), tr("seen %s ago", "vu il y a %s"), ago);
+    formatAgo(now > c.posTime ? now - c.posTime : 0, ago, sizeof(ago));
+    snprintf(buf, sizeof(buf), tr("position %s old", "position de %s"), ago);
   } else {
-    snprintf(buf, sizeof(buf), "%s", tr("old position", "position ancienne"));
+    snprintf(buf, sizeof(buf), "%s", tr("position, age unknown", "position d'âge inconnu"));
   }
   fitText(g, buf, w, line, sizeof(line));
   g.drawString(line, x, y);
+  y += 11;
+  const char* source = c.posSource == (uint8_t)PositionSource::Message ? tr("from a message", "par message") : tr("from an advert", "par annonce");
+  g.drawString(source, x, y);
   y += 11;
   g.drawString(moving ? tr("up = my heading", "haut = ma direction") : tr("up = north", "haut = nord"), x, y);
 }

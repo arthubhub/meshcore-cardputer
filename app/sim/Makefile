@@ -92,7 +92,7 @@ LIBDEPS     ?= ../../.pio/libdeps/cardputer_adv_standalone
 CRYPTO_DIR  ?= $(LIBDEPS)/Crypto
 WIRE_FLAGS  := -std=c++17 -O1 -g -w -DRP2040_PLATFORM -DARDUINO=100 -DMAX_CONTACTS=32 -DMAX_GROUP_CHANNELS=4 -Iwire/stubs -I$(MESHCORE)/src -I$(MESHCORE)/lib/ed25519 -I$(CRYPTO_DIR) -I$(LIBDEPS)/base64/src
 WIRE_SRC    := Dispatcher.cpp Identity.cpp Mesh.cpp Packet.cpp Utils.cpp AdvertDataHelpers.cpp BaseChatMesh.cpp RegionMap.cpp \
-               StaticPoolPacketManager.cpp TransportKeyStore.cpp TxtDataHelpers.cpp test_wire.cpp FloodPolicy.cpp FloodOptions.cpp MessageRoute.cpp PacketLog.cpp PathView.cpp
+               StaticPoolPacketManager.cpp TransportKeyStore.cpp TxtDataHelpers.cpp test_wire.cpp ContactFile.cpp ContactPositions.cpp GeoText.cpp FloodPolicy.cpp FloodOptions.cpp MessageRoute.cpp PacketLog.cpp PathView.cpp PositionBook.cpp ContactPosition.cpp
 WIRE_CRYPTO := AES128.cpp AESCommon.cpp BlockCipher.cpp ChaCha.cpp Cipher.cpp Crypto.cpp Curve25519.cpp BigNumberUtil.cpp Ed25519.cpp Hash.cpp SHA256.cpp SHA512.cpp RNG.cpp
 WIRE_C      := $(wildcard $(MESHCORE)/lib/ed25519/*.c)
 WIRE_DIR    := $(BUILD)/wire

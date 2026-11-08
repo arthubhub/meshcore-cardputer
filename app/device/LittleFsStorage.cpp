@@ -36,6 +36,10 @@ bool LittleFsStorage::write(const char* path, uint32_t off, const void* buf, uin
   return ok;
 }
 
+bool LittleFsStorage::rename(const char* from, const char* to) {
+  return cpadv::dataFs().exists(from) && cpadv::dataFs().rename(from, to);
+}
+
 bool LittleFsStorage::remove(const char* path) {
   return cpadv::dataFs().exists(path) && cpadv::dataFs().remove(path);
 }

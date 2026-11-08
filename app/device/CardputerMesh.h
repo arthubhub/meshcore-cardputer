@@ -8,6 +8,7 @@
 #include <helpers/SimpleMeshTables.h>
 #include "../core/Services.h"
 #include "DeviceServices.h"
+#include "ContactPositions.h"
 #include "FloodPolicy.h"
 #include "LittleFsStorage.h"
 #include "PacketSdLogger.h"
@@ -105,6 +106,7 @@ private:
   void checkPending();
   void pushEvent(MeshEvent::Type t, const ConvKey& k, const char* title, const char* text);
   void syncFloods();                  // follows the settings
+  void markContactsDirty();           // saved a few seconds later, with the next changes
   void recordPacket(const mesh::Packet& p, int len, bool tx);
   void checkAirtime(uint32_t now);
 
@@ -120,6 +122,7 @@ private:
   GpsService* _gps = nullptr;
   LittleFsStorage _storage;
   NodeDiscovery _discovery;
+  ContactPositions _positions;
   FloodPolicy _floods;
   PacketLog _packets;
   PacketSdLogger _capture;

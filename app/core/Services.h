@@ -8,6 +8,7 @@
 #include "MessageStore.h"
 #include "Nmea.h"
 #include "drivers/AirtimeMeter.h"
+#include "drivers/ContactPosition.h"
 #include "drivers/FloodOptions.h"
 #include "drivers/NodeDiscovery.h"
 #include "drivers/PacketLog.h"
@@ -57,7 +58,9 @@ struct ContactView {
   MsgRoute route;             // the route to this contact, first repeater first
   uint32_t lastHeard;         // unix time (our clock) of the last advert, 0 = never
   bool hasPos;
-  int32_t latE6, lonE6;       // position from the contact's advert (degrees * 1e6)
+  int32_t latE6, lonE6;       // position from the contact's advert or message (degrees * 1e6)
+  uint32_t posTime;           // when the contact was there, by its clock (unix), 0 unknown
+  uint8_t posSource;          // PositionSource
 };
 
 struct MeshEvent {

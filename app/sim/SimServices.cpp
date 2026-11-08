@@ -27,6 +27,7 @@ bool SimStorage::write(const char* path, uint32_t off, const void* buf, uint32_t
 }
 
 bool SimStorage::remove(const char* path) { return ::remove(full(path).c_str()) == 0; }
+bool SimStorage::rename(const char* from, const char* to) { return ::rename(full(from).c_str(), full(to).c_str()) == 0; }
 
 // ------------------------------------------------------------------ SimTiles
 

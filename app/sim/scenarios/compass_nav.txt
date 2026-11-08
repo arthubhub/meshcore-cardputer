@@ -1,0 +1,190 @@
+# Compass, positions from messages, the way to a contact on the map (VALIDATION-4, VALIDATION-10, MESSAGING-11, MAP-2).
+name Cardputer
+time 1793541600
+tiles build/maptiles
+pos 43.6116 1.3346
+contact Bob 2 pos 43.6420 1.4800
+contact Alice 1 pos 43.6085 1.3300
+contact Relais 0 repeater pos 43.6108 1.3409
+
+# --- Standing still: GPS noise must not turn the dial
+key g
+key b
+wait 100
+expect-screen Compass
+nmea $GPGGA,120000.00,4336.6960,N,00120.0760,E,1,09,0.9,150.0,M,49.0,M,,*6F
+nmea $GPRMC,120000.00,A,4336.6960,N,00120.0760,E,0.2,10.0,071126,,,A*64
+wait 600
+expect-compass north
+nmea $GPGGA,120001.00,4336.6960,N,00120.0760,E,1,09,0.9,150.0,M,49.0,M,,*6E
+nmea $GPRMC,120001.00,A,4336.6960,N,00120.0760,E,1.9,250.0,071126,,,A*59
+wait 600
+expect-compass north
+nmea $GPGGA,120002.00,4336.6960,N,00120.0760,E,1,09,0.9,150.0,M,49.0,M,,*6D
+nmea $GPRMC,120002.00,A,4336.6960,N,00120.0760,E,0.6,80.0,071126,,,A*6B
+wait 600
+expect-compass north
+nmea $GPGGA,120003.00,4336.6960,N,00120.0760,E,1,09,0.9,150.0,M,49.0,M,,*6C
+nmea $GPRMC,120003.00,A,4336.6960,N,00120.0760,E,2.1,170.0,071126,,,A*51
+wait 600
+expect-compass north
+nmea $GPGGA,120004.00,4336.6960,N,00120.0760,E,1,09,0.9,150.0,M,49.0,M,,*6B
+nmea $GPRMC,120004.00,A,4336.6960,N,00120.0760,E,0.4,300.0,071126,,,A*54
+wait 600
+expect-compass north
+shot c1_compass_still
+
+# --- Walking east at 5 km/h: heading up; slowing down to 2.5-4.5 km/h keeps it
+nmea $GPGGA,120010.00,4336.6960,N,00120.0760,E,1,09,0.9,150.0,M,49.0,M,,*6E
+nmea $GPRMC,120010.00,A,4336.6960,N,00120.0760,E,2.7,90.0,071126,,,A*6A
+wait 600
+expect-compass heading
+nmea $GPGGA,120011.00,4336.6960,N,00120.0760,E,1,09,0.9,150.0,M,49.0,M,,*6F
+nmea $GPRMC,120011.00,A,4336.6960,N,00120.0760,E,2.4,89.0,071126,,,A*60
+wait 600
+expect-compass heading
+nmea $GPGGA,120012.00,4336.6960,N,00120.0760,E,1,09,0.9,150.0,M,49.0,M,,*6C
+nmea $GPRMC,120012.00,A,4336.6960,N,00120.0760,E,1.3,90.0,071126,,,A*6F
+wait 600
+expect-compass heading
+nmea $GPGGA,120013.00,4336.6960,N,00120.0760,E,1,09,0.9,150.0,M,49.0,M,,*6D
+nmea $GPRMC,120013.00,A,4336.6960,N,00120.0760,E,2.4,91.0,071126,,,A*6B
+wait 600
+expect-compass heading
+nmea $GPGGA,120014.00,4336.6960,N,00120.0760,E,1,09,0.9,150.0,M,49.0,M,,*6A
+nmea $GPRMC,120014.00,A,4336.6960,N,00120.0760,E,1.3,89.0,071126,,,A*61
+wait 600
+expect-compass heading
+nmea $GPGGA,120015.00,4336.6960,N,00120.0760,E,1,09,0.9,150.0,M,49.0,M,,*6B
+nmea $GPRMC,120015.00,A,4336.6960,N,00120.0760,E,2.4,90.0,071126,,,A*6C
+wait 600
+expect-compass heading
+nmea $GPGGA,120016.00,4336.6960,N,00120.0760,E,1,09,0.9,150.0,M,49.0,M,,*68
+nmea $GPRMC,120016.00,A,4336.6960,N,00120.0760,E,1.3,91.0,071126,,,A*6A
+wait 600
+expect-compass heading
+nmea $GPGGA,120017.00,4336.6960,N,00120.0760,E,1,09,0.9,150.0,M,49.0,M,,*69
+nmea $GPRMC,120017.00,A,4336.6960,N,00120.0760,E,2.4,89.0,071126,,,A*66
+wait 600
+expect-compass heading
+nmea $GPGGA,120018.00,4336.6960,N,00120.0760,E,1,09,0.9,150.0,M,49.0,M,,*66
+nmea $GPRMC,120018.00,A,4336.6960,N,00120.0760,E,1.3,90.0,071126,,,A*65
+wait 600
+expect-compass heading
+shot c2_compass_walking
+# a stop: still the heading for a few seconds, then north up
+nmea $GPGGA,120030.00,4336.6960,N,00120.0760,E,1,09,0.9,150.0,M,49.0,M,,*6C
+nmea $GPRMC,120030.00,A,4336.6960,N,00120.0760,E,0.3,200.0,071126,,,A*55
+wait 600
+expect-compass heading
+nmea $GPGGA,120031.00,4336.6960,N,00120.0760,E,1,09,0.9,150.0,M,49.0,M,,*6D
+nmea $GPRMC,120031.00,A,4336.6960,N,00120.0760,E,0.3,200.0,071126,,,A*54
+wait 600
+nmea $GPGGA,120032.00,4336.6960,N,00120.0760,E,1,09,0.9,150.0,M,49.0,M,,*6E
+nmea $GPRMC,120032.00,A,4336.6960,N,00120.0760,E,0.3,200.0,071126,,,A*57
+wait 600
+nmea $GPGGA,120033.00,4336.6960,N,00120.0760,E,1,09,0.9,150.0,M,49.0,M,,*6F
+nmea $GPRMC,120033.00,A,4336.6960,N,00120.0760,E,0.3,200.0,071126,,,A*56
+wait 600
+nmea $GPGGA,120034.00,4336.6960,N,00120.0760,E,1,09,0.9,150.0,M,49.0,M,,*68
+nmea $GPRMC,120034.00,A,4336.6960,N,00120.0760,E,0.3,200.0,071126,,,A*51
+wait 600
+nmea $GPGGA,120035.00,4336.6960,N,00120.0760,E,1,09,0.9,150.0,M,49.0,M,,*69
+nmea $GPRMC,120035.00,A,4336.6960,N,00120.0760,E,0.3,200.0,071126,,,A*50
+wait 600
+nmea $GPGGA,120036.00,4336.6960,N,00120.0760,E,1,09,0.9,150.0,M,49.0,M,,*6A
+nmea $GPRMC,120036.00,A,4336.6960,N,00120.0760,E,0.3,200.0,071126,,,A*53
+wait 600
+nmea $GPGGA,120037.00,4336.6960,N,00120.0760,E,1,09,0.9,150.0,M,49.0,M,,*6B
+nmea $GPRMC,120037.00,A,4336.6960,N,00120.0760,E,0.3,200.0,071126,,,A*52
+wait 600
+nmea $GPGGA,120038.00,4336.6960,N,00120.0760,E,1,09,0.9,150.0,M,49.0,M,,*64
+nmea $GPRMC,120038.00,A,4336.6960,N,00120.0760,E,0.3,200.0,071126,,,A*5D
+wait 600
+nmea $GPGGA,120039.00,4336.6960,N,00120.0760,E,1,09,0.9,150.0,M,49.0,M,,*65
+nmea $GPRMC,120039.00,A,4336.6960,N,00120.0760,E,0.3,200.0,071126,,,A*5C
+wait 600
+expect-compass north
+shot c3_compass_stopped
+
+# --- Short distance: the unit stays readable
+contact Near 1 pos 43.6118 1.3352
+key /
+key /
+key /
+wait 600
+shot c4_compass_metres
+key `
+key `
+
+# --- A position in a direct message moves the contact; in a channel it changes nothing
+expect-contact-pos Bob 43.64200 1.48000
+rx Bob I am here geo:43.6200,1.4100
+wait 40
+expect-contact-pos Bob 43.62000 1.41000
+rxch Public Bob I moved 44.0000, 2.0000
+wait 40
+expect-contact-pos Bob 43.62000 1.41000
+rx Bob see you at 18h, 2.5 km from the park
+wait 40
+expect-contact-pos Bob 43.62000 1.41000
+wait 3000
+
+# --- Its sheet (first in the list: heard last): K opens the map with the way to Bob, B the compass towards him
+key c
+wait 40
+expect-screen Contacts (4)
+key enter
+expect-screen Contact
+shot c5_contact_sheet
+key k
+expect-screen Map
+wait 100
+shot c6_map_way_to_bob
+key b
+expect-screen Compass
+wait 600
+shot c7_compass_bob_message
+key `
+expect-screen Map
+key `
+expect-screen Contact
+
+# --- P twice sends my position as a message, which another Cardputer reads back
+key p
+wait 40
+shot c8_send_confirm
+expect-msgs Bob 2
+key p
+wait 40
+expect-last Bob sent geo:43.611600,1.334600
+expect-msgs Bob 3
+wait 2000
+key `
+key `
+
+# --- Without GPS: nothing to send, the map still shows the contact
+gps none
+pos none
+key c
+key enter
+key p
+wait 40
+shot c9_no_position
+wait 3000
+key k
+wait 100
+shot c10_map_no_gps
+key `
+key `
+key `
+
+lang fr
+gps fix 9
+pos 43.6116 1.3346
+key g
+key b
+wait 600
+shot c11_compass_fr
+key `
+key `

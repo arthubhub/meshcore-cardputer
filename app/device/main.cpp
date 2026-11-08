@@ -277,6 +277,7 @@ void setup() {
   messageDetail.setRouteScreen(&routeScreen);
 #if CPADV_MAP
   routeScreen.setMap(&mapScreen);
+  contactDetail.setMap(&mapScreen);
 #endif
   keyboard.begin();
 

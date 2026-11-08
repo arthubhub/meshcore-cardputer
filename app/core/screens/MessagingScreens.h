@@ -3,6 +3,7 @@
 #include "../Widgets.h"
 #include "SettingsScreens.h"
 #include "../drivers/RouteResolver.h"
+#include "NavigationLayer.h"
 
 // "Press D again to confirm" helper for destructive actions.
 struct ConfirmPress {
@@ -101,24 +102,32 @@ private:
 };
 
 class CompassScreen;
+class MapScreen;
 
 class ContactDetailScreen : public Screen {
 public:
   explicit ContactDetailScreen(ChatScreen& chat) : _chat(chat) {}
   void show(const ConvKey& key) { _key = key; }
-  void setCompass(CompassScreen* compass) { _compass = compass; }
+  void setCompass(CompassScreen* compass) { _compass = compass; _nav.setCompass(compass); }
+  void setMap(MapScreen* map) { _map = map; }
 
   const char* title() const override { return tr("Contact", "Contact"); }
-  const char* help() const override { return tr("M:write F:fav. X:path B:compass", "M:écrire F:favori X:chemin B:boussole"); }
+  const char* help() const override { return tr("M:write F:fav X:path B:comp K:map P:pos", "M:écr F:fav X:chem B:bous K:carte P:pos"); }
   bool onKey(App& app, const KeyEvent& e) override;
   bool tick(App& app) override;
   void draw(App& app, lgfx::LovyanGFX& g) override;
 
 private:
+  void openMap(App& app, const ContactView& c);
+  void sendPosition(App& app, const ContactView& c);
+
   ChatScreen& _chat;
   CompassScreen* _compass = nullptr;
+  MapScreen* _map = nullptr;
+  NavigationLayer _nav;
   ConvKey _key;
   uint32_t _lastRefresh = 0;
+  uint32_t _sendArmedUntil = 0;   // P twice: sending one's position is never accidental
 };
 
 // One message: who, when, how it travelled; Enter opens the sender's contact sheet. A direct conversation knows its

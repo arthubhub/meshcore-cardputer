@@ -32,6 +32,9 @@ public:
   virtual void draw(MapCanvas& canvas) = 0;
   // Extends `out` with what this layer shows, for framing. False: nothing to frame.
   virtual bool bounds(geo::Bounds& out) const { return false; }
+  // Shown as an overlay, a layer can add keys to the map and say so on the help line (nullptr: the map's own).
+  virtual bool onKey(App& app, const KeyEvent& e) { return false; }
+  virtual const char* help() const { return nullptr; }
 };
 
 class ContactsLayer : public MapLayer {

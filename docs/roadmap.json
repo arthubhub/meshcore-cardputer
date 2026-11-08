@@ -117,10 +117,10 @@
       "category": "Validation & bugs",
       "priority": 2,
       "size": "S",
-      "status": "backlog",
+      "status": "in-progress",
       "requested": false,
       "depends_on": [],
-      "details": "In the compass screenshot the distance unit 'm' renders as a solid block in the big font ('597 ▀'). Check the glyph table of the display font and add a test scenario at short distances."
+      "details": "Built, awaiting a test on the device. Cause: the 6x13 bold font doubled in size turns the thin strokes of \"m\" into a solid block. The distance is now drawn as a big number followed by its unit in the normal font. Part of VALIDATION-10."
     },
     {
       "id": "VALIDATION-5",
@@ -191,10 +191,12 @@
       "category": "Validation & bugs",
       "priority": 1,
       "size": "M",
-      "status": "backlog",
+      "status": "in-progress",
       "requested": true,
-      "depends_on": [],
-      "details": "Reported by the project owner on 2026-11-07: the compass has bugs, and how to fix them is still to be found. First list the symptoms on the device, with the serial log: wrong direction, needle not moving, behaviour while standing still or moving slowly, wrong distance. Then find each root cause before changing anything, with a scenario that reproduces it. Known leads, to confirm: the heading only comes from GPS movement, because the BMI270 has no magnetometer (MAP-5), and the distance unit renders as a block in the big font (VALIDATION-4)."
+      "depends_on": [
+        "VALIDATION-4"
+      ],
+      "details": "Built, awaiting a test on the device. Root causes found in the code, each covered by tests: (1) the dial switched between \"north up\" and \"my direction up\" at exactly 3 km/h, so it flickered while walking slowly and spun on GPS noise while standing still, with the raw course of the receiver, meaningless at low speed. HeadingFilter now uses the course from 4 km/h, drops it only after 5 s below 2 km/h, ignores the course below 2 km/h and smooths it on the circle (359 and 1 degrees average to 0). (2) \"seen x ago\" was the age of the last advert, not of the position: the compass now shows the age and the source of the position itself (advert or message). (3) the unit block of VALIDATION-4. To confirm on the device with the owner's own symptoms, which were not described: the heading still comes from GPS movement only (MAP-5)."
     },
     {
       "id": "RELEASE-2",
@@ -310,7 +312,7 @@
       "depends_on": [
         "VALIDATION-1"
       ],
-      "details": "The two firmwares already share the radio identity but keep separate contacts and channels. When switching mode, convert the standalone files (/contacts.cp, /channels.cp) to and from the companion DataStore format, merging by public key with the most recent advert winning. Unit-test the converter on the PC with real file samples."
+      "details": "The two firmwares already share the radio identity but keep separate contacts and channels. When switching mode, convert the standalone files (/contacts.cp, /channels.cp) to and from the companion DataStore format, merging by public key with the most recent advert winning. Unit-test the converter on the PC with real file samples. The keyboard contacts file is now ContactFile version 2 (positions with their time); the conversion must keep that."
     },
     {
       "id": "SYNC-2",
@@ -436,9 +438,10 @@
       "requested": false,
       "depends_on": [
         "VALIDATION-1",
-        "MAP-6"
+        "MAP-6",
+        "MAP-1"
       ],
-      "details": "Send periodic pings to a chosen node, log ACK/no-ACK, RSSI, SNR and position to the SD card (CSV + GPX), and show coverage dots on the map. Useful to every mesh community planning repeaters. Draw it as a MapLayer (MAP-6)."
+      "details": "Send periodic pings to a chosen node, log ACK/no-ACK, RSSI, SNR and position to the SD card (CSV + GPX), and show coverage dots on the map. Useful to every mesh community planning repeaters. Draw it as a MapLayer (MAP-6). Shares the GPX writer and the track layer of MAP-1."
     },
     {
       "id": "RADIO-4",
@@ -612,12 +615,12 @@
       "id": "MESSAGING-8",
       "title": "Emoji and other scripts",
       "category": "Messaging",
-      "priority": 3,
+      "priority": 1,
       "size": "M",
       "status": "backlog",
-      "requested": false,
+      "requested": true,
       "depends_on": [],
-      "details": "Messages from phones often contain emoji. Show a readable fallback glyph instead of nothing, and widen the font coverage within the flash budget."
+      "details": "Messages from phones often contain emoji. Show a readable fallback glyph instead of nothing, and widen the font coverage within the flash budget. Requested by the project owner on 2026-11-08: emoji are wanted, to read and to send. Sending needs a picker on the keyboard (a short list of common ones), and reading needs glyphs: small bitmaps for the common emoji, a fallback for the others."
     },
     {
       "id": "MESSAGING-9",
@@ -649,12 +652,12 @@
       "category": "Messaging",
       "priority": 1,
       "size": "M",
-      "status": "backlog",
+      "status": "in-progress",
       "requested": true,
       "depends_on": [
         "VALIDATION-1"
       ],
-      "details": "Requested by the project owner on 2026-11-07: when a contact sends their GPS position in a message, it updates the position on their profile, so the map, the distance and the compass follow without waiting for an advert. First capture what such a message really looks like from the phone app and from other firmwares, as the format is not defined yet. Keep the time of the position, and do not let an older position replace a newer one, from a message or an advert. Only a message authenticated as coming from that contact may update them: a channel message only carries a name, so it must not change a profile."
+      "details": "Built, awaiting a test on the device. A direct message containing a position moves the contact: geo:lat,lon, a pair of decimal degrees (at least 3 decimals each, so \"1.5, 2.5 km\" is not read as a place), or a Google Maps, Apple Maps or OpenStreetMap link. Channel messages and room posts never move a contact: they do not prove who wrote them. Each position keeps its time by the sender's clock and its source, and the newest wins, whatever arrives last: an older advert received after a message no longer overwrites it (checked with MeshCore's real advert handling in app/sim/wire). On a contact's sheet, P twice sends my position as geo:lat,lon, which another Cardputer reads back. The contacts file moved to version 2 to keep those times: version 1 loads, and saving now writes a temporary file then swaps it, so a power cut can no longer lose the contacts. Not verified: the format the phone app uses when it shares a position; to check on the device."
     },
     {
       "id": "MESSAGING-12",
@@ -665,9 +668,21 @@
       "status": "backlog",
       "requested": true,
       "depends_on": [
-        "VALIDATION-1"
+        "VALIDATION-1",
+        "SYNC-1"
       ],
-      "details": "Requested by the project owner on 2026-11-07: contacts are also saved on the SD card, and when there is no room left, 100 places are freed and those contacts move to the card. To settle first: the keyboard firmware holds 100 contacts today (MAX_CONTACTS), so freeing 100 places would empty the whole list. Either raise that limit, which costs RAM on a device without PSRAM, or free fewer. Choose which contacts leave: the oldest heard, never favourites. A contact on the card must come back by itself when it is heard again or when a message arrives from it, since a message from a contact that is not in RAM cannot be decrypted, and conversations and routes must still find its name. Without a card, nothing may be lost silently: warn, and keep the current behaviour. The file holds public keys and names only, but it tells who you know, so include it in SECURITY-1's thinking."
+      "details": "Requested by the project owner on 2026-11-07: contacts are also saved on the SD card, and when there is no room left, 100 places are freed and those contacts move to the card. To settle first: the keyboard firmware holds 100 contacts today (MAX_CONTACTS), so freeing 100 places would empty the whole list. Either raise that limit, which costs RAM on a device without PSRAM, or free fewer. Choose which contacts leave: the oldest heard, never favourites. A contact on the card must come back by itself when it is heard again or when a message arrives from it, since a message from a contact that is not in RAM cannot be decrypted, and conversations and routes must still find its name. Without a card, nothing may be lost silently: warn, and keep the current behaviour. The file holds public keys and names only, but it tells who you know, so include it in SECURITY-1's thinking. After SYNC-1: both change how contacts are stored, and the contacts file now has a version and a crash-safe save (ContactFile, MESSAGING-11) to build on."
+    },
+    {
+      "id": "MESSAGING-13",
+      "title": "Mention people in messages",
+      "category": "Messaging",
+      "priority": 1,
+      "size": "M",
+      "status": "backlog",
+      "requested": true,
+      "depends_on": [],
+      "details": "Requested by the project owner on 2026-11-08: tag people in a message, mainly on channels. First check the format the MeshCore phone app uses for a mention, so both understand each other. Then: a key in the compose line opens the list of contacts and of recent senders of the conversation and inserts the mention; a received message mentioning my name is shown highlighted and notified like a direct message, even when the channel is otherwise quiet."
     },
     {
       "id": "MAP-1",
@@ -688,12 +703,13 @@
       "category": "GPS & map",
       "priority": 2,
       "size": "S",
-      "status": "backlog",
+      "status": "in-progress",
       "requested": false,
       "depends_on": [
-        "MAP-6"
+        "MAP-6",
+        "VALIDATION-10"
       ],
-      "details": "Draw a line from my position to the selected contact on the map, with distance and bearing, and switch to the compass in one key. Draw it as a MapLayer (MAP-6)."
+      "details": "Built, awaiting a test on the device. On a contact's sheet, K opens the map framed on the contact and on me, with a line between us and the distance and bearing; B switches to the compass towards them. It is the first overlay that adds keys to the map (MapLayer::onKey, help). Draw a line from my position to the selected contact on the map, with distance and bearing, and switch to the compass in one key."
     },
     {
       "id": "MAP-3",
@@ -754,6 +770,33 @@
         "MESSAGING-10"
       ],
       "details": "Done: tested on the device on 2026-11-08, works. From a message's details, T lists its hops, T again draws them on the map, framed on the route. RouteResolver places each hop from the contacts, and says how far it can be trusted: one known repeater with that ID, several (the one that fits the route best, in orange), or none. Hops with no position leave a dashed gap; a planned route is dashed. Lines are straight: where the signal really went between two repeaters is not known. With 1 byte IDs, ambiguous hops will be common on a large mesh, and an unknown repeater sharing an ID cannot be detected. Firmwares without a map keep the list of hops."
+    },
+    {
+      "id": "MAP-8",
+      "title": "Route view without the other contacts",
+      "category": "GPS & map",
+      "priority": 1,
+      "size": "S",
+      "status": "backlog",
+      "requested": true,
+      "depends_on": [
+        "MAP-7"
+      ],
+      "details": "Requested by the project owner on 2026-11-08: when the map shows a message's route, every known contact is drawn too, and on a busy mesh the route disappears under the markers. While an overlay is shown, hide the contacts layer, or keep only the contacts that are points of the route, named once. MapScreen already draws layers one by one (MAP-6): an overlay can say which of the map's own layers it wants."
+    },
+    {
+      "id": "MAP-9",
+      "title": "The route of any packet heard",
+      "category": "GPS & map",
+      "priority": 2,
+      "size": "M",
+      "status": "backlog",
+      "requested": true,
+      "depends_on": [
+        "MAP-7",
+        "RADIO-6"
+      ],
+      "details": "Requested by the project owner on 2026-11-08: see the route each time, not only for messages (already done by MESSAGING-10 and MAP-7): adverts, discovery answers and the other packets of the packet log. Each flood carries its whole path, but the packet log keeps only the last hop today: keep the path (PathView, MsgRoute) in PacketRecord, within the RAM budget (48 records), then open RouteScreen and the map from a packet's details. An advert also gives the position of its sender, so its route has both ends."
     },
     {
       "id": "CONNECTIVITY-1",
