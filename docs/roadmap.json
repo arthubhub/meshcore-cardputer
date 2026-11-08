@@ -1,6 +1,6 @@
 {
   "title": "Cardputer Mesh Roadmap",
-  "updated": "2026-11-07",
+  "updated": "2026-11-08",
   "categories": [
     {
       "prefix": "VALIDATION",
@@ -446,10 +446,10 @@
       "category": "Radio tools",
       "priority": 2,
       "size": "S",
-      "status": "in-progress",
+      "status": "done",
       "requested": false,
       "depends_on": [],
-      "details": "Built, awaiting a test on the device. Transmit time over a sliding hour from MeshCore's own counter, in System and in the heartbeat. A warning at 80 % of the limit and another at the limit, each reported once. The limit depends on the frequency (10 % for the three EU presets); figures from ERC 70-03 are indicative and national rules can differ. It warns only and never blocks a message. Range tests (RADIO-5) can use the same meter."
+      "details": "Done: tested on the device on 2026-11-08, works. Transmit time over a sliding hour from MeshCore's own counter, in System and in the heartbeat. A warning at 80 % of the limit and another at the limit, each reported once. The limit depends on the frequency (10 % for the three EU presets); figures from ERC 70-03 are indicative and national rules can differ. It warns only and never blocks a message. Range tests (RADIO-5) can use the same meter."
     },
     {
       "id": "RADIO-5",
@@ -468,10 +468,10 @@
       "category": "Radio tools",
       "priority": 2,
       "size": "M",
-      "status": "in-progress",
+      "status": "done",
       "requested": false,
       "depends_on": [],
-      "details": "Built, awaiting a test on the device. Settings > Packet log: the last 48 packets heard or sent, with type, route, hops, sender, SNR, and the repeater it came through. The cursor or P freezes the list, Enter opens a packet, C clears, L copies packets to cardputer_packets.csv on the SD card (written every 5 s, stops at 16 MB, forgotten at restart). Damaged packets never reach it: they stay in the radio monitor of the serial log. Payloads are never stored."
+      "details": "Done: tested on the device on 2026-11-08, works. Settings > Packet log: the last 48 packets heard or sent, with type, route, hops, sender, SNR, and the repeater it came through. The cursor or P freezes the list, Enter opens a packet, C clears, L copies packets to cardputer_packets.csv on the SD card (written every 5 s, stops at 16 MB, forgotten at restart). Damaged packets never reach it: they stay in the radio monitor of the serial log. Payloads are never stored."
     },
     {
       "id": "RADIO-7",
@@ -492,12 +492,12 @@
       "category": "Radio tools",
       "priority": 1,
       "size": "M",
-      "status": "in-progress",
+      "status": "done",
       "requested": true,
       "depends_on": [
         "VALIDATION-1"
       ],
-      "details": "A keyboard-mode screen, like the search in the phone app: send MeshCore's zero-hop discovery request and list the repeaters that answer, with the SNR in both directions (how they hear us, how we hear them). Direct neighbours only; room servers do not answer, and a repeater answers at most 4 requests per 2 minutes, so results accumulate over several searches, which also helps on weak links."
+      "details": "Done: tested on the device on 2026-11-08, works. A keyboard-mode screen, like the search in the phone app: send MeshCore's zero-hop discovery request and list the repeaters that answer, with the SNR in both directions (how they hear us, how we hear them). Direct neighbours only; room servers do not answer, and a repeater answers at most 4 requests per 2 minutes, so results accumulate over several searches, which also helps on weak links."
     },
     {
       "id": "RADIO-9",
@@ -505,12 +505,12 @@
       "category": "Radio tools",
       "priority": 1,
       "size": "M",
-      "status": "in-progress",
+      "status": "done",
       "requested": true,
       "depends_on": [
         "VALIDATION-1"
       ],
-      "details": "Built, awaiting a test on the device. Settings > Path ID size (1, 2, 3 bytes, default 1): app/device/FloodPolicy applies it to every flood started here (messages, ACKs, returned paths, channels, adverts). The value of a contact's path comes from the flood that created it, so direct messages follow by themselves. Repeaters before firmware 1.14 silently drop 2 and 3 byte packets (meshcore/docs/faq.md 3.9.1), so the setting warns and the default stays 1. Verified on real MeshCore code (app/sim/wire): all three sizes flood, cross a repeater, return a path and then work in direct. Sharing the value with phone mode belongs to SYNC-1."
+      "details": "Done: tested on the device on 2026-11-08, works. Settings > Path ID size (1, 2, 3 bytes, default 1): app/device/FloodPolicy applies it to every flood started here (messages, ACKs, returned paths, channels, adverts). The value of a contact's path comes from the flood that created it, so direct messages follow by themselves. Repeaters before firmware 1.14 silently drop 2 and 3 byte packets (meshcore/docs/faq.md 3.9.1), so the setting warns and the default stays 1. Verified on real MeshCore code (app/sim/wire): all three sizes flood, cross a repeater, return a path and then work in direct. Sharing the value with phone mode belongs to SYNC-1."
     },
     {
       "id": "RADIO-10",
@@ -518,12 +518,12 @@
       "category": "Radio tools",
       "priority": 1,
       "size": "M",
-      "status": "in-progress",
+      "status": "done",
       "requested": true,
       "depends_on": [
         "VALIDATION-1"
       ],
-      "details": "Built, awaiting a test on the device. Settings > Region: free name, '#' optional, empty for none. The key is SHA-256 of \"#name\" (first 16 bytes), the same as companion_radio and repeaters; the case counts, and private '$' regions are refused because their key cannot be derived from the name. Warning for the user: a repeater that does not know the region does not forward at all (no fallback), and on a repeater a region must be both added and allowed (`region put`, `region allowf`). Before relying on a name, open the packet log: scoped packets from neighbours show `=` when they match it and `~` when they do not. Reported by the project owner on 2026-11-07. Sharing the region with phone mode belongs to SYNC-1."
+      "details": "Done: tested on the device on 2026-11-08, works. Settings > Region: free name, '#' optional, empty for none. The key is SHA-256 of \"#name\" (first 16 bytes), the same as companion_radio and repeaters; the case counts, and private '$' regions are refused because their key cannot be derived from the name. Warning for the user: a repeater that does not know the region does not forward at all (no fallback), and on a repeater a region must be both added and allowed (`region put`, `region allowf`). Before relying on a name, open the packet log: scoped packets from neighbours show `=` when they match it and `~` when they do not. Reported by the project owner on 2026-11-07. Sharing the region with phone mode belongs to SYNC-1."
     },
     {
       "id": "MESSAGING-1",
@@ -625,12 +625,12 @@
       "category": "Messaging",
       "priority": 1,
       "size": "M",
-      "status": "in-progress",
+      "status": "done",
       "requested": true,
       "depends_on": [
         "VALIDATION-1"
       ],
-      "details": "Built, awaiting a test on the device. In a conversation, Fn+; selects the newest message and walks back; Enter opens its details (sender, time, hops, SNR, or delivery state and attempts for your own), and Enter again opens the sender's contact sheet, which now shows the route to that contact. Direct messages link by key. Channel messages only carry a name, so the link is a name match, which says so, reports several matches, and may find nobody. The route of the message itself came with MESSAGING-10."
+      "details": "Done: tested on the device on 2026-11-08, works. In a conversation, Fn+; selects the newest message and walks back; Enter opens its details (sender, time, hops, SNR, or delivery state and attempts for your own), and Enter again opens the sender's contact sheet, which now shows the route to that contact. Direct messages link by key. Channel messages only carry a name, so the link is a name match, which says so, reports several matches, and may find nobody. The route of the message itself came with MESSAGING-10."
     },
     {
       "id": "MESSAGING-10",
@@ -638,10 +638,10 @@
       "category": "Messaging",
       "priority": 1,
       "size": "M",
-      "status": "in-progress",
+      "status": "done",
       "requested": true,
       "depends_on": [],
-      "details": "Built, awaiting a test on the device. Each message record now holds its route (up to 32 bytes: 32 hops with 1 byte IDs, 16 with 2, 10 with 3; longer routes say they were cut) and its RSSI. New file format: the first start after the update erases the older message history and its files; contacts, identity, channels and settings are kept, and an older firmware cannot read the new history. A flood carries the route it took. A direct packet spends its path on the way, so a direct message only has the route stored for that contact, turned around and marked as planned, not as proof. Each record takes about 18 % more flash, so fewer conversations fit on a small partition. PathView reads a path everywhere; NodeLookup finds nodes from an ID, which the packet log already uses for names."
+      "details": "Done: tested on the device on 2026-11-08, works. Each message record now holds its route (up to 32 bytes: 32 hops with 1 byte IDs, 16 with 2, 10 with 3; longer routes say they were cut) and its RSSI. New file format: the first start after the update erases the older message history and its files; contacts, identity, channels and settings are kept, and an older firmware cannot read the new history. A flood carries the route it took. A direct packet spends its path on the way, so a direct message only has the route stored for that contact, turned around and marked as planned, not as proof. Each record takes about 18 % more flash, so fewer conversations fit on a small partition. PathView reads a path everywhere; NodeLookup finds nodes from an ID, which the packet log already uses for names."
     },
     {
       "id": "MESSAGING-11",
@@ -736,10 +736,10 @@
       "category": "GPS & map",
       "priority": 1,
       "size": "M",
-      "status": "in-progress",
+      "status": "done",
       "requested": true,
       "depends_on": [],
-      "details": "Built, awaiting a test on the device. The map zooms 2 levels past the tiles on the SD card by enlarging them and 2 levels below by reducing them, then shows the grid and markers down to level 3 without touching the card. Enlarging adds no detail: a sharp image still needs more levels from make_tiles.py. Reducing opens more tiles, so its render time must be measured on the device (target under 1.5 s). Everything drawn over the tiles is now a MapLayer (MapCanvas clips lines, so long ones stay safe at low zoom): tracks, coverage or signal dots are new layers, MapScreen does not change. showOverlay() frames a layer and gives the previous view back on leaving."
+      "details": "Done: tested on the device on 2026-11-08, works. The map zooms 2 levels past the tiles on the SD card by enlarging them and 2 levels below by reducing them, then shows the grid and markers down to level 3 without touching the card. Enlarging adds no detail: a sharp image still needs more levels from make_tiles.py. Reducing opens more tiles, so its render time must be measured on the device (target under 1.5 s). Everything drawn over the tiles is now a MapLayer (MapCanvas clips lines, so long ones stay safe at low zoom): tracks, coverage or signal dots are new layers, MapScreen does not change. showOverlay() frames a layer and gives the previous view back on leaving."
     },
     {
       "id": "MAP-7",
@@ -747,13 +747,13 @@
       "category": "GPS & map",
       "priority": 1,
       "size": "M",
-      "status": "in-progress",
+      "status": "done",
       "requested": true,
       "depends_on": [
         "MAP-6",
         "MESSAGING-10"
       ],
-      "details": "Built, awaiting a test on the device. From a message's details, T lists its hops, T again draws them on the map, framed on the route. RouteResolver places each hop from the contacts, and says how far it can be trusted: one known repeater with that ID, several (the one that fits the route best, in orange), or none. Hops with no position leave a dashed gap; a planned route is dashed. Lines are straight: where the signal really went between two repeaters is not known. With 1 byte IDs, ambiguous hops will be common on a large mesh, and an unknown repeater sharing an ID cannot be detected. Firmwares without a map keep the list of hops."
+      "details": "Done: tested on the device on 2026-11-08, works. From a message's details, T lists its hops, T again draws them on the map, framed on the route. RouteResolver places each hop from the contacts, and says how far it can be trusted: one known repeater with that ID, several (the one that fits the route best, in orange), or none. Hops with no position leave a dashed gap; a planned route is dashed. Lines are straight: where the signal really went between two repeaters is not known. With 1 byte IDs, ambiguous hops will be common on a large mesh, and an unknown repeater sharing an ID cannot be detected. Firmwares without a map keep the list of hops."
     },
     {
       "id": "CONNECTIVITY-1",
