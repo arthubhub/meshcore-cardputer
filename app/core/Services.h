@@ -8,6 +8,7 @@
 #include "MessageStore.h"
 #include "Nmea.h"
 #include "drivers/AirtimeMeter.h"
+#include "drivers/ContactCapacity.h"
 #include "drivers/ContactPosition.h"
 #include "drivers/FloodOptions.h"
 #include "drivers/NodeDiscovery.h"
@@ -64,11 +65,16 @@ struct ContactView {
 };
 
 struct MeshEvent {
-  enum Type : uint8_t { NONE = 0, MESSAGE, DELIVERED, FAILED, CONTACT_NEW, AIRTIME };
+  enum Type : uint8_t {
+    NONE = 0, MESSAGE, DELIVERED, FAILED, CONTACT_NEW, AIRTIME,
+    CONTACTS_NEAR_FULL,   // text "92/100"
+    CONTACTS_REPLACING,   // the list is full: new contacts now replace the oldest non-favourites
+    CONTACTS_BLOCKED,     // full of favourites: a new contact was refused
+  };
   Type type = NONE;
   ConvKey key;
   char title[32] = {};        // conversation / contact name
-  char text[64] = {};         // message preview (AIRTIME: "8.1 % / 10 %")
+  char text[64] = {};         // message preview (AIRTIME: "8.1 % / 10 %", CONTACTS_*: "92/100")
 };
 
 // The known nodes, favourites first, then most recently heard. What looking a node up needs from the mesh.
@@ -91,6 +97,8 @@ public:
   // Max text length in bytes for this conversation (channels: name prefix included).
   virtual int maxTextLen(const ConvKey& to) = 0;
 
+  // Most contacts kept. When the list is full, a new contact replaces the non-favourite heard the longest time ago.
+  virtual int contactCapacity() = 0;
   virtual bool findContact(const ConvKey& key, ContactView& out) = 0;
   virtual bool setFavourite(const ConvKey& key, bool fav) = 0;
   virtual bool removeContact(const ConvKey& key) = 0;

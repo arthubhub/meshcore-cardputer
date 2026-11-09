@@ -1,0 +1,35 @@
+# A contact list full of favourites (VALIDATION-11): nothing can be replaced, a new contact is refused and the user is
+# told how to make room. Then removing a favourite lets the next one in.
+name Cardputer
+time 1793541600
+contacts-max 3
+contact Fav1 1 fav
+contact Fav2 1 fav
+contact Fav3 1 fav
+wait 6000
+
+hear Stranger 5.0
+wait 40
+expect-contacts 3
+expect-has-contact Stranger 0
+shot f4_refused_favourites
+wait 5500
+
+# Fav1 is no longer a favourite: the next new contact takes its place
+key c
+key f
+wait 1600
+key `
+hear Stranger 5.0
+wait 40
+expect-has-contact Stranger 1
+expect-contacts 3
+wait 3000
+
+# In French: Stranger is not a favourite, so the next newcomer replaces it
+lang fr
+hear Autre 5.0
+wait 40
+expect-has-contact Autre 1
+expect-has-contact Stranger 0
+shot f5_new_contact_fr

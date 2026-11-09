@@ -46,6 +46,8 @@ public:
   bool sendText(const ConvKey& to, const char* text) override;
   int maxTextLen(const ConvKey& to) override;
   int contactCount() override { return (int)_contacts.size(); }
+  int contactCapacity() override { return capacity; }
+  int capacity = 100;         // as MAX_CONTACTS on the Cardputer; scenarios lower it
   bool contactAt(int i, ContactView& out) override;
   bool findContact(const ConvKey& key, ContactView& out) override;
   bool setFavourite(const ConvKey& key, bool fav) override;
@@ -82,6 +84,7 @@ private:
   struct Channel { ConvKey key; std::string name; };
 
   Contact* findMut(const ConvKey& k);
+  bool makeRoom();            // the same rule as MeshCore with shouldOverwriteWhenFull (VALIDATION-11)
   void sortContacts();
   void push(MeshEvent::Type t, const ConvKey& k, const std::string& title, const std::string& text);
   void transmit(Pending& p, StoredMsg& m);
@@ -104,6 +107,7 @@ private:
   std::vector<Nearby> _nearby;
   std::vector<Answer> _answers;
   NodeDiscovery _discovery;
+  ContactCapacity _capacityAlert;
   PacketLog _packets;
   bool _capture = false;
   AirtimeMeter _airtime;

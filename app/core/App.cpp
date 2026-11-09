@@ -67,6 +67,18 @@ bool App::pollEvents() {
         notify(tr("Transmit time is high", "Temps d'émission élevé"), ev.text, 5000);
         _svc.sys->playSound(SOUND_FAIL);
         break;
+      case MeshEvent::CONTACTS_NEAR_FULL:
+        notify(tr("Contacts almost full", "Contacts presque pleins"), ev.text, 4000);
+        break;
+      case MeshEvent::CONTACTS_REPLACING:
+        notify(tr("Contact list full", "Liste de contacts pleine"),
+               tr("Oldest replaced, favourites kept", "Les plus anciens sont remplacés"), 5000);
+        break;
+      case MeshEvent::CONTACTS_BLOCKED:
+        notify(tr("New contact refused", "Nouveau contact refusé"),
+               tr("All are favourites: remove one", "Tous favoris : en retirer un"), 5000);
+        _svc.sys->playSound(SOUND_FAIL);
+        break;
       case MeshEvent::CONTACT_NEW:
         notify(tr("New contact", "Nouveau contact"), ev.title, 2000);
         break;

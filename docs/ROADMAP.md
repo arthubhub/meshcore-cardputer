@@ -4,7 +4,7 @@
 
 What the MeshCore firmware for the M5Stack Cardputer ADV + Cap LoRa-1262 could do next, feature by feature, with a priority and a size for each item. This file is generated: change [`roadmap.json`](roadmap.json), then run `python3 tools/roadmap.py`.
 
-Last updated 2026-11-08 · 59 open items · 21 done.
+Last updated 2026-11-09 · 62 open items · 21 done.
 
 ## How to read it
 
@@ -18,11 +18,11 @@ Last updated 2026-11-08 · 59 open items · 21 done.
 
 | Category | In progress | Next up | Backlog | Done |
 |---|---|---|---|---|
-| Validation & bugs | 2 | · | 2 | 6 |
+| Validation & bugs | 3 | · | 3 | 6 |
 | Release & CI | · | · | 5 | 4 |
 | Companion sync | · | 2 | 5 | 1 |
 | Radio tools | · | · | 5 | 5 |
-| Messaging | 1 | · | 10 | 2 |
+| Messaging | 1 | · | 11 | 2 |
 | GPS & map | 1 | · | 6 | 2 |
 | Connectivity | · | · | 4 | · |
 | Power | · | · | 4 | · |
@@ -32,6 +32,7 @@ Last updated 2026-11-08 · 59 open items · 21 done.
 
 ## In progress
 
+- **[VALIDATION-11](#validation-11)** A full contact list silently refuses new contacts · P0 · S
 - **[MESSAGING-11](#messaging-11)** Update a contact's position from a message · P1 · M
 - **[VALIDATION-10](#validation-10)** Find and fix the compass bugs · P1 · M
 - **[MAP-2](#map-2)** Navigate to a contact or waypoint · P2 · S
@@ -53,6 +54,8 @@ Last updated 2026-11-08 · 59 open items · 21 done.
 | [VALIDATION-3](#validation-3) | MessageStore robustness tests | P2 | M | Backlog | · |
 | [VALIDATION-4](#validation-4) | Large-font glyphs on the compass | P2 | S | In progress | · |
 | [VALIDATION-10](#validation-10) | Find and fix the compass bugs ★ | P1 | M | In progress | VALIDATION-4 |
+| [VALIDATION-11](#validation-11) | A full contact list silently refuses new contacts ★ | P0 | S | In progress | · |
+| [VALIDATION-12](#validation-12) | GPS time from stale sentences after a long pause | P2 | S | Backlog | · |
 | [VALIDATION-1](#validation-1) | Validate phases 1–7 on a real Cardputer | P0 | M | Done | · |
 | [VALIDATION-5](#validation-5) | Serial diagnostics: boot-log replay, status line, console | P1 | M | Done | · |
 | [VALIDATION-6](#validation-6) | No framework error when a conversation file does not exist yet | P2 | S | Done | VALIDATION-1 |
@@ -83,6 +86,18 @@ Built, awaiting a test on the device. Cause: the 6x13 bold font doubled in size 
 **Find and fix the compass bugs** ★ · P1 · M · In progress · after VALIDATION-4
 
 Built, awaiting a test on the device. Root causes found in the code, each covered by tests: (1) the dial switched between "north up" and "my direction up" at exactly 3 km/h, so it flickered while walking slowly and spun on GPS noise while standing still, with the raw course of the receiver, meaningless at low speed. HeadingFilter now uses the course from 4 km/h, drops it only after 5 s below 2 km/h, ignores the course below 2 km/h and smooths it on the circle (359 and 1 degrees average to 0). (2) "seen x ago" was the age of the last advert, not of the position: the compass now shows the age and the source of the position itself (advert or message). (3) the unit block of VALIDATION-4. To confirm on the device with the owner's own symptoms, which were not described: the heading still comes from GPS movement only (MAP-5).
+
+#### VALIDATION-11
+
+**A full contact list silently refuses new contacts** ★ · P0 · S · In progress
+
+Built, awaiting a test on the device. Reported by the project owner on 2026-11-08: messages from a friend could not be received because the contact list was full. Cause, reproduced with MeshCore's real code in app/sim/wire: with the 100 places taken, MeshCore refused the new contact's advert, because the keyboard firmware did not allow replacing one, and without the contact its messages cannot be decrypted. Now a new contact replaces the non-favourite heard the longest time ago (MeshCore's own rule, the one the phone app offers); its conversation stays, its position time is forgotten, and the log names it. The user is told once at 90 % ("Contacts almost full"), once when replacing starts, and the Contacts title shows the count out of the maximum near the limit. Favourites are never replaced: with nothing but favourites a new contact is still refused, and the user is told to remove one (at most every 10 minutes). Replaced contacts are lost until heard again: keeping them on the SD card is MESSAGING-12.
+
+#### VALIDATION-12
+
+**GPS time from stale sentences after a long pause** · P2 · S · Backlog
+
+Seen on 2026-11-08 during the SQLite trial: after loop() was blocked for minutes, the clock was set from the GPS with a drift of -1,183 s, then +1,244 s a minute later. NMEA sentences left in the UART buffer during the pause were taken as the current time (DeviceGps). Only a blocked loop triggers it, but a firmware update or a long SD operation could. Fix: drop the buffered bytes after a long gap, or only set the clock from a sentence read within a second of its arrival; a unit test with GpsLink and the fake GPS UART reproduces it.
 
 #### VALIDATION-1
 
@@ -337,8 +352,9 @@ Done: tested on the device on 2026-11-08, works. Settings > Region: free name, '
 | [MESSAGING-7](#messaging-7) | Search and export conversations | P3 | M | Backlog | · |
 | [MESSAGING-8](#messaging-8) | Emoji and other scripts ★ | P1 | M | Backlog | · |
 | [MESSAGING-11](#messaging-11) | Update a contact's position from a message ★ | P1 | M | In progress | VALIDATION-1 |
-| [MESSAGING-12](#messaging-12) | Keep contacts on the SD card when the list is full ★ | P1 | L | Backlog | VALIDATION-1, SYNC-1 |
+| [MESSAGING-12](#messaging-12) | Keep contacts on the SD card when the list is full ★ | P1 | L | Backlog | VALIDATION-1, SYNC-1, VALIDATION-11 |
 | [MESSAGING-13](#messaging-13) | Mention people in messages ★ | P1 | M | Backlog | · |
+| [MESSAGING-14](#messaging-14) | Search contacts, in memory and on the SD card ★ | P1 | M | Backlog | MESSAGING-12 |
 | [MESSAGING-9](#messaging-9) | From a message to the sender's profile ★ | P1 | M | Done | VALIDATION-1 |
 | [MESSAGING-10](#messaging-10) | Keep the route of each message ★ | P1 | M | Done | · |
 
@@ -398,15 +414,21 @@ Built, awaiting a test on the device. A direct message containing a position mov
 
 #### MESSAGING-12
 
-**Keep contacts on the SD card when the list is full** ★ · P1 · L · Backlog · after VALIDATION-1, SYNC-1
+**Keep contacts on the SD card when the list is full** ★ · P1 · L · Backlog · after VALIDATION-1, SYNC-1, VALIDATION-11
 
-Requested by the project owner on 2026-11-07: contacts are also saved on the SD card, and when there is no room left, 100 places are freed and those contacts move to the card. To settle first: the keyboard firmware holds 100 contacts today (MAX_CONTACTS), so freeing 100 places would empty the whole list. Either raise that limit, which costs RAM on a device without PSRAM, or free fewer. Choose which contacts leave: the oldest heard, never favourites. A contact on the card must come back by itself when it is heard again or when a message arrives from it, since a message from a contact that is not in RAM cannot be decrypted, and conversations and routes must still find its name. Without a card, nothing may be lost silently: warn, and keep the current behaviour. The file holds public keys and names only, but it tells who you know, so include it in SECURITY-1's thinking. After SYNC-1: both change how contacts are stored, and the contacts file now has a version and a crash-safe save (ContactFile, MESSAGING-11) to build on.
+Requested by the project owner on 2026-11-07: contacts are also saved on the SD card, and when there is no room left, 100 places are freed and those contacts move to the card. To settle first: the keyboard firmware holds 100 contacts today (MAX_CONTACTS), so freeing 100 places would empty the whole list. Either raise that limit, which costs RAM on a device without PSRAM, or free fewer. Choose which contacts leave: the oldest heard, never favourites. A contact on the card must come back by itself when it is heard again or when a message arrives from it, since a message from a contact that is not in RAM cannot be decrypted, and conversations and routes must still find its name. Without a card, nothing may be lost silently: warn, and keep the current behaviour. The file holds public keys and names only, but it tells who you know, so include it in SECURITY-1's thinking. After SYNC-1: both change how contacts are stored, and the contacts file now has a version and a crash-safe save (ContactFile, MESSAGING-11) to build on. VALIDATION-11 first stops a full list from blocking new contacts; this item then keeps the contacts that leave.
 
 #### MESSAGING-13
 
 **Mention people in messages** ★ · P1 · M · Backlog
 
-Requested by the project owner on 2026-11-08: tag people in a message, mainly on channels. First check the format the MeshCore phone app uses for a mention, so both understand each other. Then: a key in the compose line opens the list of contacts and of recent senders of the conversation and inserts the mention; a received message mentioning my name is shown highlighted and notified like a direct message, even when the channel is otherwise quiet.
+Requested by the project owner on 2026-11-08: tag people in a message, mainly on channels. Format, given by the project owner: "@[contact name]", as the MeshCore phone app writes it. (1) Typing @ in the compose line proposes the contacts at once, then narrows the list letter by letter (contacts and the recent senders of the conversation, favourites first); Enter inserts @[name]. (2) In the bubbles, a mention is drawn as the name on a small highlight, not as the raw text with its brackets. (3) A received message mentioning my name is highlighted and notified like a direct message, even on a busy channel. Names may contain spaces and accents: the closing bracket ends the name. Shares the contact search of MESSAGING-14.
+
+#### MESSAGING-14
+
+**Search contacts, in memory and on the SD card** ★ · P1 · M · Backlog · after MESSAGING-12
+
+Requested by the project owner on 2026-11-08: search the contacts by name, among those in memory and those kept on the SD card (MESSAGING-12). Typing letters in the Contacts list filters it at once (case and accents ignored); a result on the card can be brought back to memory, or opened. The same search serves the @ suggestions of MESSAGING-13. The part in memory does not need MESSAGING-12 and can come first.
 
 #### MESSAGING-9
 

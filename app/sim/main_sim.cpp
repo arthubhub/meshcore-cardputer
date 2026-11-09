@@ -61,6 +61,8 @@
 //   expect-msgs <conv> <n>         number of stored messages in a conversation (by name)
 //   expect-last <conv> <state> [text...]  state of the newest message: received|pending|sent|delivered|failed|channel
 //   expect-contacts <n>            number of contacts
+//   contacts-max <n>               most contacts kept (100 on the Cardputer)
+//   expect-has-contact <name> 0|1  whether a contact is in the list
 //   expect-sounds <n>              number of notification sounds played so far
 //
 // Fake hardware (real drivers of core/drivers against the fake chips of fakes/, see HwRig.h).
@@ -542,6 +544,14 @@ int main(int argc, char** argv) {
     } else if (cmd == "expect-convs") {
       int want = 0; ls >> want;
       if (want != mesh.messages().count()) { fprintf(stderr, "line %d: FAIL expected %d conversations, got %d\n", lineNo, want, mesh.messages().count()); g_failures++; }
+    } else if (cmd == "contacts-max") {
+      ls >> mesh.capacity; runFor(LOOP_MS);
+    } else if (cmd == "expect-has-contact") {
+      std::string name; int want = 0; ls >> name >> want;
+      ContactView c;
+      bool has = false;
+      for (int i = 0; i < mesh.contactCount(); i++) if (mesh.contactAt(i, c) && name == c.name) has = true;
+      if (has != (want != 0)) { fprintf(stderr, "line %d: FAIL contact %s expected %s\n", lineNo, name.c_str(), want ? "present" : "absent"); g_failures++; }
     } else if (cmd == "expect-contacts") {
       int want = 0; ls >> want;
       if (want != mesh.contactCount()) { fprintf(stderr, "line %d: FAIL expected %d contacts, got %d\n", lineNo, want, mesh.contactCount()); g_failures++; }

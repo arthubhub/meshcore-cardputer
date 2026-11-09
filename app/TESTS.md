@@ -196,6 +196,18 @@ Note d'abord ce que tu voyais de travers avant la mise à jour : c'est ce qu'il 
 - [ ] Sans GPS : la carte montre le contact, l'encadré dit « ma position ? ».
 - [ ] Firmware sans carte : `K` affiche « Map not included ».
 
+## Liste de contacts pleine (VALIDATION-11)
+
+La liste du mode clavier garde 100 contacts. Sur un réseau chargé, elle se remplit vite, routeurs compris.
+
+- [ ] Au-delà de 90 contacts : un message « Contacts almost full » (une seule fois), et le titre de la liste devient `Contacts 9x/100`.
+- [ ] À 100 : « Contact list full ». Ensuite, un nouveau contact entendu prend la place du plus ancien non favori.
+      Log : `contact list full: <nom> (oldest, not a favourite) replaced by a new contact`.
+- [ ] **Le cas du bug :** un ami qui n'était pas dans la liste s'annonce, puis t'écrit. Son message arrive.
+- [ ] Un favori n'est jamais remplacé, même s'il est le plus ancien.
+- [ ] La conversation d'un contact remplacé reste dans Messages.
+- [ ] Après un redémarrage, la liste reprend les mêmes 100 contacts.
+
 ## Phase 1 — firmware companion (`cardputer_adv_companion_ble`)
 
 - [ ] Au démarrage, le log contient `BOARD  board begin` puis `M5Unified board id=... (ADV=...)` avec les deux nombres identiques.

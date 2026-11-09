@@ -341,6 +341,7 @@ bool CardputerMesh::setPacketCapture(bool on) {
 void CardputerMesh::checkAirtime(uint32_t now) {
   if (now - _lastAirtimeCheck < 1000) return;
   _lastAirtimeCheck = now;
+  checkContactCapacity();      // once a second, with the airtime
   _airtime.update((uint32_t)getTotalAirTime(), now);
   float limit = radioStats().txAirLimitPercent;
   AirtimeMeter::Alert alert = _airtime.pollAlert(limit);
@@ -638,6 +639,35 @@ void CardputerMesh::onDiscoveredContact(ContactInfo& contact, bool is_new, uint8
     pushEvent(MeshEvent::CONTACT_NEW, directKey(contact.id.pub_key), contact.name, "");
     CPLOG_I("MESH", "new contact %s (type %u)", contact.name, contact.type);
   }
+}
+
+void CardputerMesh::onContactOverwrite(const uint8_t* pub_key) {
+  // Called just before the slot is reused: the contact is still there. Its conversation stays.
+  if (ContactInfo* c = lookupContactByPubKey(pub_key, PUB_KEY_SIZE)) {
+    CPLOG_I("MESH", "contact list full: %s (oldest, not a favourite) replaced by a new contact", c->name);
+  }
+  _positions.book().remove(pub_key);
+  markContactsDirty();
+}
+
+void CardputerMesh::onContactsFull() {
+  // Only when every contact is a favourite. MeshCore calls it at each refused advert: tell the user now and then.
+  CPLOG_W("MESH", "contact list full of favourites: a new contact was refused");
+  uint32_t now = millis();
+  if (_blockedNoticeMs && now - _blockedNoticeMs < 10 * 60 * 1000UL) return;
+  _blockedNoticeMs = now | 1;
+  char text[16];
+  snprintf(text, sizeof(text), "%d/%d", getNumContacts(), MAX_CONTACTS);
+  pushEvent(MeshEvent::CONTACTS_BLOCKED, ConvKey(), "", text);
+}
+
+void CardputerMesh::checkContactCapacity() {
+  const ContactCapacity::Alert a = _capacity.poll(getNumContacts(), MAX_CONTACTS);
+  if (a == ContactCapacity::Alert::None) return;
+  char text[16];
+  snprintf(text, sizeof(text), "%d/%d", getNumContacts(), MAX_CONTACTS);
+  pushEvent(a == ContactCapacity::Alert::Full ? MeshEvent::CONTACTS_REPLACING : MeshEvent::CONTACTS_NEAR_FULL, ConvKey(), "", text);
+  CPLOG_W("MESH", "contacts %s: %s", a == ContactCapacity::Alert::Full ? "full, the oldest non-favourites will be replaced" : "almost full", text);
 }
 
 void CardputerMesh::onContactPathUpdated(const ContactInfo&) {

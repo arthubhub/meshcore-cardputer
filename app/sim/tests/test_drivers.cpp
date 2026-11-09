@@ -4,6 +4,7 @@
 #include "../../core/KeyMatrix.h"
 #include "../../core/Services.h"
 #include "../../core/drivers/AirtimeMeter.h"
+#include "../../core/drivers/ContactCapacity.h"
 #include "../../core/drivers/ContactPosition.h"
 #include "../../core/drivers/PositionBook.h"
 #include "../../core/drivers/GeoText.h"
@@ -1661,6 +1662,28 @@ TEST(position_book_by_key) {
   CHECK(!b.set(k2, m));                    // full: refused, nothing overwritten
   uint8_t first[6] = {0, 0, 9, 9, 9, 9};
   CHECK_EQ(b.get(first).time, 2000u);
+}
+
+// ============================================================ ContactCapacity (VALIDATION-11)
+
+TEST(contact_capacity_warns_once_per_level) {
+  using A = ContactCapacity::Alert;
+  ContactCapacity c;
+  CHECK(c.poll(50, 100) == A::None);
+  CHECK(c.poll(89, 100) == A::None);
+  CHECK(c.poll(90, 100) == A::Near);
+  CHECK(c.poll(95, 100) == A::None);          // told once
+  CHECK(c.poll(100, 100) == A::Full);
+  CHECK(c.poll(100, 100) == A::None);         // replacing goes on, quietly
+  CHECK(c.poll(99, 100) == A::None);          // one removed...
+  CHECK(c.poll(100, 100) == A::Full);         // ...full again: said again
+  CHECK(c.poll(86, 100) == A::None);
+  CHECK(c.poll(90, 100) == A::None);          // not below 85 % in between: no new warning
+  CHECK(c.poll(80, 100) == A::None);
+  CHECK(c.poll(91, 100) == A::Near);
+  CHECK(c.poll(5, 0) == A::None);             // no limit known
+  CHECK(ContactCapacity::near(9, 10));
+  CHECK(!ContactCapacity::near(8, 10));
 }
 
 // ============================================================ main

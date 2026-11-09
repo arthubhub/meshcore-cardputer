@@ -30,6 +30,7 @@ public:
   bool sendText(const ConvKey& to, const char* text) override;
   int maxTextLen(const ConvKey& to) override;
   int contactCount() override { return getNumContacts(); }
+  int contactCapacity() override { return MAX_CONTACTS; }
   bool contactAt(int i, ContactView& out) override;
   bool findContact(const ConvKey& key, ContactView& out) override;
   bool setFavourite(const ConvKey& key, bool fav) override;
@@ -62,6 +63,10 @@ protected:
   void onAdvertRecv(mesh::Packet* packet, const mesh::Identity& id, uint32_t timestamp, const uint8_t* app_data,
                     size_t app_data_len) override;
   void onDiscoveredContact(ContactInfo& contact, bool is_new, uint8_t path_len, const uint8_t* path) override;
+  // A full list replaces the oldest non-favourite instead of refusing new contacts (VALIDATION-11)
+  bool shouldOverwriteWhenFull() const override { return true; }
+  void onContactOverwrite(const uint8_t* pub_key) override;
+  void onContactsFull() override;
   void onContactPathUpdated(const ContactInfo& contact) override;
   ContactInfo* processAck(const uint8_t* data) override;
   void onMessageRecv(const ContactInfo& contact, mesh::Packet* pkt, uint32_t sender_timestamp, const char* text) override;
@@ -109,6 +114,7 @@ private:
   void markContactsDirty();           // saved a few seconds later, with the next changes
   void recordPacket(const mesh::Packet& p, int len, bool tx);
   void checkAirtime(uint32_t now);
+  void checkContactCapacity();
 
   void loadIdentity();
   void loadContacts();
@@ -127,6 +133,8 @@ private:
   PacketLog _packets;
   PacketSdLogger _capture;
   AirtimeMeter _airtime;
+  ContactCapacity _capacity;
+  uint32_t _blockedNoticeMs = 0;
   uint32_t _lastAirtimeCheck = 0;
   MessageStore _store;
   bool _started = false;

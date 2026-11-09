@@ -404,7 +404,9 @@ bool ContactsScreen::onEvent(App&, const MeshEvent&) {
 void ContactsScreen::draw(App& app, lgfx::LovyanGFX& g) {
   MeshService& mesh = *app.services().mesh;
   int n = mesh.contactCount();
-  snprintf(_title, sizeof(_title), _pick ? tr("Write to... (%d)", "Écrire à... (%d)") : "Contacts (%d)", n);
+  const int max = mesh.contactCapacity();
+  if (!_pick && ContactCapacity::near(n, max)) snprintf(_title, sizeof(_title), "Contacts %d/%d", n, max);   // VALIDATION-11
+  else snprintf(_title, sizeof(_title), _pick ? tr("Write to... (%d)", "Écrire à... (%d)") : "Contacts (%d)", n);
   if (n == 0) {
     emptyState(g, tr("No contacts yet", "Aucun contact pour l'instant"), tr("A: advertise on the network", "A : s'annoncer sur le réseau"));
     return;

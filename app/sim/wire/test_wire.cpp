@@ -114,6 +114,17 @@ public:
   std::vector<std::string> inbox;
   StoredMsg lastMsg;                 // the record CardputerMesh would store for the last message received
   ContactPositions positions;        // as in CardputerMesh
+  bool replaceWhenFull = false;      // CardputerMesh: true since VALIDATION-11
+  std::vector<std::string> replaced;
+  int fullCalls = 0;
+  int contacts() { return getNumContacts(); }
+  void favourite(const ChatNode& other) { contact(other)->flags |= 1; }
+  // Speaks as another node from now on: one radio, many identities, to fill a contact list
+  void become(uint32_t seed, const char* name) {
+    Rng rng(seed);
+    self_id = mesh::LocalIdentity(&rng);
+    _name = name;
+  }
   int acks = 0;
   uint32_t expectedAck = 0;
 
@@ -146,6 +157,12 @@ protected:
   void logTx(mesh::Packet* p, int len) override { record(*p, len, true); }
 
   void onDiscoveredContact(ContactInfo&, bool, uint8_t, const uint8_t*) override {}
+  bool shouldOverwriteWhenFull() const override { return replaceWhenFull; }
+  void onContactOverwrite(const uint8_t* key) override {
+    if (ContactInfo* c = lookupContactByPubKey(key, PUB_KEY_SIZE)) replaced.push_back(c->name);
+    positions.book().remove(key);
+  }
+  void onContactsFull() override { fullCalls++; }
   void onContactPathUpdated(const ContactInfo&) override {}
   ContactInfo* processAck(const uint8_t* data) override {
     if (memcmp(data, &expectedAck, 4) == 0) acks++;
@@ -766,6 +783,75 @@ TEST(only_a_direct_message_moves_a_contact) {
   n.b.send(n.a, "geo:45.0,5.0");
   n.run();
   CHECK(bob->gps_lat == 45000000);
+}
+
+// ---------------------------------------------------------------- a full contact list (VALIDATION-11)
+
+// Fills A's list with `count` contacts heard one after the other (the first heard is the oldest)
+static void fill(Net& n, int count) {
+  for (int i = 0; i < count; i++) {
+    char name[16];
+    snprintf(name, sizeof(name), "Node%02d", i);
+    n.b.become(1000 + i, name);
+    n.b.advertise();
+    g_now += 1500;                 // a different "last heard" second for each
+    n.run(500);
+  }
+}
+
+TEST(a_full_list_refused_new_contacts) {        // the bug reported on 2026-11-08, as it was
+  Net n;
+  fill(n, MAX_CONTACTS);
+  CHECK(n.a.contacts() == MAX_CONTACTS);
+  n.b.become(77, "Friend");
+  n.b.advertise();
+  n.run();
+  CHECK(!n.a.discover(n.b));                    // refused
+  CHECK(n.a.fullCalls == 1);
+}
+
+TEST(a_full_list_replaces_the_oldest_non_favourite) {
+  Net n;
+  n.a.replaceWhenFull = true;
+  fill(n, MAX_CONTACTS);
+  n.b.become(1000, "Node00");                   // the oldest is a favourite: protected
+  n.a.favourite(n.b);
+  n.b.become(77, "Friend");
+  n.b.advertise();
+  n.run();
+  CHECK(n.a.discover(n.b));
+  CHECK(n.a.contacts() == MAX_CONTACTS);
+  CHECK(n.a.replaced.size() == 1 && n.a.replaced[0] == "Node01");
+  n.b.become(1000, "Node00");
+  CHECK(n.a.discover(n.b));
+  n.b.become(1001, "Node01");
+  CHECK(!n.a.discover(n.b));
+  // and the friend's messages can now be read
+  n.b.become(77, "Friend");
+  n.a.advertise();                              // so that the friend knows A
+  n.run();
+  CHECK(n.b.discover(n.a));
+  n.b.send(n.a, "can you read me?");
+  n.run();
+  CHECK(!n.a.inbox.empty() && n.a.inbox.back() == "can you read me?");
+}
+
+TEST(a_list_of_favourites_only_still_refuses) {
+  Net n;
+  n.a.replaceWhenFull = true;
+  fill(n, MAX_CONTACTS);
+  for (int i = 0; i < MAX_CONTACTS; i++) {
+    char name[16];
+    snprintf(name, sizeof(name), "Node%02d", i);
+    n.b.become(1000 + i, name);
+    n.a.favourite(n.b);
+  }
+  n.b.become(77, "Friend");
+  n.b.advertise();
+  n.run();
+  CHECK(!n.a.discover(n.b));
+  CHECK(n.a.replaced.empty());
+  CHECK(n.a.fullCalls == 1);                    // the firmware is told, and tells the user
 }
 
 int main() {

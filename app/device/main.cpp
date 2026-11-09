@@ -187,6 +187,175 @@ static void heartbeat() {
 
 static bool argOn(const char* a) { return !strcmp(a, "on") || !strcmp(a, "1"); }
 
+#if CPADV_DB_TEST
+// ---------------------------------------------------------------- SQLite trial (docs/storage), env cardputer_adv_dual_dbtest
+#include "DbProbe.h"
+#include "SdCard.h"
+#include <DbSchema.inc>   // docs/storage/schema.sql, embedded by tools/pio_dbschema.py
+#include <SD.h>
+#include <esp_heap_caps.h>
+#include <memory>
+
+// The platform side of the trial. Two ways to run it:
+//  - in its own task (default): loop() keeps serving the radio, the screen and the GPS meanwhile, and the radio
+//    counters before and after show the real impact;
+//  - in loop() (task=0): the radio is served between transactions only, as in the first trial. Required for a
+//    database on the SD card: the radio does not take the card's bus lock, it relies on running in the same task.
+class DeviceDb : public DbProbeHost {
+public:
+  DeviceDb(bool inTask, bool onSd) : _inTask(inTask), _onSd(onSd) {}
+  uint32_t ms() override { return ::millis(); }
+  uint32_t micros() override { return ::micros(); }
+  uint32_t freeHeap() override { return ESP.getFreeHeap(); }
+  uint32_t largestBlock() override { return heap_caps_get_largest_free_block(MALLOC_CAP_8BIT); }
+  uint32_t systemMinHeap() override { return ESP.getMinFreeHeap(); }
+  uint32_t fsUsedKB() override {
+    if (_onSd) { sdcard::Lock lock; return (uint32_t)(SD.usedBytes() / 1024); }
+    return (uint32_t)(cpadv::dataFs().usedBytes() / 1024);
+  }
+  uint32_t fsFreeKB() override {
+    if (_onSd) { sdcard::Lock lock; return (uint32_t)((SD.totalBytes() - SD.usedBytes()) / 1024); }
+    return (uint32_t)((cpadv::dataFs().totalBytes() - cpadv::dataFs().usedBytes()) / 1024);
+  }
+  void service() override {
+    if (_inTask) { vTaskDelay(1); return; }   // loop() serves the radio
+    meshNode.loop();
+    delay(1);
+  }
+  void log(bool error, const char* line) override {
+    if (error) CPLOG_E("DB", "%s", line);
+    else CPLOG_I("DB", "%s", line);
+  }
+  void removeFile(const char* path) override {
+    ioEnter();
+    remove(path);
+    ioLeave();
+  }
+  // One SQLite file operation on the card at a time, each releasing the bus for the radio afterwards
+  void ioEnter() override { if (_onSd) _sdLock.reset(new sdcard::Lock()); }
+  void ioLeave() override { _sdLock.reset(); }
+
+private:
+  bool _inTask, _onSd;
+  std::unique_ptr<sdcard::Lock> _sdLock;   // the firmware builds as C++11: no std::optional
+};
+
+struct DbTrial {
+  DbProbeOptions options;
+  char journal[12] = "truncate", sync[8] = "normal", path[32] = "/littlefs/dbtest.db";
+  bool inTask = true, onSd = false;
+  uint32_t rxBefore = 0, errBefore = 0;
+};
+static DbTrial g_trial;
+static volatile bool g_trialRunning = false;
+
+static void dbRun() {
+  DbTrial& t = g_trial;
+  DeviceDb host(t.inTask, t.onSd);
+  DbProbe probe(host);
+  DbProbeResult r;
+  probe.run(t.options, r);
+  if (cpadv::RadioMonitor* m = board.radioMonitor()) {
+    CPLOG_I("DB", "radio during the trial: %lu packets received, %lu receive errors (%s)",
+            (unsigned long)(m->received() - t.rxBefore), (unsigned long)(m->errors() - t.errBefore),
+            t.inTask ? "loop() kept running" : "served between transactions only");
+  }
+  g_trialRunning = false;
+}
+
+static void dbTask(void*) {
+  dbRun();
+  vTaskDelete(nullptr);
+}
+
+// One "key=value" option of `db run`. False: unknown key.
+static bool dbOption(DbTrial& t, const char* key, const char* value) {
+  DbProbeOptions& o = t.options;
+  if (!strcmp(key, "page")) o.pageSize = atoi(value);
+  else if (!strcmp(key, "cache")) o.cacheKB = atoi(value);
+  else if (!strcmp(key, "batch")) o.batch = atoi(value) > 0 ? atoi(value) : 1;
+  else if (!strcmp(key, "journal")) snprintf(t.journal, sizeof(t.journal), "%s", value);
+  else if (!strcmp(key, "sync")) snprintf(t.sync, sizeof(t.sync), "%s", value);
+  else if (!strcmp(key, "task")) t.inTask = atoi(value) != 0;
+  else if (!strcmp(key, "keep")) o.keep = atoi(value) != 0;
+  else if (!strcmp(key, "where")) t.onSd = !strcmp(value, "sd");
+  else return false;
+  return true;
+}
+
+// db run [contacts] [messages] [page= cache= journal= sync= batch= where=flash|sd task=1|0 keep=0|1]  |  db clean
+static void dbCommand(const char* a) {
+  if (!strncmp(a, "clean", 5)) {
+    remove("/littlefs/dbtest.db");
+    remove("/littlefs/dbtest.db-journal");
+    if (sdcard::mounted()) {
+      sdcard::Lock lock;
+      remove("/sd/dbtest.db");
+      remove("/sd/dbtest.db-journal");
+    }
+    CPLOG_I("DB", "test databases removed");
+    return;
+  }
+  if (strncmp(a, "run", 3) != 0) {
+    CPLOG_I("DB", "usage: db run [contacts] [messages] [page=1024] [cache=16] [journal=delete|truncate|persist|memory|off] "
+                  "[sync=full|normal|off] [batch=10] [where=flash|sd] [task=1|0] [keep=0|1] | db clean");
+    return;
+  }
+  if (g_trialRunning) {
+    CPLOG_W("DB", "a trial is already running");
+    return;
+  }
+  g_trial = DbTrial();
+  DbTrial& t = g_trial;
+  t.options.schema = DB_SCHEMA;
+  char buf[160];
+  snprintf(buf, sizeof(buf), "%s", a + 3);
+  int positional = 0;
+  for (char* tok = strtok(buf, " "); tok; tok = strtok(nullptr, " ")) {
+    char* eq = strchr(tok, '=');
+    if (!eq) {
+      (positional++ == 0 ? t.options.contacts : t.options.messages) = atoi(tok);
+      continue;
+    }
+    *eq = 0;
+    if (!dbOption(t, tok, eq + 1)) {
+      CPLOG_W("DB", "unknown option '%s' (type: db)", tok);
+      return;
+    }
+  }
+  if (t.onSd) {
+    if (!sdcard::mounted()) {
+      CPLOG_W("DB", "where=sd: no SD card");
+      return;
+    }
+    if (t.inTask) CPLOG_I("DB", "where=sd runs in loop() (task=0): the radio does not take the card's bus lock");
+    t.inTask = false;
+    snprintf(t.path, sizeof(t.path), "/sd/dbtest.db");
+  }
+  t.options.journal = t.journal;
+  t.options.sync = t.sync;
+  t.options.path = t.path;
+  if (cpadv::RadioMonitor* m = board.radioMonitor()) {
+    t.rxBefore = m->received();
+    t.errBefore = m->errors();
+  }
+  g_trialRunning = true;
+  if (!t.inTask) {
+    CPLOG_I("DB", "running in loop(): the screen and keys pause, the radio is served between transactions");
+    dbRun();
+    return;
+  }
+  // 16 KB of stack: SQLite's parser and the trial's buffers. Same priority as loop(), on the same core.
+  if (xTaskCreatePinnedToCore(dbTask, "dbtest", 16384, nullptr, 1, nullptr, 1) != pdPASS) {
+    CPLOG_E("DB", "cannot start the trial task (heap %u, largest block %u)", ESP.getFreeHeap(),
+            heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
+    g_trialRunning = false;
+    return;
+  }
+  CPLOG_I("DB", "trial started in its own task: the device stays usable, results follow in the log");
+}
+#endif
+
 static void setupConsole() {
   console.add("status", "banner + one status line", [](const char*) { cpadv::printBanner(); heartbeat(); });
   console.add("i2c", "scan the internal I2C bus (keyboard 0x34, Cap 0x43, audio 0x18)",
@@ -196,6 +365,9 @@ static void setupConsole() {
     CPLOG_I("KEYS", "raw key log %s, keyboard %s, %lu events so far", argOn(a) ? "on" : "off",
             keyboard.ok() ? "ok" : "NOT RESPONDING", (unsigned long)keyboard.eventsRead());
   });
+#if CPADV_DB_TEST
+  console.add("db", "run [contacts] [messages] [key=value...]: SQLite trial (type 'db' for the keys) | clean", dbCommand);
+#endif
 #if !CPADV_DEMO
   console.add("flood", "how this node floods: path ID size and region", [](const char*) {
     const FloodPolicy& f = meshNode.floods();
