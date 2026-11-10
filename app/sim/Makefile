@@ -4,6 +4,7 @@
 #   make readme-images   screenshots of the README (scenarios/readme_*.txt) -> ../../docs/images/
 #   make test     unit tests of the drivers against fake chips (tests/, fakes/), no LovyanGFX needed
 #   make wire     real MeshCore code on a simulated air (wire/test_wire.cpp): packets, repeaters, regions, path sizes
+#   make dbtest   the SQLite trial of docs/storage on the PC, with the device library's SQLite (dbtest/)
 #   make clean      remove the build outputs (keeps LovyanGFX); make distclean removes everything
 LGFX_VERSION ?= 1.2.7
 BUILD        ?= build
@@ -92,7 +93,7 @@ LIBDEPS     ?= ../../.pio/libdeps/cardputer_adv_standalone
 CRYPTO_DIR  ?= $(LIBDEPS)/Crypto
 WIRE_FLAGS  := -std=c++17 -O1 -g -w -DRP2040_PLATFORM -DARDUINO=100 -DMAX_CONTACTS=32 -DMAX_GROUP_CHANNELS=4 -Iwire/stubs -I$(MESHCORE)/src -I$(MESHCORE)/lib/ed25519 -I$(CRYPTO_DIR) -I$(LIBDEPS)/base64/src
 WIRE_SRC    := Dispatcher.cpp Identity.cpp Mesh.cpp Packet.cpp Utils.cpp AdvertDataHelpers.cpp BaseChatMesh.cpp RegionMap.cpp \
-               StaticPoolPacketManager.cpp TransportKeyStore.cpp TxtDataHelpers.cpp test_wire.cpp FloodPolicy.cpp FloodOptions.cpp MessageRoute.cpp PacketLog.cpp PathView.cpp
+               StaticPoolPacketManager.cpp TransportKeyStore.cpp TxtDataHelpers.cpp test_wire.cpp ContactFile.cpp ContactPositions.cpp GeoText.cpp FloodPolicy.cpp FloodOptions.cpp MessageRoute.cpp PacketLog.cpp PathView.cpp PositionBook.cpp ContactPosition.cpp
 WIRE_CRYPTO := AES128.cpp AESCommon.cpp BlockCipher.cpp ChaCha.cpp Cipher.cpp Crypto.cpp Curve25519.cpp BigNumberUtil.cpp Ed25519.cpp Hash.cpp SHA256.cpp SHA512.cpp RNG.cpp
 WIRE_C      := $(wildcard $(MESHCORE)/lib/ed25519/*.c)
 WIRE_DIR    := $(BUILD)/wire
@@ -120,6 +121,36 @@ $(WIRE_DIR)/wire_tests: $(WIRE_OBJ)
 wire: $(WIRE_DIR)/wire_tests
 	$(WIRE_DIR)/wire_tests
 
+# SQLite trial: the SQLite sources of the device library (siara-cc/Sqlite3Esp32, installed by PlatformIO for the env
+# cardputer_adv_dual_dbtest). Its sqlite3.c includes its ESP32 config_ext.h first: compiled from a copy placed next to a
+# copy of its configuration without the ESP32 file access, so memory figures are the device's and the library itself
+# stays untouched.
+SQLITE_SRC := ../../.pio/libdeps/cardputer_adv_dual_dbtest/Sqlite3Esp32/src
+DBT        := $(BUILD)/dbtest
+
+$(DBT)/sqlite3.c: $(SQLITE_SRC)/sqlite3.c
+	@mkdir -p $(DBT)
+	cp $(SQLITE_SRC)/sqlite3.c $(SQLITE_SRC)/sqlite3.h $(DBT)/
+	grep -v -E 'SQLITE_OS_OTHER|SQLITE_MUTEX_APPDEF' $(SQLITE_SRC)/config_ext.h > $(DBT)/config_ext.h   # the device settings, the PC's file access
+
+$(DBT)/sqlite3.o: $(DBT)/sqlite3.c
+	$(CC) -O1 -w -c $< -o $@
+
+$(DBT)/DbProbe.o: ../device/DbProbe.cpp ../device/DbProbe.h ../device/DbVfsMeter.h $(DBT)/sqlite3.c
+	$(CXX) -std=c++17 -O1 -g -Wall -DDBPROBE_HOST -I$(DBT) -c $< -o $@
+
+$(DBT)/DbVfsMeter.o: ../device/DbVfsMeter.cpp ../device/DbVfsMeter.h $(DBT)/sqlite3.c
+	$(CXX) -std=c++17 -O1 -g -Wall -DDBPROBE_HOST -I$(DBT) -c $< -o $@
+
+$(DBT)/host_dbtest.o: dbtest/host_dbtest.cpp ../device/DbProbe.h $(DBT)/sqlite3.c
+	$(CXX) -std=c++17 -O1 -g -Wall -I$(DBT) -c $< -o $@
+
+$(DBT)/dbtest: $(DBT)/sqlite3.o $(DBT)/DbProbe.o $(DBT)/DbVfsMeter.o $(DBT)/host_dbtest.o
+	$(CXX) -o $@ $^ -lpthread -lm
+
+dbtest: $(DBT)/dbtest
+	$(DBT)/dbtest
+
 TILES_STAMP := $(BUILD)/maptiles/tiles/info.txt
 $(TILES_STAMP): ../../tools/tiles/make_tiles.py
 	python3 ../../tools/tiles/make_tiles.py --center 43.6116 1.3346 --radius-km 1.5 --zooms 13-15 --synthetic --out $(BUILD)/maptiles
@@ -143,4 +174,4 @@ clean:
 distclean:
 	rm -rf $(BUILD)
 
-.PHONY: all run test wire readme-images clean distclean
+.PHONY: all run test wire dbtest readme-images clean distclean

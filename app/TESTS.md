@@ -167,6 +167,47 @@ Il faut le firmware avec carte et des tuiles sur la SD. Le log de démarrage don
 - [ ] Firmware sans carte : la liste des sauts s'ouvre, le second `T` affiche « Map not included ».
 - [ ] Journal radio : les noms des contacts remplacent les identifiants quand un seul contact correspond.
 
+## Boussole (VALIDATION-4, VALIDATION-10)
+
+Note d'abord ce que tu voyais de travers avant la mise à jour : c'est ce qu'il faut revérifier.
+
+- [ ] À l'arrêt, dehors avec un fix : le cadran reste « nord en haut » (`up = north`) et ne tourne pas tout seul.
+- [ ] En marchant normalement : après quelques secondes, `up = my heading`, et la flèche pointe vers le contact par rapport à ta direction.
+- [ ] En marchant lentement ou en t'arrêtant moins de 5 s : le cadran ne repasse pas au nord. Arrêté plus de 5 s : retour au nord.
+- [ ] Une distance en mètres : le chiffre est grand et l'unité `m` est lisible (avant, c'était un bloc plein).
+- [ ] Sous la distance : « position de … » et « par annonce » ou « par message ». L'âge est celui de la position, pas de la dernière annonce.
+
+## Position reçue par message (MESSAGING-11)
+
+- [ ] **Après la mise à jour :** contacts intacts. Log `… contacts loaded (file version 1)`, puis `version 2` après le redémarrage suivant.
+- [ ] Un autre Cardputer, sur ta fiche contact : `P` puis `P` envoie `geo:…`. Chez toi, sa position change (fiche, carte, boussole « par message »).
+      Log : `position of … updated from a message`.
+- [ ] **Depuis l'appli téléphone :** partage ta position dans un message direct vers le Cardputer. Note le texte exact reçu,
+      et si la position est prise. Si elle ne l'est pas, envoie-moi ce texte : c'est le format à ajouter.
+- [ ] Une position envoyée sur un canal ne change rien. Une phrase comme « 2.5 km » non plus.
+- [ ] Après une annonce du contact plus ancienne que son message, la position du message reste (log `ignored: older`).
+- [ ] Débrancher la batterie juste après un nouveau contact, puis redémarrer : la liste des contacts est toujours là.
+
+## Aller vers un contact (MAP-2)
+
+- [ ] Fiche d'un contact avec position → `K` : la carte se cadre sur toi et lui, un trait vous relie, l'encadré en bas à droite donne distance et direction.
+- [ ] En marchant, le trait et la distance suivent. `R` recadre.
+- [ ] `B` : la boussole vers ce contact. `` ` `` revient à la carte, puis à la fiche.
+- [ ] Sans GPS : la carte montre le contact, l'encadré dit « ma position ? ».
+- [ ] Firmware sans carte : `K` affiche « Map not included ».
+
+## Liste de contacts pleine (VALIDATION-11)
+
+La liste du mode clavier garde 100 contacts. Sur un réseau chargé, elle se remplit vite, routeurs compris.
+
+- [ ] Au-delà de 90 contacts : un message « Contacts almost full » (une seule fois), et le titre de la liste devient `Contacts 9x/100`.
+- [ ] À 100 : « Contact list full ». Ensuite, un nouveau contact entendu prend la place du plus ancien non favori.
+      Log : `contact list full: <nom> (oldest, not a favourite) replaced by a new contact`.
+- [ ] **Le cas du bug :** un ami qui n'était pas dans la liste s'annonce, puis t'écrit. Son message arrive.
+- [ ] Un favori n'est jamais remplacé, même s'il est le plus ancien.
+- [ ] La conversation d'un contact remplacé reste dans Messages.
+- [ ] Après un redémarrage, la liste reprend les mêmes 100 contacts.
+
 ## Phase 1 — firmware companion (`cardputer_adv_companion_ble`)
 
 - [ ] Au démarrage, le log contient `BOARD  board begin` puis `M5Unified board id=... (ADV=...)` avec les deux nombres identiques.

@@ -4,6 +4,11 @@
 #include "../../core/KeyMatrix.h"
 #include "../../core/Services.h"
 #include "../../core/drivers/AirtimeMeter.h"
+#include "../../core/drivers/ContactCapacity.h"
+#include "../../core/drivers/ContactPosition.h"
+#include "../../core/drivers/PositionBook.h"
+#include "../../core/drivers/GeoText.h"
+#include "../../core/drivers/HeadingFilter.h"
 #include "../../core/drivers/FlashFsProbe.h"
 #include "../../core/drivers/FloodOptions.h"
 #include "../../core/drivers/GpsLink.h"
@@ -654,7 +659,7 @@ TEST(older_settings_files_keep_the_flood_defaults) {
   memcpy(file, &older, sizeof(file));
   file[43] = 0xA5;                       // whatever the padding byte held
   UiSettings s;                          // what DeviceSettings::load does
-  memcpy(&s, file, sizeof(file));
+  memcpy((void*)&s, file, sizeof(file));   // raw bytes, as the device reads them
   CHECK(strcmp(s.nodeName, "Saved") == 0);
   CHECK_EQ(s.pathHashBytes, 1);
   CHECK_EQ(s.region[0], 0);
@@ -985,6 +990,13 @@ public:
     return true;
   }
   bool remove(const char* path) override { return files.erase(path) > 0; }
+  bool rename(const char* from, const char* to) override {
+    auto it = files.find(from);
+    if (it == files.end()) return false;
+    files[to] = it->second;
+    files.erase(from);
+    return true;
+  }
   std::map<std::string, std::vector<uint8_t>> files;
 };
 
@@ -1484,6 +1496,194 @@ TEST(bounds_fit_a_route) {
   both.add(none);
   both.add(10, 10);
   CHECK_EQ(both.fitZoom(240, 111, 10, 3, 17), 3);
+}
+
+// ============================================================ HeadingFilter (VALIDATION-10)
+
+TEST(heading_needs_real_movement) {
+  HeadingFilter h;
+  h.update(true, 0.0f, 270.0f, 0);
+  CHECK(!h.headingUp());
+  CHECK_EQ(h.heading(), 0);
+  h.update(true, 3.5f, 270.0f, 1000);       // GPS noise at a standstill: not enough
+  CHECK(!h.headingUp());
+  h.update(true, 4.5f, 90.0f, 2000);
+  CHECK(h.headingUp());
+  CHECK_EQ((int)h.heading(), 90);
+}
+
+TEST(heading_does_not_flicker_around_the_threshold) {
+  HeadingFilter h;
+  h.update(true, 5.0f, 90.0f, 0);
+  CHECK(h.headingUp());
+  for (int i = 1; i <= 20; i++) {           // walking slowly, 2.5 to 4.5 km/h
+    h.update(true, i % 2 ? 2.5f : 4.5f, 90.0f, i * 1000);
+    CHECK(h.headingUp());
+  }
+  h.update(true, 1.0f, 200.0f, 30000);      // a stop: kept for a while...
+  CHECK(h.headingUp());
+  CHECK_EQ((int)h.heading(), 90);           // ...without taking the meaningless course
+  h.update(true, 1.0f, 200.0f, 34000);
+  CHECK(h.headingUp());
+  h.update(true, 1.0f, 200.0f, 35000);      // ...then north up
+  CHECK(!h.headingUp());
+  h.update(true, 3.0f, 10.0f, 36000);
+  CHECK(!h.headingUp());
+}
+
+TEST(heading_a_short_slowdown_is_forgotten) {
+  HeadingFilter h;
+  h.update(true, 6.0f, 45.0f, 0);
+  h.update(true, 1.0f, 45.0f, 1000);
+  h.update(true, 1.0f, 45.0f, 4000);
+  h.update(true, 6.0f, 45.0f, 5000);        // moving again before the 5 s
+  h.update(true, 1.0f, 45.0f, 8000);
+  h.update(true, 1.0f, 45.0f, 12000);
+  CHECK(h.headingUp());                     // the slow time started again at 8 s
+  h.update(true, 1.0f, 45.0f, 13000);
+  CHECK(!h.headingUp());
+}
+
+TEST(heading_is_smoothed_on_the_circle) {
+  HeadingFilter h;
+  h.update(true, 10.0f, 350.0f, 0);
+  for (int i = 1; i < 30; i++) h.update(true, 10.0f, 10.0f, i * 1000);
+  const float a = h.heading();
+  CHECK(a > 8.0f && a < 10.5f);             // went through north, not through 180
+  HeadingFilter j;
+  j.update(true, 10.0f, 100.0f, 0);
+  j.update(true, 10.0f, 300.0f, 1000);      // one wild reading does not swing the dial
+  CHECK(j.heading() > 20.0f && j.heading() < 100.0f);
+  j.update(true, 10.0f, -30.0f, 2000);      // odd values from the receiver
+  CHECK(j.heading() >= 0 && j.heading() < 360);
+}
+
+TEST(heading_without_fix) {
+  HeadingFilter h;
+  h.update(true, 8.0f, 120.0f, 0);
+  CHECK(h.headingUp());
+  h.update(false, 8.0f, 120.0f, 500);
+  CHECK(!h.headingUp());
+  CHECK_EQ(h.heading(), 0);
+  h.update(true, 8.0f, 300.0f, 1000);      // a new start, not an average with the old course
+  CHECK_EQ((int)h.heading(), 300);
+}
+
+// ============================================================ GeoText, ContactPosition (MESSAGING-11)
+
+static bool geoIs(const char* text, double lat, double lon) {
+  double a = 0, b = 0;
+  if (!geotext::find(text, a, b)) { printf("    no position in '%s'\n", text); return false; }
+  bool ok = fabs(a - lat) < 1e-6 && fabs(b - lon) < 1e-6;
+  if (!ok) printf("    '%s' -> %f, %f\n", text, a, b);
+  return ok;
+}
+
+static bool geoNone(const char* text) {
+  double a, b;
+  bool found = geotext::find(text, a, b);
+  if (found) printf("    unexpected position in '%s': %f, %f\n", text, a, b);
+  return !found;
+}
+
+TEST(geotext_reads_the_usual_forms) {
+  CHECK(geoIs("geo:43.6047,1.4442", 43.6047, 1.4442));
+  CHECK(geoIs("I am here geo:43.604700,1.444200;u=10", 43.6047, 1.4442));
+  CHECK(geoIs("43.6047, 1.4442", 43.6047, 1.4442));
+  CHECK(geoIs("meet at -33.8688,151.2093 ok?", -33.8688, 151.2093));
+  CHECK(geoIs("https://maps.google.com/?q=43.6047,1.4442", 43.6047, 1.4442));
+  CHECK(geoIs("https://www.google.com/maps/place/x/@48.8584,2.2945,17z", 48.8584, 2.2945));
+  CHECK(geoIs("https://maps.apple.com/?ll=45.764,4.8357", 45.764, 4.8357));
+  CHECK(geoIs("https://www.openstreetmap.org/?mlat=43.60470&mlon=1.44420#map=17", 43.6047, 1.4442));
+  CHECK(geoIs("geo:-12,130", -12, 130));        // geo: needs no decimals
+}
+
+TEST(geotext_ignores_what_is_not_a_place) {
+  CHECK(geoNone(""));
+  CHECK(geoNone(nullptr));
+  CHECK(geoNone("see you at 18h"));
+  CHECK(geoNone("1.5, 2.5 km"));                // a bare pair needs precise numbers
+  CHECK(geoNone("SNR 8.25, 9.75 dB"));
+  CHECK(geoNone("version 1.14.2, 3.0.1"));
+  CHECK(geoNone("95.1234, 10.1234"));           // latitude out of range
+  CHECK(geoNone("45.1234, 190.1234"));          // longitude out of range
+  CHECK(geoNone("geo:0,0"));                    // nowhere
+  CHECK(geoNone("geo:abc"));
+  CHECK(geoNone("v2.1234,3.4567"));             // inside a word
+  CHECK(geoNone("12.34567,8.91011.5"));         // not a clean pair
+}
+
+TEST(geotext_writes_what_it_reads) {
+  char out[48];
+  geotext::format(43.604712, -1.444234, out, sizeof(out));
+  CHECK(strcmp(out, "geo:43.604712,-1.444234") == 0);
+  CHECK(geoIs(out, 43.604712, -1.444234));
+}
+
+TEST(contact_position_keeps_the_newest) {
+  ContactPosition p;
+  CHECK(!p.known());
+  CHECK(p.offer(43600000, 1440000, 1000, PositionSource::Advert));
+  CHECK(p.offer(43610000, 1450000, 2000, PositionSource::Message));
+  CHECK(p.source == PositionSource::Message && p.latE6 == 43610000);
+  CHECK(!p.offer(43000000, 1000000, 1500, PositionSource::Advert));   // an older advert arriving late
+  CHECK_EQ(p.latE6, 43610000);
+  CHECK(p.offer(43620000, 1460000, 2000, PositionSource::Advert));    // the same time: the latest heard
+  CHECK(!p.offer(0, 0, 9999, PositionSource::Message));               // no position
+  ContactPosition q;
+  CHECK(q.offer(1, 2, 0, PositionSource::Advert));                    // unknown time, nothing held: taken
+  CHECK(q.offer(3, 4, 50, PositionSource::Message));
+  CHECK(!q.offer(5, 6, 0, PositionSource::Advert));                   // unknown time never replaces a known one
+}
+
+// ============================================================ PositionBook (MESSAGING-11)
+
+TEST(position_book_by_key) {
+  static PositionBook b;
+  b.clear();
+  uint8_t k1[6] = {1, 2, 3, 4, 5, 6}, k2[6] = {1, 2, 3, 4, 5, 7};
+  CHECK(b.get(k1).source == PositionSource::None);
+  PositionBook::Meta m;
+  m.time = 1000;
+  m.source = PositionSource::Message;
+  CHECK(b.set(k1, m));
+  CHECK(b.get(k1).time == 1000 && b.get(k1).source == PositionSource::Message);
+  CHECK(b.get(k2).time == 0);              // one different byte: another contact
+  m.time = 2000;
+  CHECK(b.set(k1, m));
+  CHECK_EQ(b.count(), 1);
+  CHECK_EQ(b.get(k1).time, 2000u);
+  b.remove(k1);
+  CHECK_EQ(b.count(), 0);
+  for (int i = 0; i < PositionBook::CAPACITY; i++) {
+    uint8_t k[6] = {(uint8_t)i, (uint8_t)(i >> 8), 9, 9, 9, 9};
+    CHECK(b.set(k, m));
+  }
+  CHECK(!b.set(k2, m));                    // full: refused, nothing overwritten
+  uint8_t first[6] = {0, 0, 9, 9, 9, 9};
+  CHECK_EQ(b.get(first).time, 2000u);
+}
+
+// ============================================================ ContactCapacity (VALIDATION-11)
+
+TEST(contact_capacity_warns_once_per_level) {
+  using A = ContactCapacity::Alert;
+  ContactCapacity c;
+  CHECK(c.poll(50, 100) == A::None);
+  CHECK(c.poll(89, 100) == A::None);
+  CHECK(c.poll(90, 100) == A::Near);
+  CHECK(c.poll(95, 100) == A::None);          // told once
+  CHECK(c.poll(100, 100) == A::Full);
+  CHECK(c.poll(100, 100) == A::None);         // replacing goes on, quietly
+  CHECK(c.poll(99, 100) == A::None);          // one removed...
+  CHECK(c.poll(100, 100) == A::Full);         // ...full again: said again
+  CHECK(c.poll(86, 100) == A::None);
+  CHECK(c.poll(90, 100) == A::None);          // not below 85 % in between: no new warning
+  CHECK(c.poll(80, 100) == A::None);
+  CHECK(c.poll(91, 100) == A::Near);
+  CHECK(c.poll(5, 0) == A::None);             // no limit known
+  CHECK(ContactCapacity::near(9, 10));
+  CHECK(!ContactCapacity::near(8, 10));
 }
 
 // ============================================================ main

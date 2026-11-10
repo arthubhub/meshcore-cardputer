@@ -32,6 +32,7 @@ private:
 MapScreen::MapScreen() : _grid(MAP_W, MAP_H) {}
 
 const char* MapScreen::help() const {
+  if (_overlay && _overlay->help()) return _overlay->help();
   if (_overlay) return tr("+- zoom  ;.,/ move  R frame  ` back", "+- zoom  ;.,/ déplacer  R cadrer  ` retour");
   return tr("+- zoom  ;.,/ move  0 centre on me", "+- zoom  ;.,/ déplacer  0 me centrer");
 }
@@ -130,6 +131,7 @@ bool MapScreen::onKey(App& app, const KeyEvent& e) {
       return false;       // App closes the screen
     default: break;
   }
+  if (_overlay && _overlay->onKey(app, e)) return true;
   if (e.is('=') || e.is('+')) { setZoom(app, _view.z + 1); return true; }
   if (e.is('-') || e.is('_')) { setZoom(app, _view.z - 1); return true; }
   if (_overlay && e.is('r')) { frameOverlay(app); return true; }

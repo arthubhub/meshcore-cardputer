@@ -4,7 +4,7 @@
 
 What the MeshCore firmware for the M5Stack Cardputer ADV + Cap LoRa-1262 could do next, feature by feature, with a priority and a size for each item. This file is generated: change [`roadmap.json`](roadmap.json), then run `python3 tools/roadmap.py`.
 
-Last updated 2026-11-08 · 56 open items · 21 done.
+Last updated 2026-11-09 · 62 open items · 21 done.
 
 ## How to read it
 
@@ -18,12 +18,12 @@ Last updated 2026-11-08 · 56 open items · 21 done.
 
 | Category | In progress | Next up | Backlog | Done |
 |---|---|---|---|---|
-| Validation & bugs | · | · | 4 | 6 |
+| Validation & bugs | 3 | · | 3 | 6 |
 | Release & CI | · | · | 5 | 4 |
 | Companion sync | · | 2 | 5 | 1 |
 | Radio tools | · | · | 5 | 5 |
-| Messaging | · | · | 10 | 2 |
-| GPS & map | · | · | 5 | 2 |
+| Messaging | 1 | · | 11 | 2 |
+| GPS & map | 1 | · | 6 | 2 |
 | Connectivity | · | · | 4 | · |
 | Power | · | · | 4 | · |
 | UX | · | 1 | 5 | 1 |
@@ -32,7 +32,11 @@ Last updated 2026-11-08 · 56 open items · 21 done.
 
 ## In progress
 
-_Nothing here yet._
+- **[VALIDATION-11](#validation-11)** A full contact list silently refuses new contacts · P0 · S
+- **[MESSAGING-11](#messaging-11)** Update a contact's position from a message · P1 · M
+- **[VALIDATION-10](#validation-10)** Find and fix the compass bugs · P1 · M
+- **[MAP-2](#map-2)** Navigate to a contact or waypoint · P2 · S
+- **[VALIDATION-4](#validation-4)** Large-font glyphs on the compass · P2 · S
 
 ## Next up
 
@@ -48,8 +52,10 @@ _Nothing here yet._
 |---|---|---|---|---|---|
 | [VALIDATION-2](#validation-2) | Crash report after a reboot | P1 | M | Backlog | · |
 | [VALIDATION-3](#validation-3) | MessageStore robustness tests | P2 | M | Backlog | · |
-| [VALIDATION-4](#validation-4) | Large-font glyphs on the compass | P2 | S | Backlog | · |
-| [VALIDATION-10](#validation-10) | Find and fix the compass bugs ★ | P1 | M | Backlog | · |
+| [VALIDATION-4](#validation-4) | Large-font glyphs on the compass | P2 | S | In progress | · |
+| [VALIDATION-10](#validation-10) | Find and fix the compass bugs ★ | P1 | M | In progress | VALIDATION-4 |
+| [VALIDATION-11](#validation-11) | A full contact list silently refuses new contacts ★ | P0 | S | In progress | · |
+| [VALIDATION-12](#validation-12) | GPS time from stale sentences after a long pause | P2 | S | Backlog | · |
 | [VALIDATION-1](#validation-1) | Validate phases 1–7 on a real Cardputer | P0 | M | Done | · |
 | [VALIDATION-5](#validation-5) | Serial diagnostics: boot-log replay, status line, console | P1 | M | Done | · |
 | [VALIDATION-6](#validation-6) | No framework error when a conversation file does not exist yet | P2 | S | Done | VALIDATION-1 |
@@ -71,15 +77,27 @@ Unit tests for a full LittleFS, a write interrupted by power loss, a corrupted i
 
 #### VALIDATION-4
 
-**Large-font glyphs on the compass** · P2 · S · Backlog
+**Large-font glyphs on the compass** · P2 · S · In progress
 
-In the compass screenshot the distance unit 'm' renders as a solid block in the big font ('597 ▀'). Check the glyph table of the display font and add a test scenario at short distances.
+Built, awaiting a test on the device. Cause: the 6x13 bold font doubled in size turns the thin strokes of "m" into a solid block. The distance is now drawn as a big number followed by its unit in the normal font. Part of VALIDATION-10.
 
 #### VALIDATION-10
 
-**Find and fix the compass bugs** ★ · P1 · M · Backlog
+**Find and fix the compass bugs** ★ · P1 · M · In progress · after VALIDATION-4
 
-Reported by the project owner on 2026-11-07: the compass has bugs, and how to fix them is still to be found. First list the symptoms on the device, with the serial log: wrong direction, needle not moving, behaviour while standing still or moving slowly, wrong distance. Then find each root cause before changing anything, with a scenario that reproduces it. Known leads, to confirm: the heading only comes from GPS movement, because the BMI270 has no magnetometer (MAP-5), and the distance unit renders as a block in the big font (VALIDATION-4).
+Built, awaiting a test on the device. Root causes found in the code, each covered by tests: (1) the dial switched between "north up" and "my direction up" at exactly 3 km/h, so it flickered while walking slowly and spun on GPS noise while standing still, with the raw course of the receiver, meaningless at low speed. HeadingFilter now uses the course from 4 km/h, drops it only after 5 s below 2 km/h, ignores the course below 2 km/h and smooths it on the circle (359 and 1 degrees average to 0). (2) "seen x ago" was the age of the last advert, not of the position: the compass now shows the age and the source of the position itself (advert or message). (3) the unit block of VALIDATION-4. To confirm on the device with the owner's own symptoms, which were not described: the heading still comes from GPS movement only (MAP-5).
+
+#### VALIDATION-11
+
+**A full contact list silently refuses new contacts** ★ · P0 · S · In progress
+
+Built, awaiting a test on the device. Reported by the project owner on 2026-11-08: messages from a friend could not be received because the contact list was full. Cause, reproduced with MeshCore's real code in app/sim/wire: with the 100 places taken, MeshCore refused the new contact's advert, because the keyboard firmware did not allow replacing one, and without the contact its messages cannot be decrypted. Now a new contact replaces the non-favourite heard the longest time ago (MeshCore's own rule, the one the phone app offers); its conversation stays, its position time is forgotten, and the log names it. The user is told once at 90 % ("Contacts almost full"), once when replacing starts, and the Contacts title shows the count out of the maximum near the limit. Favourites are never replaced: with nothing but favourites a new contact is still refused, and the user is told to remove one (at most every 10 minutes). Replaced contacts are lost until heard again: keeping them on the SD card is MESSAGING-12.
+
+#### VALIDATION-12
+
+**GPS time from stale sentences after a long pause** · P2 · S · Backlog
+
+Seen on 2026-11-08 during the SQLite trial: after loop() was blocked for minutes, the clock was set from the GPS with a drift of -1,183 s, then +1,244 s a minute later. NMEA sentences left in the UART buffer during the pause were taken as the current time (DeviceGps). Only a blocked loop triggers it, but a firmware update or a long SD operation could. Fix: drop the buffered bytes after a long gap, or only set the clock from a sentence read within a second of its arrival; a unit test with GpsLink and the fake GPS UART reproduces it.
 
 #### VALIDATION-1
 
@@ -202,7 +220,7 @@ companion-v1.18.0, weekly update workflow with full checks before anything lands
 
 **Share contacts and channels between both modes** ★ · P1 · M · Next up · after VALIDATION-1
 
-The two firmwares already share the radio identity but keep separate contacts and channels. When switching mode, convert the standalone files (/contacts.cp, /channels.cp) to and from the companion DataStore format, merging by public key with the most recent advert winning. Unit-test the converter on the PC with real file samples.
+The two firmwares already share the radio identity but keep separate contacts and channels. When switching mode, convert the standalone files (/contacts.cp, /channels.cp) to and from the companion DataStore format, merging by public key with the most recent advert winning. Unit-test the converter on the PC with real file samples. The keyboard contacts file is now ContactFile version 2 (positions with their time); the conversion must keep that.
 
 #### SYNC-2
 
@@ -252,7 +270,7 @@ Settings › Phone mode, back with esc ×3; shared radio identity.
 |---|---|---|---|---|---|
 | [RADIO-1](#radio-1) | Signal finder (fox hunt) ★ | P1 | M | Backlog | VALIDATION-1 |
 | [RADIO-2](#radio-2) | Signal finder: estimate the source on the map ★ | P2 | L | Backlog | RADIO-1, MAP-1, MAP-6 |
-| [RADIO-3](#radio-3) | Range test mode with GPS logging | P1 | M | Backlog | VALIDATION-1, MAP-6 |
+| [RADIO-3](#radio-3) | Range test mode with GPS logging | P1 | M | Backlog | VALIDATION-1, MAP-6, MAP-1 |
 | [RADIO-5](#radio-5) | Noise floor and channel scanner | P2 | M | Backlog | · |
 | [RADIO-7](#radio-7) | Temporary repeater mode | P3 | M | Backlog | RADIO-4 |
 | [RADIO-4](#radio-4) | Airtime and duty-cycle meter | P2 | S | Done | · |
@@ -275,9 +293,9 @@ While hunting, log RSSI with the GPS position and draw coloured dots on the offl
 
 #### RADIO-3
 
-**Range test mode with GPS logging** · P1 · M · Backlog · after VALIDATION-1, MAP-6
+**Range test mode with GPS logging** · P1 · M · Backlog · after VALIDATION-1, MAP-6, MAP-1
 
-Send periodic pings to a chosen node, log ACK/no-ACK, RSSI, SNR and position to the SD card (CSV + GPX), and show coverage dots on the map. Useful to every mesh community planning repeaters. Draw it as a MapLayer (MAP-6).
+Send periodic pings to a chosen node, log ACK/no-ACK, RSSI, SNR and position to the SD card (CSV + GPX), and show coverage dots on the map. Useful to every mesh community planning repeaters. Draw it as a MapLayer (MAP-6). Shares the GPX writer and the track layer of MAP-1.
 
 #### RADIO-5
 
@@ -332,9 +350,11 @@ Done: tested on the device on 2026-11-08, works. Settings > Region: free name, '
 | [MESSAGING-5](#messaging-5) | Trace route | P2 | M | Backlog | · |
 | [MESSAGING-6](#messaging-6) | Unread messages on the RGB LED | P2 | S | Backlog | VALIDATION-1 |
 | [MESSAGING-7](#messaging-7) | Search and export conversations | P3 | M | Backlog | · |
-| [MESSAGING-8](#messaging-8) | Emoji and other scripts | P3 | M | Backlog | · |
-| [MESSAGING-11](#messaging-11) | Update a contact's position from a message ★ | P1 | M | Backlog | VALIDATION-1 |
-| [MESSAGING-12](#messaging-12) | Keep contacts on the SD card when the list is full ★ | P1 | L | Backlog | VALIDATION-1 |
+| [MESSAGING-8](#messaging-8) | Emoji and other scripts ★ | P1 | M | Backlog | · |
+| [MESSAGING-11](#messaging-11) | Update a contact's position from a message ★ | P1 | M | In progress | VALIDATION-1 |
+| [MESSAGING-12](#messaging-12) | Keep contacts on the SD card when the list is full ★ | P1 | L | Backlog | VALIDATION-1, SYNC-1, VALIDATION-11 |
+| [MESSAGING-13](#messaging-13) | Mention people in messages ★ | P1 | M | Backlog | · |
+| [MESSAGING-14](#messaging-14) | Search contacts, in memory and on the SD card ★ | P1 | M | Backlog | MESSAGING-12 |
 | [MESSAGING-9](#messaging-9) | From a message to the sender's profile ★ | P1 | M | Done | VALIDATION-1 |
 | [MESSAGING-10](#messaging-10) | Keep the route of each message ★ | P1 | M | Done | · |
 
@@ -382,21 +402,33 @@ Search text across conversations; export one conversation to a text file on the 
 
 #### MESSAGING-8
 
-**Emoji and other scripts** · P3 · M · Backlog
+**Emoji and other scripts** ★ · P1 · M · Backlog
 
-Messages from phones often contain emoji. Show a readable fallback glyph instead of nothing, and widen the font coverage within the flash budget.
+Messages from phones often contain emoji. Show a readable fallback glyph instead of nothing, and widen the font coverage within the flash budget. Requested by the project owner on 2026-11-08: emoji are wanted, to read and to send. Sending needs a picker on the keyboard (a short list of common ones), and reading needs glyphs: small bitmaps for the common emoji, a fallback for the others.
 
 #### MESSAGING-11
 
-**Update a contact's position from a message** ★ · P1 · M · Backlog · after VALIDATION-1
+**Update a contact's position from a message** ★ · P1 · M · In progress · after VALIDATION-1
 
-Requested by the project owner on 2026-11-07: when a contact sends their GPS position in a message, it updates the position on their profile, so the map, the distance and the compass follow without waiting for an advert. First capture what such a message really looks like from the phone app and from other firmwares, as the format is not defined yet. Keep the time of the position, and do not let an older position replace a newer one, from a message or an advert. Only a message authenticated as coming from that contact may update them: a channel message only carries a name, so it must not change a profile.
+Built, awaiting a test on the device. A direct message containing a position moves the contact: geo:lat,lon, a pair of decimal degrees (at least 3 decimals each, so "1.5, 2.5 km" is not read as a place), or a Google Maps, Apple Maps or OpenStreetMap link. Channel messages and room posts never move a contact: they do not prove who wrote them. Each position keeps its time by the sender's clock and its source, and the newest wins, whatever arrives last: an older advert received after a message no longer overwrites it (checked with MeshCore's real advert handling in app/sim/wire). On a contact's sheet, P twice sends my position as geo:lat,lon, which another Cardputer reads back. The contacts file moved to version 2 to keep those times: version 1 loads, and saving now writes a temporary file then swaps it, so a power cut can no longer lose the contacts. Not verified: the format the phone app uses when it shares a position; to check on the device.
 
 #### MESSAGING-12
 
-**Keep contacts on the SD card when the list is full** ★ · P1 · L · Backlog · after VALIDATION-1
+**Keep contacts on the SD card when the list is full** ★ · P1 · L · Backlog · after VALIDATION-1, SYNC-1, VALIDATION-11
 
-Requested by the project owner on 2026-11-07: contacts are also saved on the SD card, and when there is no room left, 100 places are freed and those contacts move to the card. To settle first: the keyboard firmware holds 100 contacts today (MAX_CONTACTS), so freeing 100 places would empty the whole list. Either raise that limit, which costs RAM on a device without PSRAM, or free fewer. Choose which contacts leave: the oldest heard, never favourites. A contact on the card must come back by itself when it is heard again or when a message arrives from it, since a message from a contact that is not in RAM cannot be decrypted, and conversations and routes must still find its name. Without a card, nothing may be lost silently: warn, and keep the current behaviour. The file holds public keys and names only, but it tells who you know, so include it in SECURITY-1's thinking.
+Requested by the project owner on 2026-11-07: contacts are also saved on the SD card, and when there is no room left, 100 places are freed and those contacts move to the card. To settle first: the keyboard firmware holds 100 contacts today (MAX_CONTACTS), so freeing 100 places would empty the whole list. Either raise that limit, which costs RAM on a device without PSRAM, or free fewer. Choose which contacts leave: the oldest heard, never favourites. A contact on the card must come back by itself when it is heard again or when a message arrives from it, since a message from a contact that is not in RAM cannot be decrypted, and conversations and routes must still find its name. Without a card, nothing may be lost silently: warn, and keep the current behaviour. The file holds public keys and names only, but it tells who you know, so include it in SECURITY-1's thinking. After SYNC-1: both change how contacts are stored, and the contacts file now has a version and a crash-safe save (ContactFile, MESSAGING-11) to build on. VALIDATION-11 first stops a full list from blocking new contacts; this item then keeps the contacts that leave.
+
+#### MESSAGING-13
+
+**Mention people in messages** ★ · P1 · M · Backlog
+
+Requested by the project owner on 2026-11-08: tag people in a message, mainly on channels. Format, given by the project owner: "@[contact name]", as the MeshCore phone app writes it. (1) Typing @ in the compose line proposes the contacts at once, then narrows the list letter by letter (contacts and the recent senders of the conversation, favourites first); Enter inserts @[name]. (2) In the bubbles, a mention is drawn as the name on a small highlight, not as the raw text with its brackets. (3) A received message mentioning my name is highlighted and notified like a direct message, even on a busy channel. Names may contain spaces and accents: the closing bracket ends the name. Shares the contact search of MESSAGING-14.
+
+#### MESSAGING-14
+
+**Search contacts, in memory and on the SD card** ★ · P1 · M · Backlog · after MESSAGING-12
+
+Requested by the project owner on 2026-11-08: search the contacts by name, among those in memory and those kept on the SD card (MESSAGING-12). Typing letters in the Contacts list filters it at once (case and accents ignored); a result on the card can be brought back to memory, or opened. The same search serves the @ suggestions of MESSAGING-13. The part in memory does not need MESSAGING-12 and can come first.
 
 #### MESSAGING-9
 
@@ -415,10 +447,12 @@ Done: tested on the device on 2026-11-08, works. Each message record now holds i
 | ID | Item | Priority | Size | Status | Depends on |
 |---|---|---|---|---|---|
 | [MAP-1](#map-1) | GPS track recording (GPX) | P2 | M | Backlog | MAP-6 |
-| [MAP-2](#map-2) | Navigate to a contact or waypoint | P2 | S | Backlog | MAP-6 |
+| [MAP-2](#map-2) | Navigate to a contact or waypoint | P2 | S | In progress | MAP-6, VALIDATION-10 |
 | [MAP-3](#map-3) | Automatic position sharing | P2 | S | Backlog | RADIO-4 |
 | [MAP-4](#map-4) | Compressed map tiles | P2 | M | Backlog | · |
 | [MAP-5](#map-5) | Heading while standing still | P3 | M | Backlog | · |
+| [MAP-8](#map-8) | Route view without the other contacts ★ | P1 | S | Backlog | MAP-7 |
+| [MAP-9](#map-9) | The route of any packet heard ★ | P2 | M | Backlog | MAP-7, RADIO-6 |
 | [MAP-6](#map-6) | Zoom beyond the tiles, and map layers ★ | P1 | M | Done | · |
 | [MAP-7](#map-7) | A message's route on the map ★ | P1 | M | Done | MAP-6, MESSAGING-10 |
 
@@ -430,9 +464,9 @@ Record the track to the SD card as GPX and draw it as a breadcrumb on the map. A
 
 #### MAP-2
 
-**Navigate to a contact or waypoint** · P2 · S · Backlog · after MAP-6
+**Navigate to a contact or waypoint** · P2 · S · In progress · after MAP-6, VALIDATION-10
 
-Draw a line from my position to the selected contact on the map, with distance and bearing, and switch to the compass in one key. Draw it as a MapLayer (MAP-6).
+Built, awaiting a test on the device. On a contact's sheet, K opens the map framed on the contact and on me, with a line between us and the distance and bearing; B switches to the compass towards them. It is the first overlay that adds keys to the map (MapLayer::onKey, help). Draw a line from my position to the selected contact on the map, with distance and bearing, and switch to the compass in one key.
 
 #### MAP-3
 
@@ -451,6 +485,18 @@ Tiles are raw RGB565, 128 KB each: four 100 km zones at zoom 10–13 already tak
 **Heading while standing still** · P3 · M · Backlog
 
 The BMI270 has no magnetometer, so the compass only knows your heading while moving. Support an external magnetometer on the Grove port for a true compass.
+
+#### MAP-8
+
+**Route view without the other contacts** ★ · P1 · S · Backlog · after MAP-7
+
+Requested by the project owner on 2026-11-08: when the map shows a message's route, every known contact is drawn too, and on a busy mesh the route disappears under the markers. While an overlay is shown, hide the contacts layer, or keep only the contacts that are points of the route, named once. MapScreen already draws layers one by one (MAP-6): an overlay can say which of the map's own layers it wants.
+
+#### MAP-9
+
+**The route of any packet heard** ★ · P2 · M · Backlog · after MAP-7, RADIO-6
+
+Requested by the project owner on 2026-11-08: see the route each time, not only for messages (already done by MESSAGING-10 and MAP-7): adverts, discovery answers and the other packets of the packet log. Each flood carries its whole path, but the packet log keeps only the last hop today: keep the path (PathView, MsgRoute) in PacketRecord, within the RAM budget (48 records), then open RouteScreen and the map from a packet's details. An advert also gives the position of its sender, so its route has both ends.
 
 #### MAP-6
 

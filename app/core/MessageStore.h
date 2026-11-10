@@ -19,6 +19,8 @@ public:
   // Writes `len` bytes at `off`, creating / extending the file as needed.
   virtual bool write(const char* path, uint32_t off, const void* buf, uint32_t len) = 0;
   virtual bool remove(const char* path) = 0;
+  // Gives `from` the name `to`; `to` must not exist. False if `from` is missing.
+  virtual bool rename(const char* from, const char* to) = 0;
 };
 
 constexpr int MSG_TEXT_MAX = 160;     // MeshCore MAX_TEXT_LEN (10 AES blocks)

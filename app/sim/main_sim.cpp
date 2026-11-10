@@ -45,6 +45,8 @@
 //   tiles <dir>                    use the map tiles of <dir>/tiles (made by tools/tiles/make_tiles.py)
 //   expect-tiles-read <n>          number of tile files opened so far (render cost / caching checks)
 //   expect-zoom <z>                zoom level of the map
+//   expect-compass heading|north   what is up on the compass dial
+//   expect-contact-pos <name> <lat> <lon> | none   a contact's position (5 decimals)
 //   nmea-bad <sentence>            the sentence must be rejected (bad checksum / malformed)
 //   expect-adverts-pos <n>         number of adverts sent with the GPS position
 //   ble on|off|connected
@@ -59,6 +61,8 @@
 //   expect-msgs <conv> <n>         number of stored messages in a conversation (by name)
 //   expect-last <conv> <state> [text...]  state of the newest message: received|pending|sent|delivered|failed|channel
 //   expect-contacts <n>            number of contacts
+//   contacts-max <n>               most contacts kept (100 on the Cardputer)
+//   expect-has-contact <name> 0|1  whether a contact is in the list
 //   expect-sounds <n>              number of notification sounds played so far
 //
 // Fake hardware (real drivers of core/drivers against the fake chips of fakes/, see HwRig.h).
@@ -215,6 +219,7 @@ int main(int argc, char** argv) {
   GpsScreen gps(compass);
   MapScreen map;
   routeScreen.setMap(&map);
+  contactDetail.setMap(&map);
   SystemScreen systemScreen;
   PacketDetailScreen packetDetail;
   PacketsScreen packets(packetDetail);
@@ -455,6 +460,21 @@ int main(int argc, char** argv) {
                 r.count, r.placed, r.ambiguous, r.unknown);
         g_failures++;
       }
+    } else if (cmd == "expect-compass") {
+      std::string want; ls >> want;
+      std::string got = compass.headingUp() ? "heading" : "north";
+      if (want != got) { fprintf(stderr, "line %d: FAIL compass expected %s up, got %s\n", lineNo, want.c_str(), got.c_str()); g_failures++; }
+    } else if (cmd == "expect-contact-pos") {
+      std::string name, a, b; ls >> name >> a >> b;
+      ContactView c;
+      std::string got = "none";
+      if (mesh.findContact(mesh.keyByName(name), c) && c.hasPos) {
+        char buf[48];
+        snprintf(buf, sizeof(buf), "%.5f %.5f", c.latE6 / 1e6, c.lonE6 / 1e6);
+        got = buf;
+      }
+      std::string want = a == "none" ? "none" : a + " " + b;
+      if (want != got) { fprintf(stderr, "line %d: FAIL position of %s expected %s, got %s\n", lineNo, name.c_str(), want.c_str(), got.c_str()); g_failures++; }
     } else if (cmd == "expect-zoom") {
       int want = 0; ls >> want;
       if (want != map.zoom()) { fprintf(stderr, "line %d: FAIL expected zoom %d, got %d\n", lineNo, want, map.zoom()); g_failures++; }
@@ -524,6 +544,14 @@ int main(int argc, char** argv) {
     } else if (cmd == "expect-convs") {
       int want = 0; ls >> want;
       if (want != mesh.messages().count()) { fprintf(stderr, "line %d: FAIL expected %d conversations, got %d\n", lineNo, want, mesh.messages().count()); g_failures++; }
+    } else if (cmd == "contacts-max") {
+      ls >> mesh.capacity; runFor(LOOP_MS);
+    } else if (cmd == "expect-has-contact") {
+      std::string name; int want = 0; ls >> name >> want;
+      ContactView c;
+      bool has = false;
+      for (int i = 0; i < mesh.contactCount(); i++) if (mesh.contactAt(i, c) && name == c.name) has = true;
+      if (has != (want != 0)) { fprintf(stderr, "line %d: FAIL contact %s expected %s\n", lineNo, name.c_str(), want ? "present" : "absent"); g_failures++; }
     } else if (cmd == "expect-contacts") {
       int want = 0; ls >> want;
       if (want != mesh.contactCount()) { fprintf(stderr, "line %d: FAIL expected %d contacts, got %d\n", lineNo, want, mesh.contactCount()); g_failures++; }

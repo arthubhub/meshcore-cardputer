@@ -1,6 +1,8 @@
 #include "DemoMesh.h"
 #include "I18n.h"
 #include "RadioPresets.h"
+#include "drivers/GeoText.h"
+#include <math.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
@@ -81,7 +83,11 @@ void DemoMesh::addContact(const std::string& name, int hops, bool fav, uint8_t t
                          double lon) {
   ConvKey k = keyFromName(ConvKey::DIRECT, name);
   Contact* c = findMut(k);
-  if (!c) { _contacts.push_back(Contact()); c = &_contacts.back(); }
+  if (!c) {
+    if (!makeRoom()) return;
+    _contacts.push_back(Contact());
+    c = &_contacts.back();
+  }
   c->v = ContactView{};
   c->v.key = k;
   memcpy(c->v.pubKey, k.id, 6);
@@ -93,6 +99,8 @@ void DemoMesh::addContact(const std::string& name, int hops, bool fav, uint8_t t
   c->v.hasPos = hasPos;
   c->v.latE6 = (int32_t)(lat * 1e6);
   c->v.lonE6 = (int32_t)(lon * 1e6);
+  c->v.posTime = hasPos ? nowUnix() : 0;
+  c->v.posSource = (uint8_t)(hasPos ? PositionSource::Advert : PositionSource::None);
   uint8_t path[64];
   for (size_t i = 0; i < sizeof(path); i++) path[i] = (uint8_t)(k.id[i % 6] ^ (i * 37));
   if (hops >= 0) c->v.route.set(PATH_PLANNED, (uint8_t)hops, path);
@@ -101,13 +109,32 @@ void DemoMesh::addContact(const std::string& name, int hops, bool fav, uint8_t t
   sortContacts();
 }
 
+bool DemoMesh::makeRoom() {
+  if ((int)_contacts.size() < capacity) return true;
+  Contact* oldest = nullptr;
+  for (auto& c : _contacts) {
+    if (!c.v.favourite && (!oldest || c.heardAtMs < oldest->heardAtMs)) oldest = &c;
+  }
+  char text[16];
+  snprintf(text, sizeof(text), "%d/%d", (int)_contacts.size(), capacity);
+  if (!oldest) {
+    push(MeshEvent::CONTACTS_BLOCKED, ConvKey(), "", text);
+    logf("contact list full of favourites: a new contact was refused");
+    return false;
+  }
+  logf("contact list full: %s replaced by a new contact", oldest->v.name);
+  _contacts.erase(_contacts.begin() + (oldest - &_contacts[0]));
+  return true;
+}
+
 void DemoMesh::hear(const std::string& name, float snr) {
   ConvKey k = keyFromName(ConvKey::DIRECT, name);
   Contact* c = findMut(k);
   if (!c) {
     addContact(name, 1, false, CONTACT_CHAT, false, 0, 0);
-    push(MeshEvent::CONTACT_NEW, k, name, "");
     c = findMut(k);
+    if (!c) return;   // refused: the list is full of favourites
+    push(MeshEvent::CONTACT_NEW, k, name, "");
   }
   c->snr = snr;
   c->heardAtMs = _sys.millis();
@@ -151,6 +178,23 @@ void DemoMesh::receive(const std::string& sender, const std::string& text, const
   _store.append(k, sender.c_str(), m, true);
   _rx++;
   recordRx(wire::PL_TXT, k, m.hops, m.snrX4 / 4.0f);
+  double lat, lon;
+  if (c && geotext::find(m.text, lat, lon)) {   // a direct message is authenticated (MESSAGING-11)
+    ContactPosition pos;
+    pos.latE6 = c->v.latE6;
+    pos.lonE6 = c->v.lonE6;
+    pos.time = c->v.posTime;
+    pos.source = (PositionSource)c->v.posSource;
+    bool taken = pos.offer((int32_t)lround(lat * 1e6), (int32_t)lround(lon * 1e6), nowUnix(), PositionSource::Message);
+    if (taken) {
+      c->v.latE6 = pos.latE6;
+      c->v.lonE6 = pos.lonE6;
+      c->v.posTime = pos.time;
+      c->v.posSource = (uint8_t)pos.source;
+      c->v.hasPos = true;
+    }
+    logf("position from %s in a message: %.5f, %.5f (%s)", sender.c_str(), lat, lon, taken ? "updated" : "older, ignored");
+  }
   push(MeshEvent::MESSAGE, k, sender, text);
   logf("rx %s: %s", sender.c_str(), text.c_str());
 }
@@ -331,6 +375,12 @@ bool DemoMesh::startDiscovery() {
 void DemoMesh::tick() {
   uint32_t now = _sys.millis();
   if (_bot) botTick();
+  const ContactCapacity::Alert full = _capacityAlert.poll((int)_contacts.size(), capacity);
+  if (full != ContactCapacity::Alert::None) {
+    char text[16];
+    snprintf(text, sizeof(text), "%d/%d", (int)_contacts.size(), capacity);
+    push(full == ContactCapacity::Alert::Full ? MeshEvent::CONTACTS_REPLACING : MeshEvent::CONTACTS_NEAR_FULL, ConvKey(), "", text);
+  }
   _airtime.update(_airTotalMs, now);
   AirtimeMeter::Alert alert = _airtime.pollAlert(radioStats().txAirLimitPercent);
   if (alert != AirtimeMeter::Alert::None) {

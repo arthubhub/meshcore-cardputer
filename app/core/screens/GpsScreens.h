@@ -2,10 +2,11 @@
 #include "../App.h"
 #include "../Widgets.h"
 #include "MessagingScreens.h"
+#include "../drivers/HeadingFilter.h"
 
 // Compass towards a contact: arrow, distance, bearing, age of the contact's position.
 // No magnetometer on the Cardputer: the arrow is relative to the direction of travel when
-// moving (GPS course), otherwise north is up.
+// moving (GPS course, through HeadingFilter), otherwise north is up.
 class CompassScreen : public Screen {
 public:
   void setTarget(const ConvKey& key) { _target = key; }
@@ -17,9 +18,11 @@ public:
   void draw(App& app, lgfx::LovyanGFX& g) override;
 
   void setChat(ChatScreen* chat) { _chat = chat; }
+  bool headingUp() const { return _heading.headingUp(); }
 
 private:
   bool pickTarget(App& app, int step, ContactView& out);   // step 0: current (or first)
+  HeadingFilter _heading;
   ConvKey _target;
   ChatScreen* _chat = nullptr;
   uint32_t _lastRefresh = 0;

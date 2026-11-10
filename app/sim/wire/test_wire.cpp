@@ -15,7 +15,10 @@
 #include <helpers/TxtDataHelpers.h>
 #include "../../core/drivers/PacketLog.h"
 #include "../../device/FloodPolicy.h"
+#include "../../device/ContactFile.h"
+#include "../../device/ContactPositions.h"
 #include "../../device/MessageRoute.h"
+#include <map>
 
 #include <deque>
 #include <functional>
@@ -110,6 +113,18 @@ public:
   PacketLog packets;
   std::vector<std::string> inbox;
   StoredMsg lastMsg;                 // the record CardputerMesh would store for the last message received
+  ContactPositions positions;        // as in CardputerMesh
+  bool replaceWhenFull = false;      // CardputerMesh: true since VALIDATION-11
+  std::vector<std::string> replaced;
+  int fullCalls = 0;
+  int contacts() { return getNumContacts(); }
+  void favourite(const ChatNode& other) { contact(other)->flags |= 1; }
+  // Speaks as another node from now on: one radio, many identities, to fill a contact list
+  void become(uint32_t seed, const char* name) {
+    Rng rng(seed);
+    self_id = mesh::LocalIdentity(&rng);
+    _name = name;
+  }
   int acks = 0;
   uint32_t expectedAck = 0;
 
@@ -120,6 +135,8 @@ public:
   }
   const mesh::LocalIdentity& id() const { return self_id; }
   void advertise() { floods.send(*this, createSelfAdvert(_name.c_str())); }
+  mesh::Packet* advertAt(double lat, double lon) { return createSelfAdvert(_name.c_str(), lat, lon); }   // dated now
+  void flood(mesh::Packet* p) { floods.send(*this, p); }
   bool discover(const ChatNode& other) { return contact(other) != nullptr; }
   ContactInfo* contact(const ChatNode& other) { return lookupContactByPubKey(other.self_id.pub_key, PUB_KEY_SIZE); }
   int send(ChatNode& to, const char* text) {
@@ -140,15 +157,28 @@ protected:
   void logTx(mesh::Packet* p, int len) override { record(*p, len, true); }
 
   void onDiscoveredContact(ContactInfo&, bool, uint8_t, const uint8_t*) override {}
+  bool shouldOverwriteWhenFull() const override { return replaceWhenFull; }
+  void onContactOverwrite(const uint8_t* key) override {
+    if (ContactInfo* c = lookupContactByPubKey(key, PUB_KEY_SIZE)) replaced.push_back(c->name);
+    positions.book().remove(key);
+  }
+  void onContactsFull() override { fullCalls++; }
   void onContactPathUpdated(const ContactInfo&) override {}
   ContactInfo* processAck(const uint8_t* data) override {
     if (memcmp(data, &expectedAck, 4) == 0) acks++;
     return nullptr;
   }
-  void onMessageRecv(const ContactInfo& from, mesh::Packet* p, uint32_t, const char* text) override {
+  void onMessageRecv(const ContactInfo& from, mesh::Packet* p, uint32_t ts, const char* text) override {
     inbox.push_back(text);
     lastMsg = StoredMsg();
     MessageRoute::received(lastMsg, *p, from);
+    bool found;
+    if (ContactInfo* c = lookupContactByPubKey(from.id.pub_key, PUB_KEY_SIZE)) positions.fromMessage(*c, text, ts, found);
+  }
+  void onAdvertRecv(mesh::Packet* p, const mesh::Identity& id, uint32_t ts, const uint8_t* data, size_t len) override {
+    const ContactPositions::Before before = ContactPositions::before(lookupContactByPubKey(id.pub_key, PUB_KEY_SIZE));
+    BaseChatMesh::onAdvertRecv(p, id, ts, data, len);
+    positions.afterAdvert(before, lookupContactByPubKey(id.pub_key, PUB_KEY_SIZE), ts, data, len);
   }
   void onCommandDataRecv(const ContactInfo&, mesh::Packet*, uint32_t, const char*) override {}
   void onCLICommandRecv(const ContactInfo&, mesh::Packet*, uint32_t, const char*, char*) override {}
@@ -531,6 +561,297 @@ TEST(the_log_tells_another_region_from_ours) {
   const PacketRecord* r = n.b.packets.recent(0);
   CHECK(r->scoped() && !r->ourRegion());
   CHECK(r->transportCode != 0);
+}
+
+// ---------------------------------------------------------------- the contacts file (MESSAGING-11)
+
+class MemoryStorage : public Storage {
+public:
+  bool read(const char* path, uint32_t off, void* buf, uint32_t len) override {
+    auto it = files.find(path);
+    if (it == files.end() || off + len > it->second.size()) return false;
+    memcpy(buf, it->second.data() + off, len);
+    return true;
+  }
+  bool write(const char* path, uint32_t off, const void* buf, uint32_t len) override {
+    if (failWrites) return false;
+    std::vector<uint8_t>& f = files[path];
+    if (f.size() < off + len) f.resize(off + len);
+    memcpy(f.data() + off, buf, len);
+    return true;
+  }
+  bool remove(const char* path) override { return files.erase(path) > 0; }
+  bool rename(const char* from, const char* to) override {
+    if (failRename) return false;
+    auto it = files.find(from);
+    if (it == files.end() || files.count(to)) return false;
+    files[to] = it->second;
+    files.erase(from);
+    return true;
+  }
+  std::map<std::string, std::vector<uint8_t>> files;
+  bool failWrites = false, failRename = false;
+};
+
+static ContactEntry someContact(uint8_t seed, const char* name) {
+  Rng rng(seed);
+  mesh::LocalIdentity id(&rng);
+  ContactEntry e;
+  memset(&e.info, 0, sizeof(e.info));
+  e.info.id = mesh::Identity(id.pub_key);
+  strcpy(e.info.name, name);
+  e.info.type = ADV_TYPE_CHAT;
+  e.info.flags = 1;
+  e.info.out_path_len = (1 << 6) | 2;
+  e.info.out_path[0] = 0xA1;
+  e.info.out_path[3] = 0xD4;
+  e.info.last_advert_timestamp = 1793541000 + seed;
+  e.info.lastmod = 1793541600;
+  e.info.gps_lat = 43604700 + seed;
+  e.info.gps_lon = 1444200;
+  e.position.time = 1793541500 + seed;
+  e.position.source = PositionSource::Message;
+  return e;
+}
+
+static int loadAll(ContactFile& f, std::vector<ContactEntry>& out) {
+  out.clear();
+  return f.load([&](const ContactEntry& e) { out.push_back(e); return true; });
+}
+
+TEST(contacts_file_round_trip) {
+  MemoryStorage disk;
+  ContactFile f(disk, "/contacts.cp");
+  CHECK(f.begin());
+  for (int i = 0; i < 9; i++) CHECK(f.add(someContact((uint8_t)i, i == 4 ? "Bob" : "Someone")));   // spans chunks
+  CHECK(f.commit());
+  CHECK(!disk.files.count("/contacts.cp.new"));
+  std::vector<ContactEntry> got;
+  CHECK(loadAll(f, got) == 9);
+  if (got.size() != 9) return;           // nothing more can be read safely
+  CHECK(f.lastFormat() == 2);
+  const ContactEntry want = someContact(4, "Bob");
+  const ContactEntry& e = got[4];
+  CHECK(!strcmp(e.info.name, "Bob"));
+  CHECK(e.info.id.matches(want.info.id));
+  CHECK(e.info.out_path_len == want.info.out_path_len && e.info.out_path[3] == 0xD4);
+  CHECK(e.info.gps_lat == want.info.gps_lat && e.info.flags == 1);
+  CHECK(e.position.time == want.position.time && e.position.source == PositionSource::Message);
+  // a smaller list replaces the bigger one entirely
+  CHECK(f.begin());
+  CHECK(f.add(someContact(1, "Only")));
+  CHECK(f.commit());
+  CHECK(loadAll(f, got) == 1 && !strcmp(got[0].info.name, "Only"));
+}
+
+TEST(contacts_file_reads_version_1) {
+  MemoryStorage disk;
+  // A file written by the previous firmware: magic, then 148-byte records until the end
+  std::vector<uint8_t> v1(4);
+  uint32_t magic = ContactFile::MAGIC_V1;
+  memcpy(v1.data(), &magic, 4);
+  for (int i = 0; i < 3; i++) {
+    ContactEntry e = someContact((uint8_t)(10 + i), "Old");
+    uint8_t rec[148] = {};
+    memcpy(rec, e.info.id.pub_key, 32);
+    memcpy(rec + 32, e.info.name, 32);
+    rec[64] = e.info.type;
+    rec[66] = e.info.out_path_len;
+    memcpy(rec + 132, &e.info.last_advert_timestamp, 4);
+    memcpy(rec + 140, &e.info.gps_lat, 4);
+    memcpy(rec + 144, &e.info.gps_lon, 4);
+    if (i == 2) memset(rec + 140, 0, 8);    // no position
+    v1.insert(v1.end(), rec, rec + sizeof(rec));
+  }
+  disk.files["/contacts.cp"] = v1;
+  ContactFile f(disk, "/contacts.cp");
+  std::vector<ContactEntry> got;
+  CHECK(loadAll(f, got) == 3);
+  if (got.size() != 3) return;
+  CHECK(f.lastFormat() == 1);
+  CHECK(got[0].info.id.matches(someContact(10, "").info.id));
+  CHECK(got[0].position.source == PositionSource::Advert);           // dated by its advert
+  CHECK(got[0].position.time == got[0].info.last_advert_timestamp);
+  CHECK(got[2].position.source == PositionSource::None);
+  // and the next save writes version 2
+  CHECK(f.begin());
+  for (auto& e : got) CHECK(f.add(e));
+  CHECK(f.commit());
+  CHECK(loadAll(f, got) == 3 && f.lastFormat() == 2);
+}
+
+TEST(contacts_file_survives_an_interrupted_save) {
+  MemoryStorage disk;
+  ContactFile f(disk, "/contacts.cp");
+  f.begin();
+  f.add(someContact(1, "Kept"));
+  CHECK(f.commit());
+  // the device stops while writing the new list: the old one is still read
+  disk.files["/contacts.cp.new"] = std::vector<uint8_t>(40, 0x55);
+  std::vector<ContactEntry> got;
+  CHECK(loadAll(f, got) == 1 && !strcmp(got[0].info.name, "Kept"));
+  // a full write that cannot finish leaves the old list
+  f.begin();
+  f.add(someContact(2, "New"));
+  disk.failWrites = true;
+  CHECK(!f.commit());
+  disk.failWrites = false;
+  CHECK(loadAll(f, got) == 1 && !strcmp(got[0].info.name, "Kept"));
+  // it stops between removing the old file and renaming the new one: the new one is read
+  f.begin();
+  f.add(someContact(3, "Renamed"));
+  disk.failRename = true;
+  CHECK(!f.commit());
+  disk.failRename = false;
+  CHECK(!disk.files.count("/contacts.cp"));
+  CHECK(loadAll(f, got) == 1 && !strcmp(got[0].info.name, "Renamed"));
+  if (got.empty()) return;
+  // the next save puts things back in order
+  f.begin();
+  f.add(got[0]);
+  CHECK(f.commit());
+  CHECK(disk.files.count("/contacts.cp") && !disk.files.count("/contacts.cp.new"));
+}
+
+TEST(contacts_file_stops_when_the_list_is_full) {
+  MemoryStorage disk;
+  ContactFile f(disk, "/contacts.cp");
+  f.begin();
+  for (int i = 0; i < 5; i++) f.add(someContact((uint8_t)i, "C"));
+  f.commit();
+  int taken = 0;
+  f.load([&](const ContactEntry&) { return ++taken < 2; });
+  CHECK(taken == 2);
+  MemoryStorage empty;
+  ContactFile none(empty, "/contacts.cp");
+  std::vector<ContactEntry> got;
+  CHECK(loadAll(none, got) == 0);
+  empty.files["/contacts.cp"] = {1, 2, 3};   // too short to be anything
+  CHECK(loadAll(none, got) == 0);
+}
+
+// ---------------------------------------------------------------- positions from adverts and messages (MESSAGING-11)
+
+TEST(the_newest_position_wins_whatever_arrives_last) {
+  Net n;
+  n.a.advertise();
+  n.run();
+  n.b.flood(n.b.advertAt(43.60, 1.44));                  // Bob's advert with a position
+  n.run();
+  ContactInfo* bob = n.a.contact(n.b);
+  CHECK(bob && bob->gps_lat == 43600000);
+  CHECK(n.a.positions.meta(*bob).source == PositionSource::Advert);
+
+  mesh::Packet* late = n.b.advertAt(48.85, 2.29);         // an advert made now...
+  g_now += 5000;
+  n.b.send(n.a, "here: geo:43.6500,1.5000");              // ...then a message, 5 s later by Bob's clock
+  n.run();
+  CHECK(bob->gps_lat == 43650000 && bob->gps_lon == 1500000);
+  CHECK(n.a.positions.meta(*bob).source == PositionSource::Message);
+
+  n.b.flood(late);                                        // the older advert arrives last
+  n.run();
+  CHECK(bob->last_advert_timestamp != 0);
+  CHECK(bob->gps_lat == 43650000);                        // MeshCore took the advert, its position did not win
+  CHECK(n.a.positions.meta(*bob).source == PositionSource::Message);
+
+  g_now += 5000;
+  n.b.flood(n.b.advertAt(44.00, 2.00));                   // a newer advert does
+  n.run();
+  CHECK(bob->gps_lat == 44000000);
+  CHECK(n.a.positions.meta(*bob).source == PositionSource::Advert);
+
+  n.b.flood(n.b.advertAt(0, 0));                          // an advert without position keeps the known one
+  g_now += 2000;
+  n.run();
+  CHECK(bob->gps_lat == 44000000);
+}
+
+TEST(only_a_direct_message_moves_a_contact) {
+  Net n;
+  n.meet();
+  n.a.joinPublic();
+  n.b.joinPublic();
+  ContactInfo* bob = n.a.contact(n.b);
+  CHECK(bob->gps_lat == 0);
+  n.b.sendChannel("I am at geo:45.0,5.0");                // a channel message only carries a name
+  n.run();
+  CHECK(bob->gps_lat == 0);
+  n.b.send(n.a, "1.5, 2.5 km away");                      // not a position
+  n.run();
+  CHECK(bob->gps_lat == 0);
+  n.b.send(n.a, "geo:45.0,5.0");
+  n.run();
+  CHECK(bob->gps_lat == 45000000);
+}
+
+// ---------------------------------------------------------------- a full contact list (VALIDATION-11)
+
+// Fills A's list with `count` contacts heard one after the other (the first heard is the oldest)
+static void fill(Net& n, int count) {
+  for (int i = 0; i < count; i++) {
+    char name[16];
+    snprintf(name, sizeof(name), "Node%02d", i);
+    n.b.become(1000 + i, name);
+    n.b.advertise();
+    g_now += 1500;                 // a different "last heard" second for each
+    n.run(500);
+  }
+}
+
+TEST(a_full_list_refused_new_contacts) {        // the bug reported on 2026-11-08, as it was
+  Net n;
+  fill(n, MAX_CONTACTS);
+  CHECK(n.a.contacts() == MAX_CONTACTS);
+  n.b.become(77, "Friend");
+  n.b.advertise();
+  n.run();
+  CHECK(!n.a.discover(n.b));                    // refused
+  CHECK(n.a.fullCalls == 1);
+}
+
+TEST(a_full_list_replaces_the_oldest_non_favourite) {
+  Net n;
+  n.a.replaceWhenFull = true;
+  fill(n, MAX_CONTACTS);
+  n.b.become(1000, "Node00");                   // the oldest is a favourite: protected
+  n.a.favourite(n.b);
+  n.b.become(77, "Friend");
+  n.b.advertise();
+  n.run();
+  CHECK(n.a.discover(n.b));
+  CHECK(n.a.contacts() == MAX_CONTACTS);
+  CHECK(n.a.replaced.size() == 1 && n.a.replaced[0] == "Node01");
+  n.b.become(1000, "Node00");
+  CHECK(n.a.discover(n.b));
+  n.b.become(1001, "Node01");
+  CHECK(!n.a.discover(n.b));
+  // and the friend's messages can now be read
+  n.b.become(77, "Friend");
+  n.a.advertise();                              // so that the friend knows A
+  n.run();
+  CHECK(n.b.discover(n.a));
+  n.b.send(n.a, "can you read me?");
+  n.run();
+  CHECK(!n.a.inbox.empty() && n.a.inbox.back() == "can you read me?");
+}
+
+TEST(a_list_of_favourites_only_still_refuses) {
+  Net n;
+  n.a.replaceWhenFull = true;
+  fill(n, MAX_CONTACTS);
+  for (int i = 0; i < MAX_CONTACTS; i++) {
+    char name[16];
+    snprintf(name, sizeof(name), "Node%02d", i);
+    n.b.become(1000 + i, name);
+    n.a.favourite(n.b);
+  }
+  n.b.become(77, "Friend");
+  n.b.advertise();
+  n.run();
+  CHECK(!n.a.discover(n.b));
+  CHECK(n.a.replaced.empty());
+  CHECK(n.a.fullCalls == 1);                    // the firmware is told, and tells the user
 }
 
 int main() {

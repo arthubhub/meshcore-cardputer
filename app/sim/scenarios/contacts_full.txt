@@ -1,0 +1,57 @@
+# A full contact list (VALIDATION-11): new contacts replace the oldest non-favourites, the user is told once.
+name Cardputer
+time 1793541600
+contacts-max 10
+contact Old0 1
+wait 1000
+contact Fav1 1 fav
+wait 1000
+contact Old2 1
+wait 1000
+contact Old3 1
+wait 1000
+contact Old4 1
+wait 1000
+contact Old5 1
+wait 1000
+contact Old6 1
+wait 1000
+contact Old7 1
+wait 1000
+expect-contacts 8
+
+# 9 of 10: the list is near its limit, said once, and shown in the title
+hear Near9 6.0
+wait 40
+expect-contacts 9
+shot f1_near_full_notice
+wait 4500
+hear Ten 6.0
+wait 40
+expect-contacts 10
+shot f2_full_notice
+wait 5500
+
+# The friend of the bug report: heard while the list is full, kept; the oldest non-favourite leaves
+hear Friend 5.0
+wait 40
+expect-contacts 10
+expect-has-contact Friend 1
+expect-has-contact Old0 0
+expect-has-contact Fav1 1
+rx Friend can you read me?
+wait 40
+expect-last Friend received can you read me?
+wait 3000
+key c
+wait 40
+expect-screen Contacts 10/10
+shot f3_contacts_count
+key `
+
+# The favourite stays, however old: the next to leave is the oldest non-favourite
+hear Another 5.0
+wait 40
+expect-has-contact Fav1 1
+expect-has-contact Old2 0
+wait 3000
