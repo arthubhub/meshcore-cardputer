@@ -56,7 +56,7 @@
 //   shot <name>                    write <output_dir>/<name>.png
 //   expect-screen <title>          fail (exit 1) if the current screen title differs
 //   expect-unread <n>              fail if the unread counter differs
-//   expect-setting <field> <value> name|preset|tx|tz|timeout|brightness|sound|share|lang|wake|pathid (tz in minutes, bools 0/1)
+//   expect-setting <field> <value> name|preset|tx|tz|timeout|brightness|sound|share|lang|wake|pathid|theme (tz in minutes, bools 0/1)
 //   expect-convs <n>               number of conversations
 //   expect-msgs <conv> <n>         number of stored messages in a conversation (by name)
 //   expect-last <conv> <state> [text...]  state of the newest message: received|pending|sent|delivered|failed|channel
@@ -64,6 +64,9 @@
 //   contacts-max <n>               most contacts kept (100 on the Cardputer)
 //   expect-has-contact <name> 0|1  whether a contact is in the list
 //   expect-sounds <n>              number of notification sounds played so far
+//   themes <dir>                   read the theme files (*.txt) of <dir> as if on the SD card (custom themes)
+//   theme <name>                   choose a theme without going through the settings
+//   expect-theme <name>            the theme applied to the screen
 //   expect-radio <MHz> BW<kHz> SF<n> CR<n>   the radio parameters in use, e.g. "910.525 BW62.5 SF7 CR5"
 //   screen off|on                  the screen sleeps: events only, like the firmware (a notice may wake it)
 //   expect-woke <n>                times the screen was woken by a notice (silent mode, NotifyPolicy)
@@ -204,7 +207,8 @@ int main(int argc, char** argv) {
   SimBackup backup(settings);
   DemoGps demoGps(sys);
   bool demo = false;
-  Services svc{&mesh, &sys, &settings, &gpsSvc, &tiles, &backup};
+  SimThemes themes;
+  Services svc{&mesh, &sys, &settings, &gpsSvc, &tiles, &backup, &themes};
   App app(svc, g_canvas);
   KeyMatrix matrix;
 
@@ -550,6 +554,7 @@ int main(int argc, char** argv) {
       else if (field == "share") got = std::to_string(s.shareLocation);
       else if (field == "wake") got = std::to_string(s.wakeOn);
       else if (field == "pathid") got = std::to_string(s.pathHashBytes);
+      else if (field == "theme") got = s.theme;
       else if (field == "brightness") got = std::to_string(s.brightness);
       else if (field == "lang") got = s.language == LANG_FR ? "fr" : "en";
       else if (field == "pathbytes") got = std::to_string(s.pathHashBytes);
@@ -597,6 +602,15 @@ int main(int argc, char** argv) {
     } else if (cmd == "expect-nearby") {
       int want = 0; ls >> want;
       if (want != mesh.discovery().count()) { fprintf(stderr, "line %d: FAIL expected %d nearby repeaters, got %d\n", lineNo, want, mesh.discovery().count()); g_failures++; }
+    } else if (cmd == "themes") {
+      ls >> themes.dir; app.loadThemes(); runFor(LOOP_MS);
+    } else if (cmd == "theme") {
+      UiSettings s = settings.get();
+      std::string name; std::getline(ls >> std::ws, name);
+      snprintf(s.theme, sizeof(s.theme), "%s", name.c_str()); settings.save(s); runFor(LOOP_MS);
+    } else if (cmd == "expect-theme") {
+      std::string want; std::getline(ls >> std::ws, want);
+      if (want != theme::applied()) { fprintf(stderr, "line %d: FAIL theme expected '%s', got '%s'\n", lineNo, want.c_str(), theme::applied()); g_failures++; }
     } else if (cmd == "expect-radio") {
       std::string want, got;
       std::getline(ls >> std::ws, want);

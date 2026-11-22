@@ -11,6 +11,8 @@
   #include <LovyanGFX.hpp>
 #endif
 
+#include "drivers/Palette.h"
+
 namespace theme {
 
 constexpr int SCREEN_W = 240;
@@ -22,20 +24,13 @@ constexpr int CONTENT_H = SCREEN_H - STATUS_H - HELP_H;
 constexpr int LINE_H = 13;             // one line of the 6x13 font
 constexpr int MARGIN = 3;
 
-// RGB565 palette (dark theme, readable outdoors)
-constexpr uint16_t BG        = 0x0000;
-constexpr uint16_t FG        = 0xFFFF;
-constexpr uint16_t DIM       = 0x8410;  // grey
-constexpr uint16_t ACCENT    = 0x05FF;  // cyan-ish
-constexpr uint16_t COLOR_OK        = 0x07E0;  // green
-constexpr uint16_t COLOR_WARN      = 0xFD20;  // orange
-constexpr uint16_t COLOR_BAD       = 0xF800;  // red
-constexpr uint16_t BAR_BG    = 0x10A2;  // dark blue-grey
-constexpr uint16_t SELECT_BG = 0x2967;
-constexpr uint16_t BUBBLE_IN  = 0x3186;  // dark grey
-constexpr uint16_t BUBBLE_OUT = 0x122D;  // dark blue
-constexpr uint16_t MENTION_BG    = 0x2967;  // "@name" in a bubble (MESSAGING-13)
-constexpr uint16_t MENTION_ME_BG = 0xFD20;  // "@me": orange, with dark text
+// Colours of the theme in use (custom themes): read like constants by the screens, set by apply() from a palette of
+// core/drivers/Palette.h (built-in themes, theme files from the SD card). They start with Dark, the original colours.
+extern uint16_t BG, FG, DIM, ACCENT, COLOR_OK, COLOR_WARN, COLOR_BAD, BAR_BG, SELECT_BG, BUBBLE_IN, BUBBLE_OUT,
+    MENTION_BG,      // "@name" in a bubble (MESSAGING-13)
+    MENTION_ME_BG;   // "@me", drawn with BG-coloured text
+void apply(const Palette& p);
+const char* applied();   // the name of the theme in use
 
 // Latin-1 fonts (accents français). Defined in Fonts.cpp.
 extern const lgfx::U8g2font& fontSmall;   // 6x10, status bar and hints

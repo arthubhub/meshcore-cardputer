@@ -1,0 +1,13 @@
+# Forest: light theme with green accents, for daylight
+name = Forest
+base = Light
+background = #F4F8EE
+text = #102010
+dim = #4E6A4E
+accent = #1E6B2A
+bar = #D2E2C6
+selection = #B8D8A8
+bubble_in = #E0EAD6
+bubble_out = #C8E4C0
+mention = #C8E4C0
+mention_me = #A35A00

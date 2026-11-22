@@ -190,6 +190,7 @@ struct UiSettings {
   uint8_t customSf = 8, customCr = 5;
   uint16_t customBwX100 = 6250;     // kHz x 100
   uint32_t customFreqKHz = 869618;
+  char theme[16] = "Dark";          // UI theme by name (core/drivers/Palette.h): a built-in one or a file of the SD card
 };
 
 class SettingsService {
@@ -233,6 +234,15 @@ public:
   virtual bool importConfig(char* msg, size_t n) = 0;
 };
 
+// Theme files the user adds (custom themes): /themes/*.txt on the SD card. Read once at start.
+class ThemeSource {
+public:
+  virtual ~ThemeSource() {}
+  virtual int count() = 0;
+  // The i-th file: its name without ".txt" and its text (cut at `cap`). False when it cannot be read.
+  virtual bool read(int i, char* name, size_t nameLen, char* text, size_t cap) = 0;
+};
+
 struct Services {
   MeshService* mesh;
   SystemService* sys;
@@ -240,4 +250,5 @@ struct Services {
   GpsService* gps;
   TileSource* tiles;    // nullptr when the firmware is built without the map
   BackupService* backup;
+  ThemeSource* themes;  // nullptr: built-in themes only
 };

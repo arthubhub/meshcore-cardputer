@@ -134,3 +134,38 @@ bool SimBackup::importConfig(char* msg, size_t n) {
   return true;
 }
 
+
+// ---------------------------------------------------------------- SimThemes
+
+#include <algorithm>
+#include <dirent.h>
+#include <strings.h>
+
+std::vector<std::string> SimThemes::files() {
+  std::vector<std::string> out;
+  if (dir.empty()) return out;
+  if (DIR* d = opendir(dir.c_str())) {
+    while (dirent* e = readdir(d)) {
+      std::string n = e->d_name;
+      if (n.size() > 4 && strcasecmp(n.c_str() + n.size() - 4, ".txt") == 0) out.push_back(n);
+    }
+    closedir(d);
+  }
+  std::sort(out.begin(), out.end());
+  if (out.size() > (size_t)ThemeCatalog::MAX_CUSTOM) out.resize(ThemeCatalog::MAX_CUSTOM);
+  return out;
+}
+
+int SimThemes::count() { return (int)files().size(); }
+
+bool SimThemes::read(int i, char* name, size_t nameLen, char* text, size_t cap) {
+  std::vector<std::string> f = files();
+  if (i < 0 || i >= (int)f.size() || !cap) return false;
+  snprintf(name, nameLen, "%s", f[i].substr(0, f[i].size() - 4).c_str());
+  FILE* fp = fopen((dir + "/" + f[i]).c_str(), "rb");
+  if (!fp) return false;
+  const size_t n = fread(text, 1, cap - 1, fp);
+  fclose(fp);
+  text[n] = 0;
+  return true;
+}

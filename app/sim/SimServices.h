@@ -1,4 +1,5 @@
 #pragma once
+#include "../core/drivers/Palette.h"
 // Fake implementations of the UI services for the PC simulator.
 // Everything is driven by the scenario script (see main_sim.cpp), with a virtual clock
 // so that screenshots are reproducible. Messages are stored with the real MessageStore,
@@ -119,3 +120,14 @@ private:
 // The fake network now lives in core/DemoMesh (also used by the Cardputer demo firmware).
 using SimMesh = DemoMesh;
 
+
+// Theme files from a folder of the host (custom themes): `themes <dir>` in a scenario
+class SimThemes : public ThemeSource {
+public:
+  std::string dir;
+  int count() override;
+  bool read(int i, char* name, size_t nameLen, char* text, size_t cap) override;
+
+private:
+  std::vector<std::string> files();
+};

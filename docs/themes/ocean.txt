@@ -1,0 +1,13 @@
+# Ocean: deep blue, sea-green accents
+name = Ocean
+base = Dark
+background = #001830
+text = #E8F4FF
+dim = #7FA6C8
+accent = #3FD0E0
+bar = #00284A
+selection = #0A4878
+bubble_in = #10385C
+bubble_out = #004A60
+mention = #0A4878
+mention_me = #FFB040

@@ -1081,6 +1081,17 @@
       "details": "Requested by the project owner on 2026-11-18: every message received lit the screen up. Settings > Silent mode: off (as before), \"for me only\" (only direct messages and mentions of me - MESSAGING-13 - wake the screen and sound), on (nothing wakes it or sounds; messages are stored and counted). Banners still show while the screen is on; a bell in the status bar shows the mode (crossed out when on). One rule for banners, sounds and waking: core/drivers/NotifyPolicy, unit-tested; the simulator's 'screen off' / 'expect-woke' check it end to end (scenario mentions.txt). New setting at the end of the settings file (older files load with the mode off). Built 2026-11-18, awaiting a test on the device."
     },
     {
+      "id": "UX-9",
+      "title": "UI themes, built-in and from the SD card",
+      "category": "UX",
+      "priority": 2,
+      "size": "M",
+      "status": "in-progress",
+      "requested": true,
+      "depends_on": [],
+      "details": "Requested by the project owner on 2026-11-18: add new and custom UI themes. Built 2026-11-18, awaiting a test on the device. The colours are a palette of 13 roles (core/drivers/Palette.h): the screens keep reading theme::BG, theme::FG... which became variables set by theme::apply(). Built-in: Dark (the original colours), Light (sunlight), High contrast, Night (red only), Amber; a developer adds one in ThemeCatalog's table, and a unit test refuses a built-in theme whose text is too close to its background (WCAG ratios: 4.5:1 text, 3:1 dim text and accents). Users add themes as text files on the SD card (/themes/*.txt, up to 8; format and examples in docs/themes): a base theme plus the colours to change; bad lines and hard-to-read pairs are logged. The setting stores the theme's name (a file removed from the card falls back to Dark). Map overlay colours (route, markers) stay fixed: they are tuned for the map tiles."
+    },
+    {
       "id": "SECURITY-1",
       "title": "Encrypt the SD backup",
       "category": "Security",

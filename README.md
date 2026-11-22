@@ -26,6 +26,10 @@ only talks with nodes on the same preset: ask your local mesh which one it uses.
 sets the frequency, bandwidth, spreading factor and coding rate by hand. The Cap LoRa-1262 is built for 868–923 MHz;
 the screen warns when a custom frequency is outside that band (the range will be short).
 
+**Themes.** *Settings → Theme* switches between Dark (the default), Light (for sunlight), High contrast, Night (red
+only, keeps your night vision) and Amber. You can add your own: a small text file of colours in a `themes` folder on
+the microSD card ([docs/themes](docs/themes/README.md) explains the format and has two examples).
+
 **Silent mode** (*Settings → Silent mode*) keeps the Cardputer running without lighting up its screen: *for me only*
 wakes it just for private messages and messages that tag you, *on* never wakes it nor beeps. Messages still arrive and
 are counted; a bell in the top bar shows the mode.

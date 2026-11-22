@@ -164,6 +164,7 @@ const char* label(int item) {
     case SettingsScreen::TIMEZONE: return tr("Time zone", "Fuseau horaire");
     case SettingsScreen::SCREEN_TIMEOUT: return tr("Screen timeout", "Veille écran");
     case SettingsScreen::BRIGHTNESS: return tr("Brightness", "Luminosité");
+    case SettingsScreen::THEME: return tr("Theme", "Thème");
     case SettingsScreen::SOUND: return tr("Sound", "Son");
     case SettingsScreen::SILENT: return tr("Silent mode", "Mode silencieux");
     case SettingsScreen::SHARE_LOCATION: return tr("Share location", "Partager position");
@@ -240,6 +241,9 @@ void SettingsScreen::change(App& app, int item, int delta) {
       }
       break;
     case BRIGHTNESS: s.brightness = (s.brightness + delta + 3) % 3; break;
+    case THEME:   // built-in themes, then those of the SD card (/themes/*.txt)
+      snprintf(s.theme, sizeof(s.theme), "%s", app.themes().step(s.theme, delta));
+      break;
     case SOUND: s.sound = !s.sound; break;
     case SILENT: s.wakeOn = (uint8_t)((s.wakeOn + delta + WAKE_MODES) % WAKE_MODES); break;
     case SHARE_LOCATION: s.shareLocation = !s.shareLocation; break;
@@ -356,6 +360,18 @@ void SettingsScreen::formatValue(App& app, int item, char* out, size_t n) {
     case BRIGHTNESS: {
       const char* L[] = {tr("low", "faible"), tr("medium", "moyenne"), tr("high", "forte")};
       snprintf(out, n, "< %s >", L[s.brightness < 3 ? s.brightness : 1]);
+      break;
+    }
+    case THEME: {
+      const Palette& t = app.themes().find(s.theme);
+      // The built-in names in the UI language; a theme file keeps its own
+      const char* shown = t.name;
+      if (!strcmp(t.name, "Dark")) shown = tr("Dark", "Sombre");
+      else if (!strcmp(t.name, "Light")) shown = tr("Light", "Clair");
+      else if (!strcmp(t.name, "High contrast")) shown = tr("High contrast", "Contrasté");
+      else if (!strcmp(t.name, "Night")) shown = tr("Night", "Nuit");
+      else if (!strcmp(t.name, "Amber")) shown = tr("Amber", "Ambre");
+      snprintf(out, n, "< %s >", shown);
       break;
     }
     case SOUND: snprintf(out, n, "%s", s.sound ? tr("yes", "oui") : tr("no", "non")); break;

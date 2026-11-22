@@ -4,7 +4,7 @@
 
 What the MeshCore firmware for the M5Stack Cardputer ADV + Cap LoRa-1262 could do next, feature by feature, with a priority and a size for each item. This file is generated: change [`roadmap.json`](roadmap.json), then run `python3 tools/roadmap.py`.
 
-Last updated 2026-11-18 · 68 open items · 21 done.
+Last updated 2026-11-18 · 69 open items · 21 done.
 
 ## How to read it
 
@@ -26,7 +26,7 @@ Last updated 2026-11-18 · 68 open items · 21 done.
 | GPS & map | 1 | · | 8 | 2 |
 | Connectivity | · | · | 4 | · |
 | Power | · | · | 4 | · |
-| UX | 1 | 1 | 5 | 1 |
+| UX | 2 | 1 | 5 | 1 |
 | Security | · | · | 4 | · |
 | Hardware extras | · | · | 2 | · |
 
@@ -42,6 +42,7 @@ Last updated 2026-11-18 · 68 open items · 21 done.
 - **[MESSAGING-12](#messaging-12)** Archive of every node heard, beyond the 100 contacts · P1 · XL
 - **[MAP-2](#map-2)** Navigate to a contact or waypoint · P2 · S
 - **[VALIDATION-4](#validation-4)** Large-font glyphs on the compass · P2 · S
+- **[UX-9](#ux-9)** UI themes, built-in and from the SD card · P2 · M
 
 ## Next up
 
@@ -627,6 +628,7 @@ A calibrated discharge curve for the 1500 mAh cell, charging state and an estima
 | [UX-5](#ux-5) | More interface languages | P3 | M | Backlog | · |
 | [UX-6](#ux-6) | Automatic daylight saving time | P2 | S | Backlog | · |
 | [UX-8](#ux-8) | Silent mode: messages without lighting the screen ★ | P1 | S | In progress | · |
+| [UX-9](#ux-9) | UI themes, built-in and from the SD card ★ | P2 | M | In progress | · |
 | [UX-7](#ux-7) | English and French interface | P1 | M | Done | · |
 
 #### UX-1
@@ -670,6 +672,12 @@ The time zone is a fixed offset (UTC+1 / +2 by hand). Add EU and US DST rules se
 **Silent mode: messages without lighting the screen** ★ · P1 · S · In progress
 
 Requested by the project owner on 2026-11-18: every message received lit the screen up. Settings > Silent mode: off (as before), "for me only" (only direct messages and mentions of me - MESSAGING-13 - wake the screen and sound), on (nothing wakes it or sounds; messages are stored and counted). Banners still show while the screen is on; a bell in the status bar shows the mode (crossed out when on). One rule for banners, sounds and waking: core/drivers/NotifyPolicy, unit-tested; the simulator's 'screen off' / 'expect-woke' check it end to end (scenario mentions.txt). New setting at the end of the settings file (older files load with the mode off). Built 2026-11-18, awaiting a test on the device.
+
+#### UX-9
+
+**UI themes, built-in and from the SD card** ★ · P2 · M · In progress
+
+Requested by the project owner on 2026-11-18: add new and custom UI themes. Built 2026-11-18, awaiting a test on the device. The colours are a palette of 13 roles (core/drivers/Palette.h): the screens keep reading theme::BG, theme::FG... which became variables set by theme::apply(). Built-in: Dark (the original colours), Light (sunlight), High contrast, Night (red only), Amber; a developer adds one in ThemeCatalog's table, and a unit test refuses a built-in theme whose text is too close to its background (WCAG ratios: 4.5:1 text, 3:1 dim text and accents). Users add themes as text files on the SD card (/themes/*.txt, up to 8; format and examples in docs/themes): a base theme plus the colours to change; bad lines and hard-to-read pairs are logged. The setting stores the theme's name (a file removed from the card falls back to Dark). Map overlay colours (route, markers) stay fixed: they are tuned for the map tiles.
 
 #### UX-7
 
