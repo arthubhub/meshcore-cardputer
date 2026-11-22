@@ -30,6 +30,11 @@ local lequel il utilise. *Perso…*, en fin de liste, permet de choisir à la ma
 facteur d'étalement et le taux de codage. Le Cap LoRa-1262 est fait pour 868–923 MHz ; l'écran prévient quand une
 fréquence personnalisée en sort (la portée sera faible).
 
+**Thèmes.** *Réglages → Thème* passe de Sombre (par défaut) à Clair (en plein soleil), Contrasté, Nuit (rouge
+seulement, préserve la vision de nuit) et Ambre. Vous pouvez ajouter les vôtres : un petit fichier texte de couleurs dans
+un dossier `themes` de la carte microSD ([docs/themes](docs/themes/README.md) explique le format, en anglais, avec deux
+exemples).
+
 Le **mode silencieux** (*Réglages → Mode silencieux*) garde le Cardputer allumé sans rallumer l'écran : *pour moi*
 ne le rallume que pour les messages privés et ceux qui vous taguent, *oui* ne le rallume jamais et ne sonne plus. Les
 messages arrivent quand même et sont comptés ; une cloche dans la barre du haut indique le mode.

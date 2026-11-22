@@ -56,6 +56,10 @@ public:
   bool bannerVisible() { return _bannerUntil && (int32_t)(now() - _bannerUntil) < 0; }
   // Mesh events only, no drawing (used while the screen is off). Returns true if any.
   bool pollEvents();
+  // The UI themes: built-in ones and the files of the SD card (read by loadThemes, at begin())
+  const ThemeCatalog& themes() const { return _themes; }
+  void loadThemes();
+  void applyTheme();                          // the theme of the settings, when it changed
   // An event since the last call deserved waking the screen (NotifyPolicy and the silent mode); clears the request
   bool takeWakeRequest() { bool w = _wake; _wake = false; return w; }
   // The sound of an event shown by a screen itself (a message in the open conversation), if the silent mode allows it
@@ -74,6 +78,8 @@ private:
   uint32_t _lastStatusDraw = 0;
   uint32_t _bannerUntil = 0;
   bool _wake = false;
+  ThemeCatalog _themes;
+  char _themeWanted[16] = "";        // the setting last applied (a missing theme falls back to Dark once)
   char _bannerTitle[32] = {};
   char _bannerText[64] = {};
 };

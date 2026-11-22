@@ -28,6 +28,7 @@
 #include "SdCard.h"
 #include <CpadvRadioMonitor.h>
 #include "SdTiles.h"
+#include "SdThemes.h"
 #include "Tca8418Keyboard.h"
 #if CPADV_MAP
   #include "../core/screens/MapScreen.h"
@@ -78,7 +79,8 @@ static TileSource* const tileSource = &sdTiles;
 static TileSource* const tileSource = nullptr;
 #endif
 
-static App app(Services{&meshNode, &sys, &settings, &gpsDev, tileSource, &backup}, canvas);
+static SdThemes sdThemes;   // custom themes: /themes/*.txt on the card
+static App app(Services{&meshNode, &sys, &settings, &gpsDev, tileSource, &backup, &sdThemes}, canvas);
 
 // ---------------------------------------------------------------- screens
 static TextInputScreen textInput;

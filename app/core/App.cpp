@@ -1,13 +1,53 @@
 #include "App.h"
 #include "Widgets.h"
+#include "Log.h"
+#include <string.h>
+#include <stdlib.h>
 #include "drivers/NotifyPolicy.h"
 #include "drivers/Mentions.h"
 #include <stdio.h>
 
 using namespace theme;
 
+void App::loadThemes() {
+  _themes.clearCustom();
+  ThemeSource* src = _svc.themes;
+  const int n = src ? src->count() : 0;
+  if (!n) {
+    _themeWanted[0] = 0;
+    return;
+  }
+  char* text = (char*)malloc(2048);           // one theme file at a time, only while loading (boot)
+  if (!text) {
+    CORE_LOGE("THEME", "no memory to read the theme files");
+    return;
+  }
+  for (int i = 0; i < n; i++) {
+    char name[Palette::NAME_LEN + 1], err[80];
+    int warnings = 0;
+    if (!src->read(i, name, sizeof(name), text, 2048)) {
+      CORE_LOGW("THEME", "theme file %d (%s) cannot be read", i, name);
+      continue;
+    }
+    if (!_themes.add(text, name, err, sizeof(err), warnings)) {
+      CORE_LOGW("THEME", "theme '%s' not loaded: %s", name, err);
+      continue;
+    }
+    const Palette& p = _themes.at(_themes.count() - 1);
+    if (warnings) CORE_LOGW("THEME", "theme '%s': %d line(s) ignored, first: %s", p.name, warnings, err);
+    const char* weak[4];
+    const int w = p.weakPairs(weak, 4);
+    if (w) CORE_LOGW("THEME", "theme '%s': hard to read: %s%s", p.name, weak[0], w > 1 ? " and more" : "");
+    CORE_LOGI("THEME", "theme '%s' loaded from the card", p.name);
+  }
+  free(text);
+  _themeWanted[0] = 0;                        // applied again at the next loop
+}
+
 void App::begin(Screen* root) {
   i18n::set(_svc.settings->get().language);
+  loadThemes();
+  applyTheme();
   _depth = 0;
   push(root);
 }
@@ -103,8 +143,19 @@ void App::chime(const MeshEvent& ev, SoundKind kind) {
   if (NotifyPolicy::soundOnScreen(ev, _svc.settings->get().wakeOn)) _svc.sys->playSound(kind);
 }
 
+void App::applyTheme() {
+  const char* want = _svc.settings->get().theme;
+  if (!strcmp(want, _themeWanted)) return;
+  snprintf(_themeWanted, sizeof(_themeWanted), "%s", want);
+  const Palette& p = _themes.find(want);
+  theme::apply(p);
+  if (strcmp(p.name, want) != 0) CORE_LOGW("THEME", "theme '%s' not found: %s instead", want, p.name);
+  _dirty = true;
+}
+
 bool App::loop() {
   i18n::set(_svc.settings->get().language);   // follows the setting (cheap)
+  applyTheme();                                // and the theme
   pollEvents();
   _wake = false;                               // the screen is on: nothing to wake
   if (_bannerUntil && !bannerVisible()) { _bannerUntil = 0; _dirty = true; }

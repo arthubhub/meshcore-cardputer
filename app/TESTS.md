@@ -208,6 +208,20 @@ La liste du mode clavier garde 100 contacts. Sur un réseau chargé, elle se rem
 - [ ] La conversation d'un contact remplacé reste dans Messages.
 - [ ] Après un redémarrage, la liste reprend les mêmes 100 contacts.
 
+## Thèmes (UX-9)
+
+Vérifié dans le simulateur (`scenarios/themes.txt` : les cinq thèmes intégrés et deux fichiers de `docs/themes`, sur
+l'accueil et une conversation) ; le contraste des thèmes intégrés est vérifié par les tests unitaires. À vérifier sur
+l'appareil :
+
+- [ ] Réglages → Thème : Sombre, Clair, Contrasté, Nuit, Ambre ; l'écran change aussitôt, partout (barre du haut, listes, bulles).
+- [ ] Clair en plein soleil : lisible ? Nuit dans le noir : rien de blanc ni de bleu.
+- [ ] Copier `docs/themes/ocean.txt` et `forest.txt` dans `/themes/` de la carte SD, redémarrer : log `theme 'Ocean' loaded from the card`,
+      et les deux apparaissent après Ambre.
+- [ ] Un fichier avec une faute (`accent = bleu`) : log `theme '<nom>': 1 line(s) ignored, first: line N: not a #RRGGBB colour 'bleu'`.
+- [ ] Retirer la carte avec un thème de la carte choisi, redémarrer : log `theme 'Ocean' not found: Dark instead`, l'écran est en Sombre.
+- [ ] Après un redémarrage, le thème choisi est conservé.
+
 ## Réglages radio hors d'Europe (RADIO-11)
 
 Vérifié dans le simulateur (`scenarios/radio_presets.txt`) et par `python3 tools/radio_presets.py --check`
@@ -237,7 +251,7 @@ autre nœud (le téléphone en mode companion, ou un second Cardputer) :
       ni ne sonne ; un message privé ou un tag le rallume.
 - [ ] Mode silencieux `oui` : rien ne rallume l'écran ni ne sonne ; les messages sont comptés (`*N` en haut).
 - [ ] La cloche s'affiche dans la barre du haut dans ces deux modes (barrée en rouge pour `oui`).
-- [ ] Après un redémarrage, le réglage est conservé (`settings loaded (88/88 bytes)` ; un ancien fichier donne `76/88` et le mode reste désactivé).
+- [ ] Après un redémarrage, le réglage est conservé (`settings loaded (N/N bytes)`, deux fois le même nombre ; un fichier d'une ancienne version donne un premier nombre plus petit et le mode reste désactivé).
 
 ## Archive des nœuds entendus (MESSAGING-12, étapes 1 à 5)
 

@@ -22,6 +22,7 @@
 #include "../../core/drivers/NodeMatchCache.h"
 #include "../../core/drivers/NodeDiscovery.h"
 #include "../../core/drivers/PacketLog.h"
+#include "../../core/drivers/Palette.h"
 #include "../../core/drivers/RouteResolver.h"
 #include "../../core/drivers/StoreBench.h"
 #include "../../core/drivers/Pi4ioe.h"
@@ -2885,6 +2886,60 @@ TEST(radio_config_reads_frequencies_as_people_type_them) {
   CHECK(!RadioConfig::parseFrequency("2400", f));     // not an SX1262 frequency
   CHECK(!RadioConfig::parseFrequency("91O.5", f));    // a letter O
   CHECK(!RadioConfig::parseFrequency("", f));
+}
+
+// ============================================================ Themes
+
+TEST(built_in_themes_are_readable) {
+  ThemeCatalog c;
+  CHECK_EQ(c.count(), ThemeCatalog::BUILTIN);
+  for (int i = 0; i < c.count(); i++) {
+    const char* weak[16];
+    const int n = c.at(i).weakPairs(weak, 16);
+    for (int k = 0; k < n && k < 16; k++) printf("    theme %s: %s too close\n", c.at(i).name, weak[k]);
+    CHECK_EQ(n, 0);
+  }
+  // Dark is the original palette, unchanged
+  CHECK_EQ(c.find("dark")[Palette::ACCENT], 0x05FF);
+  CHECK_EQ(c.find("Dark")[Palette::BUBBLE_OUT], 0x122D);
+  CHECK(Palette::contrast(0x0000, 0xFFFF) > 20.9f);
+  CHECK(Palette::contrast(0x8410, 0x8410) < 1.01f);
+}
+
+TEST(theme_files_override_a_base) {
+  ThemeCatalog c;
+  char err[80];
+  int warn = 0;
+  const char* ocean =
+      "# a theme for the sea\n"
+      "background = #001830\n"
+      "base = Light\n"                     // after a colour: the order does not matter
+      "name = Ocean\n"
+      "text=#E8F4FF\n"
+      "accent = 00C0FF\n";
+  CHECK(c.add(ocean, "ocean", err, sizeof(err), warn));
+  CHECK_EQ(warn, 0);
+  const Palette& o = c.find("ocean");
+  CHECK(strcmp(o.name, "Ocean") == 0);
+  CHECK_EQ(o[Palette::BG], Palette::rgb565(0x00, 0x18, 0x30));
+  CHECK_EQ(o[Palette::FG], Palette::rgb565(0xE8, 0xF4, 0xFF));
+  CHECK_EQ(o[Palette::OK], c.find("Light")[Palette::OK]);    // from the base
+  CHECK_EQ(c.count(), ThemeCatalog::BUILTIN + 1);
+  CHECK(strcmp(c.step("Ocean", 1), "Dark") == 0);              // the list wraps around
+  CHECK(strcmp(c.step("Dark", -1), "Ocean") == 0);
+
+  CHECK(c.add("name = Mixed\ntext = #FFFFFF\ncolour = #123456\naccent = blue\nno equals sign\n", "mixed", err, sizeof(err), warn));
+  CHECK_EQ(warn, 3);                       // kept, with its problems counted
+  CHECK(strstr(err, "line 3: unknown key 'colour'") != nullptr);
+  CHECK(!c.add("# nothing\n\n", "empty", err, sizeof(err), warn));
+  CHECK(strstr(err, "no colour") != nullptr);
+  CHECK(!c.add("text = #FFFFFF\n", "Dark", err, sizeof(err), warn));   // a built-in name
+  CHECK(strstr(err, "already exists") != nullptr);
+  CHECK(strcmp(c.find("removed from the card").name, "Dark") == 0);   // a missing theme: Dark
+  uint16_t v;
+  CHECK(ThemeCatalog::parseColor("#FF0000", v) && v == 0xF800);
+  CHECK(!ThemeCatalog::parseColor("#FF00", v));
+  CHECK(!ThemeCatalog::parseColor("#GG0000", v));
 }
 
 int main(int argc, char** argv) {

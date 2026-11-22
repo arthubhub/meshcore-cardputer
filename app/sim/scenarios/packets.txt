@@ -5,7 +5,7 @@ contact Bob 2
 
 # Settings > Journal radio: empty at first
 key s
-key .*14
+key .*15
 key enter
 expect-screen Packets 0
 shot p1_empty
@@ -76,13 +76,13 @@ expect-last-tx ADV F 1
 wait 2500
 key `
 key s
-key ;*10
+key ;*11
 key enter
 type fr
 key enter
 wait 4500
 expect-setting region fr
-key .*10
+key .*11
 pkt TXT Bob 1 2.0 fr
 pkt TXT Bob 1 2.0 eu
 key enter

@@ -1,0 +1,80 @@
+# UI themes: the built-in ones, then the theme files of the SD card (docs/themes); each one on the main screens.
+name Raphael
+time 1793541600
+contact Bob 1 fav
+contact Relais-Colomiers 0 repeater
+rxch Public Alice @[Raphael] the meeting is at 8
+rx Bob Hi! Are you around tonight?
+wait 3000
+expect-theme Dark
+themes ../../docs/themes
+
+# --- Settings > Theme cycles: Dark, Light, High contrast, Night, Amber, then the card's Forest and Ocean
+key s
+key .*9
+expect-screen Settings
+shot t00_settings_dark
+key /
+expect-setting theme Light
+expect-theme Light
+shot t01_settings_light
+key /*3
+expect-theme Amber
+key /
+expect-theme Forest
+key /
+expect-theme Ocean
+key /
+expect-theme Dark
+key ,
+expect-theme Ocean
+key `
+
+# --- Each theme on the home, a chat with a mention, the conversation list
+theme Light
+key enter
+shot t10_light_home
+key m
+key enter
+shot t11_light_chat
+key fn+`
+key `
+theme High contrast
+shot t20_contrast_home
+key m
+key enter
+shot t21_contrast_chat
+key fn+`
+key `
+theme Night
+shot t30_night_home
+key m
+key enter
+shot t31_night_chat
+key fn+`
+key `
+theme Amber
+shot t40_amber_home
+key m
+key enter
+shot t41_amber_chat
+key fn+`
+key `
+theme Forest
+shot t50_forest_home
+key m
+key enter
+shot t51_forest_chat
+key fn+`
+key `
+theme Ocean
+shot t60_ocean_home
+key m
+key enter
+shot t61_ocean_chat
+key fn+`
+key `
+
+# --- A theme removed from the card: Dark, and the setting keeps its name until changed
+theme Missing
+expect-theme Dark

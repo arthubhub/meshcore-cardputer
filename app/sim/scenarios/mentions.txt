@@ -59,7 +59,7 @@ expect-sounds 5
 # --- Silent mode "for me only": a busy channel stays dark, a mention or a direct message wakes the screen
 key s
 expect-screen Settings
-key .*10
+key .*11
 shot m8_silent_setting
 key /
 shot m9_silent_for_me

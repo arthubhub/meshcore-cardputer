@@ -54,6 +54,12 @@ key .
 key /
 expect-setting brightness 2
 key .
+expect-setting theme Dark
+key /
+expect-setting theme Light
+key ,
+expect-setting theme Dark
+key .
 key enter
 expect-setting sound 0
 key .

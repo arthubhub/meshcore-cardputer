@@ -52,7 +52,7 @@ public:
   bool onKey(App& app, const KeyEvent& e) override;
   void draw(App& app, lgfx::LovyanGFX& g) override;
 
-  enum Item { LANGUAGE, NAME, RADIO, RADIO_INFO, TX_POWER, REGION, PATH_ID, TIMEZONE, SCREEN_TIMEOUT, BRIGHTNESS, SOUND,
+  enum Item { LANGUAGE, NAME, RADIO, RADIO_INFO, TX_POWER, REGION, PATH_ID, TIMEZONE, SCREEN_TIMEOUT, BRIGHTNESS, THEME, SOUND,
               SILENT, SHARE_LOCATION, BACKUP, RESTORE, PACKETS, PHONE_MODE, SYSTEM, COUNT };
 
 private:
