@@ -1,4 +1,5 @@
 #include "DeviceServices.h"
+#include "../core/drivers/RadioConfig.h"
 #include <CpadvLog.h>
 #include "../core/RadioPresets.h"
 #include <Arduino.h>
@@ -30,9 +31,6 @@ uint32_t checksum(const uint8_t* p, size_t n) {
   return h;
 }
 
-const RadioPreset& presetOf(const UiSettings& s) {
-  return RADIO_PRESETS[s.radioPreset < RADIO_PRESET_COUNT ? s.radioPreset : 0];
-}
 }  // namespace
 
 // ------------------------------------------------------------------ DeviceSettings
@@ -77,7 +75,7 @@ void DeviceSettings::load() {
 }
 
 bool DeviceSettings::save(const UiSettings& s) {
-  bool radioChanged = s.radioPreset != _s.radioPreset || s.txPowerDbm != _s.txPowerDbm;
+  bool radioChanged = RadioConfig::of(s) != RadioConfig::of(_s) || s.txPowerDbm != _s.txPowerDbm;
   _s = s;
   SettingsFile sf;
   sf.magic = SETTINGS_MAGIC;
@@ -96,11 +94,12 @@ bool DeviceSettings::save(const UiSettings& s) {
 
 void DeviceSettings::applyRadio() {
   if (!_radioReady) return;
-  const RadioPreset& p = presetOf(_s);
+  const RadioParams p = RadioConfig::of(_s);
   radio_driver.setParams(p.freqMHz, p.bwKHz, p.sf, p.cr);
   radio_driver.setTxPower(_s.txPowerDbm);
-  CPLOG_I("SET", "radio set: %.3f MHz BW %.1f SF %u CR %u, %d dBm", p.freqMHz, p.bwKHz, p.sf, p.cr,
-                _s.txPowerDbm);
+  CPLOG_I("SET", "radio set: %s (%s), %.3f MHz BW %.2f SF %u CR %u, %d dBm%s", RadioConfig::name(_s),
+          RadioConfig::isCustom(_s) ? "custom values" : "preset", p.freqMHz, p.bwKHz, p.sf, p.cr, _s.txPowerDbm,
+          RadioConfig::inCapBand(p.freqMHz) ? "" : " - OUTSIDE the Cap's 868-923 MHz band");
 }
 
 // ------------------------------------------------------------------ DeviceSystem

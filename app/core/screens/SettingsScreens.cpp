@@ -206,9 +206,10 @@ void SettingsScreen::onRegionDone(App& app, const char* text, void*) {
 
 void SettingsScreen::change(App& app, int item, int delta) {
   UiSettings s = app.services().settings->get();
+  const uint8_t pathBefore = s.pathHashBytes;
   switch (item) {
     case RADIO:
-      s.radioPreset = (s.radioPreset + delta + RADIO_PRESET_COUNT) % RADIO_PRESET_COUNT;
+      RadioConfig::step(s, delta);     // the presets in display order, then Custom
       break;
     case TX_POWER: {
       int p = s.txPowerDbm + delta;
@@ -249,6 +250,11 @@ void SettingsScreen::change(App& app, int item, int delta) {
     default: return;
   }
   app.services().settings->save(s);
+  if (item == RADIO && s.pathHashBytes != pathBefore) {   // a preset that sets its network's path ID size
+    char t[48];
+    snprintf(t, sizeof(t), tr("Path ID size: %u bytes", "Taille ID chemin : %u octets"), (unsigned)s.pathHashBytes);
+    app.notify(t, tr("This network's choice", "Le choix de ce réseau"), 3500);
+  }
 }
 
 bool SettingsScreen::onKey(App& app, const KeyEvent& e) {
@@ -264,7 +270,9 @@ bool SettingsScreen::onKey(App& app, const KeyEvent& e) {
     case KeyCode::Left: change(app, _list.sel, -1); return true;
     case KeyCode::Right: change(app, _list.sel, +1); return true;
     case KeyCode::Enter:
-      if (_list.sel == NAME) {
+      if (_list.sel == RADIO) {
+        app.push(&_radioPresets);      // every preset, and Custom
+      } else if (_list.sel == NAME) {
         _input.setup(tr("Device name", "Nom de l'appareil"), app.services().settings->get().nodeName,
                      sizeof(UiSettings::nodeName) - 1, onNameDone, this);
         app.push(&_input);
@@ -322,12 +330,12 @@ bool SettingsScreen::onKey(App& app, const KeyEvent& e) {
 
 void SettingsScreen::formatValue(App& app, int item, char* out, size_t n) {
   const UiSettings& s = app.services().settings->get();
-  const RadioPreset& p = RADIO_PRESETS[s.radioPreset < RADIO_PRESET_COUNT ? s.radioPreset : 0];
+  const RadioParams p = RadioConfig::of(s);
   out[0] = 0;
   switch (item) {
     case LANGUAGE: snprintf(out, n, "< %s >", i18n::name(s.language)); break;
     case NAME: snprintf(out, n, "%s", s.nodeName); break;
-    case RADIO: snprintf(out, n, "< %s >", p.name); break;
+    case RADIO: snprintf(out, n, "< %s >", RadioConfig::name(s)); break;
     case RADIO_INFO: snprintf(out, n, "%.3f BW%g SF%u", p.freqMHz, p.bwKHz, p.sf); break;
     case TX_POWER: snprintf(out, n, "< %d dBm >", s.txPowerDbm); break;
     case REGION: snprintf(out, n, "%s", s.region[0] ? s.region : tr("none", "aucune")); break;

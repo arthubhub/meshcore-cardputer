@@ -8,6 +8,7 @@
 #include "../../core/drivers/ContactCapacity.h"
 #include "../../core/drivers/ContactPosition.h"
 #include "../../core/drivers/PositionBook.h"
+#include "../../core/drivers/RadioConfig.h"
 #include "../../core/drivers/GeoText.h"
 #include "../../core/drivers/HeadingFilter.h"
 #include "../../core/drivers/FlashFsProbe.h"
@@ -2810,6 +2811,80 @@ TEST(notify_policy_follows_the_silent_mode) {
   MeshEvent ack;
   ack.type = MeshEvent::DELIVERED;
   CHECK(!NotifyPolicy::decide(ack, WAKE_ALL).banner && !NotifyPolicy::decide(ack, WAKE_ALL).wake);
+}
+
+// ============================================================ Radio presets outside the EU
+
+TEST(radio_presets_keep_saved_indexes_and_follow_the_app) {
+  // The first three are what earlier firmwares saved: they must keep their values
+  CHECK(strcmp(RADIO_PRESETS[0].name, "EU/UK Narrow") == 0);
+  CHECK(fabsf(RADIO_PRESETS[0].freqMHz - 869.618f) < 0.0005f && RADIO_PRESETS[0].sf == 8 && RADIO_PRESETS[0].cr == 5);
+  CHECK(RADIO_PRESETS[1].sf == 11 && RADIO_PRESETS[2].sf == 10);
+  // Every preset is a frequency the Cap is built for, with valid LoRa values
+  for (int i = 0; i < RADIO_PRESET_COUNT; i++) {
+    const RadioPreset& p = RADIO_PRESETS[i];
+    CHECK(RadioConfig::inCapBand(p.freqMHz));
+    CHECK(fabsf(RadioConfig::BANDWIDTHS[RadioConfig::bandwidthIndex(p.bwKHz)] - p.bwKHz) < 0.01f);
+    CHECK(p.sf >= 5 && p.sf <= 12 && p.cr >= 5 && p.cr <= 8);
+    CHECK(strlen(p.name) <= 18);
+  }
+  // The display order lists each once
+  int seen[RADIO_PRESET_COUNT] = {};
+  for (int i = 0; i < RADIO_PRESET_COUNT; i++) seen[RADIO_PRESET_ORDER[i]]++;
+  for (int i = 0; i < RADIO_PRESET_COUNT; i++) CHECK_EQ(seen[i], 1);
+}
+
+TEST(radio_config_presets_and_custom_values) {
+  UiSettings s;
+  RadioParams p = RadioConfig::of(s);
+  CHECK(fabsf(p.freqMHz - 869.618f) < 0.0005f && p.sf == 8);
+  // Choosing a preset whose network uses 3-byte path IDs (Canada) sets them too
+  s.pathHashBytes = 1;
+  CHECK(RadioConfig::choose(s, 4));
+  CHECK_EQ(s.pathHashBytes, 3);
+  CHECK(!RadioConfig::choose(s, 3));                  // USA: no path size in the preset, the setting stays
+  CHECK_EQ(s.pathHashBytes, 3);
+  CHECK(fabsf(RadioConfig::of(s).freqMHz - 910.525f) < 0.0005f && RadioConfig::of(s).sf == 7);
+  // Custom starts from the values in use, then keeps its own
+  RadioConfig::choose(s, RADIO_PRESET_CUSTOM);
+  CHECK(RadioConfig::isCustom(s));
+  CHECK(RadioConfig::of(s) == RadioConfig::of([] { UiSettings u; u.radioPreset = 3; return u; }()));
+  RadioParams c;
+  c.freqMHz = 433.375f;
+  c.bwKHz = 60.0f;                                     // snapped to 62.5
+  c.sf = 14;                                           // clamped to 12
+  c.cr = 6;
+  RadioConfig::setCustom(s, c);
+  p = RadioConfig::of(s);
+  CHECK(fabsf(p.freqMHz - 433.375f) < 0.0005f && fabsf(p.bwKHz - 62.5f) < 0.01f && p.sf == 12 && p.cr == 6);
+  CHECK(!RadioConfig::inCapBand(p.freqMHz));
+  s.customFreqKHz = 5;                                 // a damaged file: the default frequency, never a wrong one
+  CHECK(fabsf(RadioConfig::of(s).freqMHz - 869.618f) < 0.0005f);
+  char d[40];
+  RadioConfig::describe(RadioConfig::of(s), d, sizeof(d));
+  CHECK(strcmp(d, "869.618 BW62.5 SF12 CR6") == 0);
+}
+
+TEST(radio_config_steps_through_the_display_order) {
+  UiSettings s;
+  RadioConfig::step(s, -1);                            // before the first: Custom
+  CHECK(RadioConfig::isCustom(s));
+  RadioConfig::step(s, +1);                            // after Custom: the first again
+  CHECK_EQ(s.radioPreset, RADIO_PRESET_ORDER[0]);
+  RadioConfig::step(s, +1);
+  CHECK_EQ(s.radioPreset, RADIO_PRESET_ORDER[1]);
+  for (int i = 0; i < RADIO_PRESET_COUNT; i++) RadioConfig::step(s, +1);   // a full turn plus Custom
+  CHECK_EQ(s.radioPreset, RADIO_PRESET_ORDER[0]);
+}
+
+TEST(radio_config_reads_frequencies_as_people_type_them) {
+  float f = 0;
+  CHECK(RadioConfig::parseFrequency("910.525", f) && fabsf(f - 910.525f) < 0.0005f);
+  CHECK(RadioConfig::parseFrequency("869,618", f) && fabsf(f - 869.618f) < 0.0005f);   // French decimal comma
+  CHECK(RadioConfig::parseFrequency(" 923 ", f) && fabsf(f - 923.0f) < 0.0005f);
+  CHECK(!RadioConfig::parseFrequency("2400", f));     // not an SX1262 frequency
+  CHECK(!RadioConfig::parseFrequency("91O.5", f));    // a letter O
+  CHECK(!RadioConfig::parseFrequency("", f));
 }
 
 int main(int argc, char** argv) {

@@ -20,6 +20,12 @@ appears and narrows as you type; press **Enter** to tag the highlighted name. A 
 orange and notifies you like a private message, even on a busy channel. Tags use the same `@[name]` form as the
 MeshCore phone app.
 
+**Radio settings outside Europe.** *Settings → Radio preset*, then **Enter**, lists the presets of the MeshCore app
+for the USA, Canada, Australia, New Zealand, Brazil, Thailand, Vietnam and several European countries. Your Cardputer
+only talks with nodes on the same preset: ask your local mesh which one it uses. *Custom…*, at the end of the list,
+sets the frequency, bandwidth, spreading factor and coding rate by hand. The Cap LoRa-1262 is built for 868–923 MHz;
+the screen warns when a custom frequency is outside that band (the range will be short).
+
 **Silent mode** (*Settings → Silent mode*) keeps the Cardputer running without lighting up its screen: *for me only*
 wakes it just for private messages and messages that tag you, *on* never wakes it nor beeps. Messages still arrive and
 are counted; a bell in the top bar shows the mode.

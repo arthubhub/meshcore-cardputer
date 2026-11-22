@@ -577,6 +577,17 @@
       "details": "Done: tested on the device on 2026-11-08, works. Settings > Region: free name, '#' optional, empty for none. The key is SHA-256 of \"#name\" (first 16 bytes), the same as companion_radio and repeaters; the case counts, and private '$' regions are refused because their key cannot be derived from the name. Warning for the user: a repeater that does not know the region does not forward at all (no fallback), and on a repeater a region must be both added and allowed (`region put`, `region allowf`). Before relying on a name, open the packet log: scoped packets from neighbours show `=` when they match it and `~` when they do not. Reported by the project owner on 2026-11-07. Sharing the region with phone mode belongs to SYNC-1."
     },
     {
+      "id": "RADIO-11",
+      "title": "Radio presets outside the EU, and custom values",
+      "category": "Radio tools",
+      "priority": 1,
+      "size": "M",
+      "status": "in-progress",
+      "requested": true,
+      "depends_on": [],
+      "details": "Requested by the project owner on 2026-11-18: merge the fully customisable radio of the phone app with the presets; \"custom\" is one entry of the list. Built 2026-11-18, awaiting a test on the device. The presets are MeshCore's own app presets (https://api.meshcore.nz/api/v1/config, meshcore/docs/radio_presets.md): 24 within the Cap LoRa-1262's 868-923 MHz band (USA, Canada, Australia x5, New Zealand x2, Brazil, Costa Rica, Thailand, Vietnam x2, EU/UK and 7 European countries); the 433 MHz ones and Southern California (927.875 MHz) are left out (Custom reaches them, with a warning). Settings store the preset's index: the table is append-only, the first three entries are unchanged (EU/UK Narrow keeps CR 5, MeshCore's firmware default). A preset that defines its network's path ID size sets it (RADIO-9) and says so. Enter on Radio preset opens the list; Custom edits frequency (typed, decimal comma accepted, 150-960 MHz), bandwidth, SF and CR. core/drivers/RadioConfig is the one place that turns settings into radio parameters (radio, System, demo); tools/radio_presets.py --check compares the table with the app's API. UX-1 (first-boot setup) can now offer these presets."
+    },
+    {
       "id": "MESSAGING-1",
       "title": "Show my contact as a QR code",
       "category": "Messaging",

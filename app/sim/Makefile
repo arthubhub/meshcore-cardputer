@@ -25,7 +25,7 @@ HDRS      := $(wildcard *.h fakes/*.h ../core/*.h ../core/screens/*.h ../core/dr
 # Unit tests: drivers + pure decoders only (no screens, no LovyanGFX)
 TEST_SRC  := $(wildcard tests/*.cpp)
 TEST_OBJ  := $(patsubst %.cpp,$(BUILD)/sim/%.o,$(TEST_SRC)) \
-             $(patsubst ../core/%.cpp,$(BUILD)/test_core/%.o,$(wildcard ../core/drivers/*.cpp) ../core/KeyMatrix.cpp ../core/Nmea.cpp ../core/MessageStore.cpp) \
+             $(patsubst ../core/%.cpp,$(BUILD)/test_core/%.o,$(wildcard ../core/drivers/*.cpp) ../core/KeyMatrix.cpp ../core/Nmea.cpp ../core/MessageStore.cpp ../core/I18n.cpp) \
              $(BUILD)/sim/SimLog.o $(patsubst %.cpp,$(BUILD)/sim/%.o,$(wildcard fakes/*.cpp))
 
 LGFX_STAMP := $(LGFX_DIR)/.stamp

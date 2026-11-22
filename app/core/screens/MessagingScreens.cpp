@@ -499,7 +499,7 @@ bool ContactsScreen::onKey(App& app, const KeyEvent& e) {
   if (e.is('a')) {
     bool ok = mesh.sendAdvert(true, app.services().settings->get().shareLocation);
     app.notify(ok ? tr("Advert sent", "Annonce envoyée") : tr("Cannot advertise", "Annonce impossible"),
-               ok ? tr("Other nodes will see you", "Les autres nœuds vont te voir") : tr("Radio unavailable", "Radio indisponible"),
+               ok ? tr("Other nodes will see you", "Les autres appareils vont te voir") : tr("Radio unavailable", "Radio indisponible"),
                2000);
     return true;
   }

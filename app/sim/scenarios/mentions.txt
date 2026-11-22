@@ -82,7 +82,8 @@ expect-sounds 7
 
 # --- Silent: nothing wakes it or sounds; messages are still counted
 key s
-key /          # the list keeps its selection: still on Silent mode
+# the list keeps its selection: still on Silent mode
+key /
 expect-setting wake 2
 shot m10_silent_on
 key `

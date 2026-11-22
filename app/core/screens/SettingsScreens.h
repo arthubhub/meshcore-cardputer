@@ -1,4 +1,5 @@
 #pragma once
+#include "RadioScreens.h"
 #include "../App.h"
 #include "../Widgets.h"
 
@@ -44,7 +45,7 @@ class PacketsScreen;
 class SettingsScreen : public Screen {
 public:
   SettingsScreen(TextInputScreen& input, SystemScreen& system, PacketsScreen& packets)
-    : _input(input), _system(system), _packets(packets) {}
+    : _input(input), _system(system), _packets(packets), _radioCustom(input), _radioPresets(_radioCustom) {}
   const char* title() const override { return tr("Settings", "Réglages"); }
   const char* help() const override { return tr(";. select  ,/ change  Enter: edit", ";. choisir  ,/ changer  Entrée: modif."); }
   void onEnter(App& app) override;
@@ -63,6 +64,8 @@ private:
   TextInputScreen& _input;
   SystemScreen& _system;
   PacketsScreen& _packets;
+  RadioCustomScreen _radioCustom;      // the radio screens belong to the settings
+  RadioPresetScreen _radioPresets;
   ListState _list;
   uint32_t _confirmUntil = 0;
   int _confirmItem = -1;
