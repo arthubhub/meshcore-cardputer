@@ -71,6 +71,7 @@ void PacketLog::add(const Frame& f) {
   r.snrX4 = (int8_t)(x4 > 127 ? 127 : x4 < -128 ? -128 : x4);
   _r[_total % CAPACITY] = r;
   _total++;
+  if (_observer) _observer->onPacket(f, r);
 }
 
 void PacketLog::clear() { _total = 0; }

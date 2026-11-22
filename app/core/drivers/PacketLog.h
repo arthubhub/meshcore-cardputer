@@ -44,27 +44,41 @@ struct PacketRecord {
   bool ourRegion() const { return flags & OUR_REGION; }
 };
 
+// One packet, as read from MeshCore's Packet object.
+struct PacketLogFrame {
+  uint8_t header = 0;
+  uint8_t pathLen = 0;        // wire byte: size in the top 2 bits, count in the low 6
+  const uint8_t* path = nullptr;
+  const uint8_t* payload = nullptr;
+  size_t payloadLen = 0;
+  uint16_t transportCode = 0;
+  int rawLen = 0;
+  float snr = 0;
+  float rssi = 0;
+  uint32_t ms = 0;
+  uint32_t unixTime = 0;
+  bool tx = false;
+  bool ourRegion = false;
+};
+
+class PacketLog;
+
+// Told of every packet the log takes (the live packet tracer): the frame (with its whole path) and its decoding
+class PacketObserver {
+public:
+  virtual ~PacketObserver() {}
+  virtual void onPacket(const PacketLogFrame& f, const PacketRecord& r) = 0;
+};
+
 class PacketLog {
 public:
   static constexpr int CAPACITY = 48;
   static constexpr size_t CSV_LINE_MAX = 96;
 
   // One packet, as read from MeshCore's Packet object.
-  struct Frame {
-    uint8_t header = 0;
-    uint8_t pathLen = 0;                // wire byte: size in the top 2 bits, count in the low 6
-    const uint8_t* path = nullptr;
-    const uint8_t* payload = nullptr;
-    size_t payloadLen = 0;
-    uint16_t transportCode = 0;
-    int rawLen = 0;
-    float snr = 0;
-    float rssi = 0;
-    uint32_t ms = 0;
-    uint32_t unixTime = 0;
-    bool tx = false;
-    bool ourRegion = false;
-  };
+  using Frame = PacketLogFrame;
+  // One observer at most (nullptr: none)
+  void setObserver(PacketObserver* o) { _observer = o; }
 
   void add(const Frame& f);
   void clear();
@@ -82,4 +96,5 @@ private:
   static void decode(const Frame& f, PacketRecord& r);
   PacketRecord _r[CAPACITY];
   uint32_t _total = 0;
+  PacketObserver* _observer = nullptr;
 };

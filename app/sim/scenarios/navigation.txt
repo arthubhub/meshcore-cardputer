@@ -41,6 +41,12 @@ expect-screen Packets 3
 key `
 key /
 wait 300
+shot n08_tracer
+key enter
+expect-screen Packet tracer
+key `
+key /
+wait 300
 shot n08_settings
 key enter
 expect-screen Settings

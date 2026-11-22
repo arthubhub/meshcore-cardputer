@@ -2,6 +2,7 @@
 #include "../RadioPresets.h"
 #include "../drivers/Mentions.h"
 #include "../drivers/RadioConfig.h"
+#include "../drivers/TrafficTracer.h"
 #include "../Widgets.h"
 #include <stdio.h>
 #include <string.h>
@@ -86,6 +87,24 @@ void packetsSummary(App& app, char l[3][48]) {
            (unsigned long)r.txPackets);
 }
 
+void tracerSummary(App& app, char l[3][48]) {
+  TrafficTracer& t = app.services().mesh->tracer();
+  int routers = 0, busiest = -1;
+  for (int i = 0; i < TrafficTracer::MAX_NODES; i++) {
+    if (!t.node(i).used || t.node(i).kind != TrafficTracer::Kind::Router) continue;
+    routers++;
+    if (busiest < 0 || t.usage(i) > t.usage(busiest)) busiest = i;
+  }
+  if (t.me() < 0) {
+    snprintf(l[0], 48, "%s", tr("Routes of the packets heard", "Trajets des paquets entendus"));
+    snprintf(l[1], 48, "%s", tr("Nothing yet", "Rien pour l'instant"));
+    return;
+  }
+  snprintf(l[0], 48, tr("%d repeaters used, 20 min", "%d routeurs utilisés, 20 min"), routers);
+  snprintf(l[1], 48, tr("%d packets traced", "%d paquets tracés"), t.packets());
+  if (busiest >= 0 && t.node(busiest).name[0]) snprintf(l[2], 48, tr("Busiest: %s", "Le plus chargé : %s"), t.node(busiest).name);
+}
+
 void settingsSummary(App& app, char l[3][48]) {
   const UiSettings& s = app.services().settings->get();
   snprintf(l[0], 48, "%s", s.nodeName);
@@ -104,6 +123,7 @@ NavSection::Summary HomeScreen::defaultSummary(NavIcon icon) {
     case NavIcon::NEARBY: return nearbySummary;
     case NavIcon::PACKETS: return packetsSummary;
     case NavIcon::SETTINGS: return settingsSummary;
+    case NavIcon::TRACER: return tracerSummary;
     default: return nullptr;
   }
 }

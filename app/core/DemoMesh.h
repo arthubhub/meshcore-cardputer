@@ -1,4 +1,5 @@
 #pragma once
+#include "drivers/TrafficTracer.h"
 // Fake MeshCore network, portable (std C++ only). Used by:
 //  - the PC simulator, driven step by step by the scenarios (deterministic, bot off);
 //  - the Cardputer demo firmware (no LoRa Cap needed): the bot makes characters talk.
@@ -64,6 +65,7 @@ public:
   bool startDiscovery() override;
   const NodeDiscovery& discovery() const override { return _discovery; }
   const PacketLog& packetLog() const override { return _packets; }
+  TrafficTracer& tracer() override { return _tracer; }
   void clearPacketLog() override { _packets.clear(); }
   bool setPacketCapture(bool on) override { _capture = on; return true; }
   bool packetCapture() const override { return _capture; }
@@ -109,6 +111,7 @@ private:
   NodeDiscovery _discovery;
   ContactCapacity _capacityAlert;
   PacketLog _packets;
+  TrafficTracer _tracer;               // fed by _packets (its observer)
   bool _capture = false;
   AirtimeMeter _airtime;
   uint32_t _airTotalMs = 0;

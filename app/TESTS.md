@@ -208,6 +208,21 @@ La liste du mode clavier garde 100 contacts. Sur un réseau chargé, elle se rem
 - [ ] La conversation d'un contact remplacé reste dans Messages.
 - [ ] Après un redémarrage, la liste reprend les mêmes 100 contacts.
 
+## Traceur radio en direct (RADIO-12)
+
+Vérifié dans le simulateur (`scenarios/tracer.txt` : vide au départ, premier trajet vert, routeur chargé rouge, vue
+flux, sélection, français, position par GPS, vide après 21 minutes) et par les tests unitaires (fenêtre de 20 minutes,
+couleurs, identifiants de 1 et 2 octets, budget de mémoire). À vérifier sur l'appareil, sur un réseau actif :
+
+- [ ] Accueil → page Traceur radio (ou `T`) : « En attente de paquets... » tant que rien n'est entendu.
+- [ ] Chaque annonce ou message en flood ajoute son trajet : émetteur → routeurs → moi, en vert au début.
+- [ ] Un routeur qui relaie beaucoup passe au jaune puis au rouge (30 paquets en 20 min = rouge).
+- [ ] Les noms et positions apparaissent peu à peu (recherche dans l'archive, deux nœuds par image) ; un identifiant
+      partagé par plusieurs routeurs est un carré vide, non placé, nom suivi de « ? ».
+- [ ] `V` : carte ↔ flux ; `,` `/` : un nœud et ses paquets ; `C` : tout effacer.
+- [ ] Après 20 minutes sans paquet, l'écran redevient vide.
+- [ ] La ligne `BEAT` garde `gap` normal pendant que l'écran est ouvert (les recherches dans l'archive se font deux par image).
+
 ## Menu de navigation (UX-10)
 
 Vérifié dans le simulateur (`scenarios/navigation.txt`, anglais et français, un autre thème) ; toutes les anciennes
