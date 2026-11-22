@@ -16,6 +16,8 @@
 #include "../../core/drivers/PacketLog.h"
 #include "../../device/FloodPolicy.h"
 #include "../../device/ContactFile.h"
+#include "../../device/ArchivingChatMesh.h"
+#include "../fakes/FakeStorage.h"
 #include "../../device/ContactPositions.h"
 #include "../../device/MessageRoute.h"
 #include <map>
@@ -104,10 +106,10 @@ struct NodeParts {
 
 // ---------------------------------------------------------------- a chat node that floods like CardputerMesh
 
-class ChatNode : private NodeParts, public BaseChatMesh {
+class ChatNode : private NodeParts, public ArchivingChatMesh {
 public:
   ChatNode(FakeRadio& r, uint32_t seed)
-    : NodeParts(seed), BaseChatMesh(r, partClock, partRng, partRtc, partPool, partTables), radio(r) {}
+    : NodeParts(seed), ArchivingChatMesh(r, partClock, partRng, partRtc, partPool, partTables), radio(r) {}
   FakeRadio& radio;
   FloodPolicy floods;
   PacketLog packets;
@@ -115,6 +117,7 @@ public:
   StoredMsg lastMsg;                 // the record CardputerMesh would store for the last message received
   ContactPositions positions;        // as in CardputerMesh
   bool replaceWhenFull = false;      // CardputerMesh: true since VALIDATION-11
+  bool keepOnLeave = false;          // CardputerMesh: true when a conversation exists
   std::vector<std::string> replaced;
   int fullCalls = 0;
   int contacts() { return getNumContacts(); }
@@ -137,6 +140,20 @@ public:
   void advertise() { floods.send(*this, createSelfAdvert(_name.c_str())); }
   mesh::Packet* advertAt(double lat, double lon) { return createSelfAdvert(_name.c_str(), lat, lon); }   // dated now
   void flood(mesh::Packet* p) { floods.send(*this, p); }
+  mesh::Packet* advertRepeater(const char* name) {    // an advert as a repeater sends it
+    uint8_t data[MAX_ADVERT_DATA_SIZE];
+    AdvertDataBuilder b(ADV_TYPE_REPEATER, name);
+    const uint8_t len = b.encodeTo(data);
+    return createAdvert(self_id, data, len);
+  }
+  // A message for `to` with our sender ID but a secret that is not ours: no candidate decrypts it
+  void sendGarbledTo(ChatNode& to) {
+    uint8_t wrong[PUB_KEY_SIZE];
+    memset(wrong, 0x5a, sizeof(wrong));
+    static uint8_t counter = 0;
+    uint8_t data[16] = {1, 2, 3, 4, 0, 'h', 'i', ++counter};   // each different: MeshCore drops repeated packets
+    flood(createDatagram(PAYLOAD_TYPE_TXT_MSG, to.self_id, wrong, data, sizeof(data)));
+  }
   bool discover(const ChatNode& other) { return contact(other) != nullptr; }
   ContactInfo* contact(const ChatNode& other) { return lookupContactByPubKey(other.self_id.pub_key, PUB_KEY_SIZE); }
   int send(ChatNode& to, const char* text) {
@@ -146,7 +163,10 @@ public:
   void joinPublic() { _ch = addChannel("Public", "izOH6cXN6mrJ5e26oRXNcg=="); }
   bool sendChannel(const char* text) { return sendGroupMessage(getRTCClock()->getCurrentTime(), _ch->channel, _name.c_str(), text, strlen(text)); }
 
+  using ArchivingChatMesh::bringBack;
+
 protected:
+  uint32_t nowMs() const override { return g_now; }
   float getAirtimeBudgetFactor() const override { return 1.0f; }
   int calcRxDelay(float, uint32_t) const override { return 0; }
   bool allowPacketForward(const mesh::Packet*) override { return false; }
@@ -160,6 +180,7 @@ protected:
   bool shouldOverwriteWhenFull() const override { return replaceWhenFull; }
   void onContactOverwrite(const uint8_t* key) override {
     if (ContactInfo* c = lookupContactByPubKey(key, PUB_KEY_SIZE)) replaced.push_back(c->name);
+    archiveLeaving(key, keepOnLeave);     // as CardputerMesh: it stays in the archive
     positions.book().remove(key);
   }
   void onContactsFull() override { fullCalls++; }
@@ -177,7 +198,7 @@ protected:
   }
   void onAdvertRecv(mesh::Packet* p, const mesh::Identity& id, uint32_t ts, const uint8_t* data, size_t len) override {
     const ContactPositions::Before before = ContactPositions::before(lookupContactByPubKey(id.pub_key, PUB_KEY_SIZE));
-    BaseChatMesh::onAdvertRecv(p, id, ts, data, len);
+    ArchivingChatMesh::onAdvertRecv(p, id, ts, data, len);
     positions.afterAdvert(before, lookupContactByPubKey(id.pub_key, PUB_KEY_SIZE), ts, data, len);
   }
   void onCommandDataRecv(const ContactInfo&, mesh::Packet*, uint32_t, const char*) override {}
@@ -248,6 +269,7 @@ struct Net {
   FakeRadio ra, rb, rr;
   ChatNode a{ra, 11}, b{rb, 22};
   Repeater r{rr, 33};
+  NodeBook* book = nullptr;          // A's archive, written as the storage task of the firmware does
   Net() {
     link(ra, rr);
     link(rb, rr);
@@ -261,6 +283,7 @@ struct Net {
       a.loop();
       r.loop();
       b.loop();
+      if (book && t % 100 == 0) book->flushOne(g_now);
     }
   }
   void meet() {
@@ -852,6 +875,164 @@ TEST(a_list_of_favourites_only_still_refuses) {
   CHECK(!n.a.discover(n.b));
   CHECK(n.a.replaced.empty());
   CHECK(n.a.fullCalls == 1);                    // the firmware is told, and tells the user
+}
+
+// ---------------------------------------------------------------- MESSAGING-12: the archive behind the table
+
+// The repeaters of a busy mesh: each advert is a new node for A (one radio, many identities)
+static void repeaterBurst(Net& n, int count, uint32_t firstSeed) {
+  for (int i = 0; i < count; i++) {
+    char name[16];
+    snprintf(name, sizeof(name), "Rpt%02d", i);
+    n.b.become(firstSeed + i, name);
+    n.b.flood(n.b.advertRepeater(name));
+    g_now += 1500;
+    n.run(500);
+  }
+}
+
+TEST(a_busy_mesh_pushed_a_friend_out_of_the_table) {   // the bug reported on 2026-11-18, without the archive
+  Net n;
+  n.a.replaceWhenFull = true;
+  n.b.become(77, "Friend");
+  n.b.advertise();
+  n.run();
+  CHECK(n.a.discover(n.b));
+  n.a.advertise();
+  n.run();
+  repeaterBurst(n, MAX_CONTACTS, 5000);   // a day of repeater adverts: the friend is the oldest, replaced
+  n.b.become(77, "Friend");
+  CHECK(!n.a.discover(n.b));
+  n.b.send(n.a, "are you there?");
+  n.run();
+  CHECK(n.a.inbox.empty());               // not decrypted: this is the bug
+}
+
+TEST(with_the_archive_a_friend_outside_the_table_is_read_and_comes_back) {
+  Net n;
+  FakeStorage disk;
+  disk.setAtomic(true);
+  NodeArchive archive(disk);
+  NodeBook book(archive);
+  n.book = &book;
+  n.a.attachArchive(&book);
+  n.a.replaceWhenFull = true;
+  n.b.become(77, "Friend");
+  n.b.advertise();
+  n.run();
+  CHECK(n.a.discover(n.b));
+  n.a.advertise();
+  n.run();
+  repeaterBurst(n, MAX_CONTACTS + 5, 5000);
+  CHECK(n.a.contacts() == 1);              // repeaters stay in the archive: the table keeps the friend
+  n.b.become(77, "Friend");
+  CHECK(n.a.discover(n.b));
+  NodeRecord r;
+  const uint8_t id[] = {0};
+  (void)id;
+  int stored = 0;
+  struct Count : NodeVisitor { int n = 0; bool visit(const NodeRecord&) override { n++; return true; } } c;
+  book.flushAll();
+  for (int next = 0; next >= 0;) next = archive.scan(next, 16, c);
+  stored = c.n;
+  CHECK(stored == MAX_CONTACTS + 5 + 1);   // every node heard: the friend and the repeaters
+  CHECK(n.a.archiveStats().adverts >= (uint32_t)(MAX_CONTACTS + 6));
+  n.b.send(n.a, "still here");
+  n.run();
+  CHECK(!n.a.inbox.empty() && n.a.inbox.back() == "still here");
+  CHECK(n.a.archiveStats().ecdh == 0);     // a contact of the table: the archive was not even read
+}
+
+TEST(a_message_from_a_node_only_in_the_archive_is_decrypted_and_acknowledged) {
+  Net n;
+  FakeStorage disk;
+  disk.setAtomic(true);
+  NodeArchive archive(disk);
+  NodeBook book(archive);
+  n.book = &book;
+  n.a.attachArchive(&book);
+  n.a.replaceWhenFull = true;
+  // Fill the table with people (they do enter it), the friend first so that it is the oldest
+  n.b.become(77, "Friend");
+  n.b.advertise();
+  n.run();
+  n.a.advertise();
+  n.run();
+  CHECK(n.b.discover(n.a));
+  g_now += 1500;
+  fill(n, MAX_CONTACTS);                   // people: they push the friend out of the table
+  n.b.become(77, "Friend");
+  CHECK(!n.a.discover(n.b));
+  NodeRecord r;
+  CHECK(book.get(n.b.id().pub_key, r));    // but the archive kept it
+  CHECK(!r.has(NodeRecord::InContacts));
+
+  n.b.acks = 0;
+  n.b.send(n.a, "from the archive");
+  n.run();
+  CHECK(!n.a.inbox.empty() && n.a.inbox.back() == "from the archive");
+  CHECK(n.a.discover(n.b));                // back in the table
+  CHECK(n.a.archiveStats().broughtBack == 1);
+  CHECK(n.a.archiveStats().ecdh >= 1);
+  CHECK(n.b.acks == 1);                    // and A answered with the ACK, like for any contact
+  CHECK(book.get(n.b.id().pub_key, r));
+  CHECK(r.has(NodeRecord::InContacts));
+}
+
+TEST(sending_to_a_conversation_whose_contact_left_brings_it_back) {
+  Net n;
+  FakeStorage disk;
+  disk.setAtomic(true);
+  NodeArchive archive(disk);
+  NodeBook book(archive);
+  n.book = &book;
+  n.a.attachArchive(&book);
+  n.a.replaceWhenFull = true;
+  n.b.become(77, "Friend");
+  n.b.advertise();
+  n.run();
+  n.a.advertise();
+  n.run();
+  g_now += 1500;
+  fill(n, MAX_CONTACTS);
+  n.b.become(77, "Friend");
+  CHECK(!n.a.discover(n.b));
+  ContactInfo* c = n.a.bringBack(n.b.id().pub_key, 6);   // a conversation key holds 6 bytes of the key
+  CHECK(c != nullptr);
+  CHECK(n.a.discover(n.b));
+  CHECK(c && strcmp(c->name, "Friend") == 0);
+  n.a.send(n.b, "I found you again");
+  n.run();
+  CHECK(!n.b.inbox.empty() && n.b.inbox.back() == "I found you again");
+}
+
+TEST(forged_packets_cost_a_bounded_number_of_key_exchanges) {
+  Net n;
+  FakeStorage disk;
+  disk.setAtomic(true);
+  NodeArchive archive(disk);
+  NodeBook book(archive);
+  n.book = &book;
+  n.a.attachArchive(&book);
+  n.a.advertise();
+  n.run();
+  // Archive many nodes sharing B's first key byte would need key grinding; instead: B is archived and out of the
+  // table, and sends many messages that fail to decrypt for everyone but B... the budget counts each candidate tried.
+  n.b.become(77, "Friend");
+  n.b.advertise();
+  n.run();
+  CHECK(n.b.discover(n.a));
+  ContactInfo* friendInA = n.a.contact(n.b);
+  CHECK(friendInA != nullptr);
+  if (friendInA) n.a.removeContact(*friendInA);   // out of the table, still in the archive
+  CHECK(!n.a.discover(n.b));
+  for (int i = 0; i < ArchivingChatMesh::ECDH_PER_MINUTE + 10; i++) {
+    n.b.sendGarbledTo(n.a);                // the right sender ID, a MAC no secret matches
+    n.run(200);
+  }
+  CHECK(n.a.archiveStats().ecdh <= (uint32_t)ArchivingChatMesh::ECDH_PER_MINUTE);
+  CHECK(n.a.archiveStats().ecdhRefused > 0);
+  CHECK(n.a.inbox.empty());
 }
 
 int main() {

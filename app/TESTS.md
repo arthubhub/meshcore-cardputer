@@ -202,11 +202,41 @@ La liste du mode clavier garde 100 contacts. Sur un réseau chargé, elle se rem
 
 - [ ] Au-delà de 90 contacts : un message « Contacts almost full » (une seule fois), et le titre de la liste devient `Contacts 9x/100`.
 - [ ] À 100 : « Contact list full ». Ensuite, un nouveau contact entendu prend la place du plus ancien non favori.
-      Log : `contact list full: <nom> (oldest, not a favourite) replaced by a new contact`.
+      Log : `contact list full: <nom> (oldest, not a favourite) moves to the archive for a new contact`.
 - [ ] **Le cas du bug :** un ami qui n'était pas dans la liste s'annonce, puis t'écrit. Son message arrive.
 - [ ] Un favori n'est jamais remplacé, même s'il est le plus ancien.
 - [ ] La conversation d'un contact remplacé reste dans Messages.
 - [ ] Après un redémarrage, la liste reprend les mêmes 100 contacts.
+
+## Archive des nœuds entendus (MESSAGING-12, étapes 1 à 5)
+
+Tout nœud entendu (personnes, routeurs, salons, capteurs) est gardé sur la flash, dans `/nodes/0` à `/nodes/7`.
+Seules les personnes entrent d'elles-mêmes dans la liste de 100 contacts ; les routeurs restent dans l'archive.
+Vérifié sur l'appareil le 2026-11-18 sans autre nœud radio à portée : démarrage, tâche d'écriture, 1 000 nœuds
+fictifs (`nodes fill`), pauses de `loop()` sous 175 ms. **Reste à vérifier avec un vrai réseau :**
+
+- [ ] Au démarrage : `node archive: /nodes, 128 buckets of 42, up to 5376 nodes; writes from a task on core 0`.
+- [ ] Après quelques minutes sur un réseau : console `nodes` → `archive ? nodes, N waiting, W writes, A added, 0 dropped, 0 failed`.
+      `nodes count` donne le nombre de nœuds (et le temps : environ 3 s écran allumé, 6 à 9 s éteint).
+- [ ] Un routeur qui s'annonce n'apparaît plus dans Contacts (il est dans l'archive), mais son nom reste affiché
+      dans le journal des paquets et sur le trajet d'un message.
+- [ ] **Le cas du bug :** un ami sorti de la liste (remplacé, ou retiré puis réentendu ailleurs) t'écrit : le message
+      arrive, l'accusé de réception part, et l'ami revient dans Contacts.
+      Log : `<nom> back from the archive into the contacts (n/100)`.
+- [ ] Écrire dans une conversation dont le contact a quitté la liste : le message part (le contact revient).
+- [ ] `boot companion` puis retour, ou `reboot` : `nodes` après redémarrage, `0 failed`, les nœuds sont toujours là.
+- [ ] Pendant une rafale d'annonces, la ligne `BEAT` garde `gap` sous 200 ms.
+- [ ] `nodes fill 300 2` (300 nœuds fictifs, 2 par seconde) : `0 dropped` ; puis `nodes wipe` pour les effacer
+      (efface toute l'archive : les vrais nœuds reviennent quand ils s'annoncent).
+
+À m'envoyer : le log complet depuis le démarrage, les lignes `nodes`, et le résultat de chaque case.
+
+## Bancs d'essai de la flash (console `bench`)
+
+- `bench store dir=fan task=1 mhz=80` : les fichiers de l'archive (128 compartiments), écriture dans une tâche.
+- `bench fsops files=48 dir=sub` : chaque opération de LittleFS (créer, lire, renommer, effacer) selon le nombre de fichiers.
+- `bench ecdh` : le calcul de clé partagée de MeshCore à 240 et 80 MHz.
+- `bench clean` : efface ce qu'un banc interrompu aurait laissé. Résultats de référence : `docs/storage/NODES.md`.
 
 ## Phase 1 — firmware companion (`cardputer_adv_companion_ble`)
 

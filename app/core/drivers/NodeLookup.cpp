@@ -3,6 +3,8 @@
 #include <string.h>
 
 int NodeLookup::find(const uint8_t* hash, int bytes, Kind kind, NodeMatch* out, int max) {
+  const int archived = _nodes.findNodes(hash, bytes, kind == Kind::Relay, out, max);
+  if (archived >= 0) return archived;   // the archive covers the contacts too
   int found = 0;
   const int n = _nodes.contactCount();
   ContactView c;

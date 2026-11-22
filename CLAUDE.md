@@ -77,6 +77,10 @@ with the official BLE companion ("phone mode") shipped in the same flash image (
   MeshCore `SPIFFS` object is a `DataFs` too (`variant/fs_compat/SPIFFS.h`, `-I variant/fs_compat`,
   `lib_ignore = SPIFFS`, compile-time check in `CardputerBoard.cpp`): both modes share files and identity
   (VALIDATION-8). The phone-only `cardputer_adv_companion_ble` image keeps stock SPIFFS.
+  Portable stores go through `core/hal/Storage.h`; on the device `LittleFsStorage` uses POSIX calls on the mount point
+  (an Arduino `File` open costs several 12 ms path lookups; bench fsops), and LittleFS replaces a file atomically at
+  close (`atomicWriteFile`). Every LittleFS operation costs 10 to 300 ms (outliers of seconds): never write flash per
+  packet from `loop()`; batch it, or write from a task (the node archive, `device/DeviceNodeArchive`, MESSAGING-12).
 - Radio diagnostics: `cpadv::RadioMonitor` (`variant/CpadvRadioMonitor`), attached by `radio_init()`, logs every
   received packet and receive error with RSSI/SNR and puts the same radio summary in the `BEAT` line of both
   firmwares (counters, noise floor, time outside Rx, longest loop gap). Both firmwares build with `MESH_DEBUG=1`.
