@@ -60,6 +60,43 @@ void emptyState(lgfx::LovyanGFX& g, const char* l1, const char* l2) {
   g.setTextDatum(lgfx::top_left);
 }
 
+// Who can be tagged from a conversation, in the order of preference (MESSAGING-13): favourites, then the recent senders
+// of this conversation (newest first), then the other contacts. People only, never myself.
+class ChatMentionSource : public MentionSource {
+public:
+  ChatMentionSource(App& app, const StoredMsg* msgs, int n) : _mesh(*app.services().mesh), _msgs(msgs), _n(n) {
+    _contacts = _mesh.contactCount();
+    ContactView c;
+    while (_favs < _contacts && _mesh.contactAt(_favs, c) && c.favourite) _favs++;
+  }
+  int count() override { return _contacts + _n; }
+  bool name(int i, char* out, size_t n) override {
+    if (i < _favs) return contact(i, out, n);
+    if (i < _favs + _n) {                       // senders, newest first
+      const StoredMsg& m = _msgs[_n - 1 - (i - _favs)];
+      if (m.outgoing || !m.sender[0]) return false;
+      return keep(m.sender, out, n);
+    }
+    return contact(i - _n, out, n);
+  }
+
+private:
+  bool contact(int i, char* out, size_t n) {
+    ContactView c;
+    if (!_mesh.contactAt(i, c) || c.type != CONTACT_CHAT) return false;
+    return keep(c.name, out, n);
+  }
+  bool keep(const char* name, char* out, size_t n) {
+    if (MentionText::sameName(name, _mesh.selfName())) return false;
+    snprintf(out, n, "%s", name);
+    return true;
+  }
+  MeshService& _mesh;
+  const StoredMsg* _msgs;
+  int _n;
+  int _contacts = 0, _favs = 0;
+};
+
 }  // namespace
 
 bool ConfirmPress::check(App& app, int t, const char* what) {
@@ -77,6 +114,7 @@ bool ConfirmPress::check(App& app, int t, const char* what) {
 
 void ChatScreen::open(App& app, const ConvKey& key, const char* name) {
   if (key != _key) _draft[0] = 0;   // the draft belongs to one conversation
+  _picker.close();
   _key = key;
   utf8Copy(_title, sizeof(_title), name);
   _scroll = 0;
@@ -88,6 +126,7 @@ void ChatScreen::open(App& app, const ConvKey& key, const char* name) {
 void ChatScreen::onEnter(App& app) { reload(app); }
 
 void ChatScreen::reload(App& app) {
+  utf8Copy(_selfName, sizeof(_selfName), app.services().mesh->selfName());
   MessageStore& st = app.services().mesh->messages();
   if (const ConvMeta* c = st.find(_key)) utf8Copy(_title, sizeof(_title), c->name);
   _total = st.total(_key);
@@ -97,9 +136,31 @@ void ChatScreen::reload(App& app) {
   st.markRead(_key);
 }
 
+void ChatScreen::draftChanged(App& app) {
+  ChatMentionSource src(app, _msgs, _n);
+  _picker.update(_draft, src);
+}
+
 bool ChatScreen::onKey(App& app, const KeyEvent& e) {
   _cursorOn = true;
   _lastBlink = app.now();
+  if (_picker.open()) {                          // the "@" suggestions take the arrows, Enter, Tab and Esc
+    switch (e.code) {
+      case KeyCode::Up: _picker.move(-1); return true;
+      case KeyCode::Down: _picker.move(+1); return true;
+      case KeyCode::Enter:
+      case KeyCode::Tab:
+        if (_picker.count()) {
+          if (!_picker.accept(_draft, (size_t)_maxLen + 1)) app.notify(tr("Message too long", "Message trop long"), "", 1500);
+          return true;
+        }
+        if (e.code == KeyCode::Tab) return true;
+        _picker.close();                         // no contact matches: Enter sends the text as typed
+        break;
+      case KeyCode::Esc: _picker.close(); return true;
+      default: break;
+    }
+  }
   switch (e.code) {
     case KeyCode::Enter: {
       if (_selecting) {
@@ -125,6 +186,7 @@ bool ChatScreen::onKey(App& app, const KeyEvent& e) {
     case KeyCode::Backspace:
       _selecting = false;
       utf8PopBack(_draft);
+      draftChanged(app);
       return true;
     case KeyCode::Up:
       if (!_selecting) { _selecting = _n > 0; }
@@ -142,6 +204,7 @@ bool ChatScreen::onKey(App& app, const KeyEvent& e) {
         char s[2] = {e.ch, 0};
         utf8Append(_draft, cap, s);
       }
+      draftChanged(app);
       return true;
     }
     default:
@@ -160,15 +223,16 @@ bool ChatScreen::tick(App& app) {
 
 bool ChatScreen::onEvent(App& app, const MeshEvent& ev) {
   if (ev.key != _key) return false;
-  if (ev.type == MeshEvent::MESSAGE) {
+  if (ev.type == MeshEvent::MESSAGE || ev.type == MeshEvent::MENTION) {
     if (_selecting || _scroll > 0) _scroll++;   // the same message stays on screen, one more is now newer
     reload(app);
-    app.services().sys->playSound(SOUND_CHANNEL_MSG);   // discreet: the message is on screen
+    // discreet: the message is on screen; a mention of me sounds like a direct message
+    app.chime(ev, ev.type == MeshEvent::MENTION ? SOUND_DIRECT_MSG : SOUND_CHANNEL_MSG);
     return true;
   }
   if (ev.type == MeshEvent::DELIVERED || ev.type == MeshEvent::FAILED) {
     reload(app);
-    if (ev.type == MeshEvent::FAILED) app.services().sys->playSound(SOUND_FAIL);
+    if (ev.type == MeshEvent::FAILED) app.chime(ev, SOUND_FAIL);
     return true;
   }
   return false;
@@ -182,13 +246,23 @@ void ChatScreen::layout(lgfx::LovyanGFX& g) {
   for (int i = 0; i < _n; i++) {
     const StoredMsg& m = _msgs[i];
     Layout& l = _lay[i];
+    // "@[name]" shows as "@name" on a highlight; "@me" stands out
+    _nSpans[i] = (uint8_t)MentionText::toDisplay(m.text, _disp[i], sizeof(_disp[i]), _spans[i], MAX_SPANS);
+    _meSpans[i] = 0;
+    for (int k = 0; k < _nSpans[i]; k++) {
+      char who[MentionText::NAME_LEN + 1];
+      const MentionSpan& sp = _spans[i][k];
+      memcpy(who, _disp[i] + sp.nameStart, sp.nameLen);
+      who[sp.nameLen] = 0;
+      if (MentionText::sameName(who, _selfName)) _meSpans[i] |= (uint8_t)(1u << k);
+    }
     g.setFont(&fontText);
-    l.lines = wrapText(g, m.text, BUBBLE_TEXT_W, l.line, MAX_LINES);
+    l.lines = wrapText(g, _disp[i], BUBBLE_TEXT_W, l.line, MAX_LINES);
     if (l.lines == 0) { l.lines = 1; l.line[0] = {0, 0}; }
     int w = 0;
     char buf[MSG_WRAP_BUF];
     for (int k = 0; k < l.lines; k++) {
-      memcpy(buf, m.text + l.line[k].start, l.line[k].len);
+      memcpy(buf, _disp[i] + l.line[k].start, l.line[k].len);
       buf[l.line[k].len] = 0;
       int lw = g.textWidth(buf);
       if (lw > w) w = lw;
@@ -235,13 +309,11 @@ void ChatScreen::drawBubble(App& app, lgfx::LovyanGFX& g, const StoredMsg& m, co
     g.drawString(m.sender, x + 4, ty);
     ty += LINE_H;
   }
+  const int msg = (int)(&m - _msgs);
+  if (msg >= 0 && msg < _n && _meSpans[msg]) g.drawRoundRect(x, y, width, l.height, 4, MENTION_ME_BG);   // for me
   g.setFont(&fontText);
-  g.setTextColor(FG);
-  char buf[MSG_WRAP_BUF];
   for (int k = 0; k < l.lines; k++) {
-    memcpy(buf, m.text + l.line[k].start, l.line[k].len);
-    buf[l.line[k].len] = 0;
-    g.drawString(buf, x + 4, ty);
+    if (msg >= 0 && msg < _n) drawLine(g, msg, l.line[k], x + 4, ty);
     ty += LINE_H;
   }
 
@@ -250,6 +322,63 @@ void ChatScreen::drawBubble(App& app, lgfx::LovyanGFX& g, const StoredMsg& m, co
   g.setTextDatum(lgfx::top_right);
   g.drawString(meta, x + width - 4, ty);
   g.setTextDatum(lgfx::top_left);
+}
+
+void ChatScreen::drawLine(lgfx::LovyanGFX& g, int msg, const TextLine& line, int x, int y) {
+  // The line in pieces: plain text, and mentions on their highlight (a mention may continue on the next line)
+  const char* text = _disp[msg];
+  const int end = line.start + line.len;
+  int pos = line.start;
+  char buf[MSG_WRAP_BUF];
+  while (pos < end) {
+    int next = end, span = -1;
+    for (int k = 0; k < _nSpans[msg]; k++) {
+      const MentionSpan& sp = _spans[msg][k];
+      const int a = sp.start, b = sp.start + sp.len;
+      if (pos >= a && pos < b) { span = k; next = b < end ? b : end; break; }
+      if (a > pos && a < next) next = a;
+    }
+    const int n = next - pos;
+    memcpy(buf, text + pos, (size_t)n);
+    buf[n] = 0;
+    const int w = g.textWidth(buf);
+    if (span >= 0) {
+      const bool me = (_meSpans[msg] >> span) & 1;
+      g.fillRoundRect(x - 1, y, w + 2, LINE_H - 1, 2, me ? MENTION_ME_BG : MENTION_BG);
+      g.setTextColor(me ? BG : ACCENT);
+    } else {
+      g.setTextColor(FG);
+    }
+    g.drawString(buf, x, y);
+    x += w;
+    pos = next;
+  }
+}
+
+void ChatScreen::drawPicker(lgfx::LovyanGFX& g) {
+  // Above the compose line: the names that match what follows the "@"
+  const int rows = _picker.count() ? _picker.count() : 1;
+  const int h = rows * LINE_H + 4, w = 150;
+  const int y = CONTENT_Y + CONTENT_H - COMPOSE_H - h - 1;
+  g.fillRoundRect(3, y, w, h, 3, BAR_BG);
+  g.drawRoundRect(3, y, w, h, 3, ACCENT);
+  g.setFont(&fontText);
+  if (!_picker.count()) {
+    g.setTextColor(DIM);
+    g.drawString(tr("no contact matches", "aucun contact"), 8, y + 2);
+    return;
+  }
+  for (int i = 0; i < _picker.count(); i++) {
+    const int ry = y + 2 + i * LINE_H;
+    const bool sel = i == _picker.selected();
+    if (sel) g.fillRect(5, ry, w - 4, LINE_H, SELECT_BG);
+    char shown[40];
+    fitText(g, _picker.suggestion(i), w - 22, shown, sizeof(shown));
+    g.setTextColor(sel ? FG : ACCENT);
+    g.drawString("@", 8, ry);
+    g.setTextColor(FG);
+    g.drawString(shown, 16, ry);
+  }
 }
 
 void ChatScreen::drawCompose(App&, lgfx::LovyanGFX& g) {
@@ -314,6 +443,7 @@ void ChatScreen::draw(App& app, lgfx::LovyanGFX& g) {
     g.setTextDatum(lgfx::top_left);
   }
   drawCompose(app, g);
+  if (_picker.open()) drawPicker(g);
 }
 
 // =============================================================== ContactsScreen
@@ -835,7 +965,9 @@ void ConversationsScreen::draw(App& app, lgfx::LovyanGFX& g) {
       g.drawString(buf, SCREEN_W - 8 - badgeW / 2, y + LINE_H + 2);
       g.setTextDatum(lgfx::top_left);
     }
-    if (c->total) snprintf(buf, sizeof(buf), "%s%s", c->lastOutgoing ? tr("Me: ", "Moi : ") : "", c->last);
+    char shown[MSG_TEXT_MAX + 1];
+    MentionText::toDisplay(c->last, shown, sizeof(shown), nullptr, 0);   // "@[name]" -> "@name"
+    if (c->total) snprintf(buf, sizeof(buf), "%s%s", c->lastOutgoing ? tr("Me: ", "Moi : ") : "", shown);
     else snprintf(buf, sizeof(buf), "%s", tr("(no messages)", "(aucun message)"));
     g.setFont(&fontText);
     g.setTextColor(c->unread ? FG : DIM);

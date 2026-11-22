@@ -15,6 +15,15 @@ back. Both modes share the same radio identity, so the rest of the mesh sees a s
 
 The interface is in English by default; French is one setting away (*Settings → Language / Langue*).
 
+**Tagging people.** In a conversation, type **@**: a list of your contacts and of the people who wrote recently
+appears and narrows as you type; press **Enter** to tag the highlighted name. A message that tags you stands out in
+orange and notifies you like a private message, even on a busy channel. Tags use the same `@[name]` form as the
+MeshCore phone app.
+
+**Silent mode** (*Settings → Silent mode*) keeps the Cardputer running without lighting up its screen: *for me only*
+wakes it just for private messages and messages that tag you, *on* never wakes it nor beeps. Messages still arrive and
+are counted; a bell in the top bar shows the mode.
+
 <table>
 <tr><td align="center" width="33%"><img src="docs/images/readme_en_home.png" alt="Home: latest messages and neighbours" width="100%"><br><sub>Home: latest messages and neighbours</sub></td><td align="center" width="33%"><img src="docs/images/readme_en_chat.png" alt="Chat with delivery receipts" width="100%"><br><sub>Chat with delivery receipts</sub></td><td align="center" width="33%"><img src="docs/images/readme_en_gps.png" alt="GPS status" width="100%"><br><sub>GPS status</sub></td></tr>
 <tr><td align="center" width="33%"><img src="docs/images/readme_en_compass.png" alt="Compass pointing to a contact" width="100%"><br><sub>Compass pointing to a contact</sub></td><td align="center" width="33%"><img src="docs/images/readme_en_map.png" alt="Offline map with contacts" width="100%"><br><sub>Offline map with contacts</sub></td><td align="center" width="33%"><img src="docs/images/readme_en_settings.png" alt="Settings, with the language switch" width="100%"><br><sub>Settings, with the language switch</sub></td></tr>

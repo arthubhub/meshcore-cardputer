@@ -34,6 +34,8 @@ constexpr uint16_t BAR_BG    = 0x10A2;  // dark blue-grey
 constexpr uint16_t SELECT_BG = 0x2967;
 constexpr uint16_t BUBBLE_IN  = 0x3186;  // dark grey
 constexpr uint16_t BUBBLE_OUT = 0x122D;  // dark blue
+constexpr uint16_t MENTION_BG    = 0x2967;  // "@name" in a bubble (MESSAGING-13)
+constexpr uint16_t MENTION_ME_BG = 0xFD20;  // "@me": orange, with dark text
 
 // Latin-1 fonts (accents français). Defined in Fonts.cpp.
 extern const lgfx::U8g2font& fontSmall;   // 6x10, status bar and hints

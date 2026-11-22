@@ -1,4 +1,5 @@
 #include "SettingsScreens.h"
+#include "../drivers/NotifyPolicy.h"
 #include "PacketsScreen.h"
 #include "../RadioPresets.h"
 #include <stdio.h>
@@ -164,6 +165,7 @@ const char* label(int item) {
     case SettingsScreen::SCREEN_TIMEOUT: return tr("Screen timeout", "Veille écran");
     case SettingsScreen::BRIGHTNESS: return tr("Brightness", "Luminosité");
     case SettingsScreen::SOUND: return tr("Sound", "Son");
+    case SettingsScreen::SILENT: return tr("Silent mode", "Mode silencieux");
     case SettingsScreen::SHARE_LOCATION: return tr("Share location", "Partager position");
     case SettingsScreen::BACKUP: return tr("Back up to SD", "Sauvegarder sur SD");
     case SettingsScreen::RESTORE: return tr("Restore from SD", "Restaurer depuis SD");
@@ -238,6 +240,7 @@ void SettingsScreen::change(App& app, int item, int delta) {
       break;
     case BRIGHTNESS: s.brightness = (s.brightness + delta + 3) % 3; break;
     case SOUND: s.sound = !s.sound; break;
+    case SILENT: s.wakeOn = (uint8_t)((s.wakeOn + delta + WAKE_MODES) % WAKE_MODES); break;
     case SHARE_LOCATION: s.shareLocation = !s.shareLocation; break;
     case LANGUAGE:
       s.language = (uint8_t)((s.language + delta + LANG_COUNT) % LANG_COUNT);
@@ -348,6 +351,13 @@ void SettingsScreen::formatValue(App& app, int item, char* out, size_t n) {
       break;
     }
     case SOUND: snprintf(out, n, "%s", s.sound ? tr("yes", "oui") : tr("no", "non")); break;
+    case SILENT: {
+      // What still wakes the screen and sounds: everything, what is for me, nothing
+      const char* v = s.wakeOn == WAKE_TO_ME ? tr("for me only", "pour moi") : s.wakeOn == WAKE_NEVER ? tr("on", "oui")
+                                                                                                        : tr("off", "non");
+      snprintf(out, n, "< %s >", v);
+      break;
+    }
     case SHARE_LOCATION: snprintf(out, n, "%s", s.shareLocation ? tr("yes", "oui") : tr("no", "non")); break;
     case BACKUP:
     case RESTORE: {

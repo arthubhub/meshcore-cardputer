@@ -1,0 +1,111 @@
+# Mentions (MESSAGING-13) and silent mode: "@" suggests contacts, Enter tags "@[name]", a message mentioning me is
+# highlighted and notified like a direct message; silent mode decides what wakes the screen.
+name Raphael
+time 1793541600
+contact Bob 1 fav
+contact Élodie 2
+contact Bobby 2
+contact Relais-Colomiers 0 repeater
+wait 500
+rxch Public Alice who is around tonight?
+rxch Public Zoé yes, near the station
+wait 3000
+expect-sounds 2
+
+# --- Tag someone from the Public channel
+key m
+key enter
+expect-screen Public
+type ok @
+shot m1_picker_open
+type bo
+shot m2_picker_bo
+key fn+.
+key enter
+type see you
+shot m3_tagged_draft
+key enter
+wait 1000
+expect-last Public channel ok @[Bobby] see you
+
+# --- A recent sender of the channel can be tagged too; Esc closes the list, keeps the text
+type @zo
+shot m4_picker_sender
+key enter
+type and @nobody
+shot m5_no_match
+key fn+`
+expect-screen Public
+key enter
+wait 500
+expect-last Public channel @[Zoé] and @nobody
+
+# --- Mentions in received messages: highlighted, "@me" stands out
+rxch Public Alice @[Bob] and @[Raphael], dinner at 8?
+wait 500
+shot m6_mention_me
+key fn+`
+key fn+`
+expect-screen Home
+expect-sounds 3
+rxch Public Alice plain channel message
+wait 500
+expect-sounds 4
+rxch Public Zoé hey @[raphael] look at this
+wait 500
+shot m7_banner_mention
+expect-sounds 5
+
+# --- Silent mode "for me only": a busy channel stays dark, a mention or a direct message wakes the screen
+key s
+expect-screen Settings
+key .*10
+shot m8_silent_setting
+key /
+shot m9_silent_for_me
+expect-setting wake 1
+key `
+screen off
+rxch Public Alice nothing for you here
+wait 500
+expect-woke 0
+expect-sounds 5
+rxch Public Alice @[Raphael] this one is for you
+wait 500
+expect-woke 1
+expect-sounds 6
+screen off
+rx Bob a direct message
+wait 500
+expect-woke 2
+expect-sounds 7
+
+# --- Silent: nothing wakes it or sounds; messages are still counted
+key s
+key /          # the list keeps its selection: still on Silent mode
+expect-setting wake 2
+shot m10_silent_on
+key `
+screen off
+rx Bob are you asleep?
+rxch Public Zoé @[Raphael] wake up!
+wait 500
+expect-woke 2
+expect-sounds 7
+screen on
+wait 500
+shot m11_status_silent
+
+# --- The same in French (longer strings)
+lang fr
+key m
+key enter
+expect-screen Public
+type salut @b
+shot m12_fr_picker
+key fn+`
+key bksp*10
+key fn+`
+key fn+`
+key s
+shot m13_fr_silent_setting

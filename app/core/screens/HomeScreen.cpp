@@ -1,4 +1,5 @@
 #include "HomeScreen.h"
+#include "../drivers/Mentions.h"
 #include "../Widgets.h"
 #include <stdio.h>
 
@@ -82,7 +83,9 @@ void HomeScreen::draw(App& app, lgfx::LovyanGFX& g) {
     g.setTextColor(DIM);
     g.drawString(line, MARGIN, y);
     int x = MARGIN + g.textWidth("00:00 ");
-    snprintf(line, sizeof(line), "%s: %s%s", c->name, c->lastOutgoing ? tr("me > ", "moi > ") : "", c->last);
+    char preview[MSG_TEXT_MAX + 1];
+    MentionText::toDisplay(c->last, preview, sizeof(preview), nullptr, 0);   // "@[name]" -> "@name"
+    snprintf(line, sizeof(line), "%s: %s%s", c->name, c->lastOutgoing ? tr("me > ", "moi > ") : "", preview);
     fitText(g, line, SCREEN_W - x - MARGIN - 6, fitted, sizeof(fitted));
     g.setTextColor(c->unread ? FG : DIM);
     g.drawString(fitted, x, y);

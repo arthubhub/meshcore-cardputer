@@ -4,7 +4,7 @@
 
 What the MeshCore firmware for the M5Stack Cardputer ADV + Cap LoRa-1262 could do next, feature by feature, with a priority and a size for each item. This file is generated: change [`roadmap.json`](roadmap.json), then run `python3 tools/roadmap.py`.
 
-Last updated 2026-11-18 · 66 open items · 21 done.
+Last updated 2026-11-18 · 67 open items · 21 done.
 
 ## How to read it
 
@@ -22,11 +22,11 @@ Last updated 2026-11-18 · 66 open items · 21 done.
 | Release & CI | · | · | 5 | 4 |
 | Companion sync | · | 2 | 6 | 1 |
 | Radio tools | · | · | 5 | 5 |
-| Messaging | 2 | · | 10 | 2 |
+| Messaging | 3 | · | 9 | 2 |
 | GPS & map | 1 | · | 8 | 2 |
 | Connectivity | · | · | 4 | · |
 | Power | · | · | 4 | · |
-| UX | · | 1 | 5 | 1 |
+| UX | 1 | 1 | 5 | 1 |
 | Security | · | · | 4 | · |
 | Hardware extras | · | · | 2 | · |
 
@@ -34,7 +34,9 @@ Last updated 2026-11-18 · 66 open items · 21 done.
 
 - **[VALIDATION-11](#validation-11)** A full contact list silently refuses new contacts · P0 · S
 - **[VALIDATION-13](#validation-13)** A busy mesh pushes friends out of a full contact list · P0 · L
+- **[UX-8](#ux-8)** Silent mode: messages without lighting the screen · P1 · S
 - **[MESSAGING-11](#messaging-11)** Update a contact's position from a message · P1 · M
+- **[MESSAGING-13](#messaging-13)** Mention people in messages · P1 · M
 - **[VALIDATION-10](#validation-10)** Find and fix the compass bugs · P1 · M
 - **[MESSAGING-12](#messaging-12)** Archive of every node heard, beyond the 100 contacts · P1 · XL
 - **[MAP-2](#map-2)** Navigate to a contact or waypoint · P2 · S
@@ -369,7 +371,7 @@ Done: tested on the device on 2026-11-08, works. Settings > Region: free name, '
 | [MESSAGING-8](#messaging-8) | Emoji and other scripts ★ | P1 | M | Backlog | · |
 | [MESSAGING-11](#messaging-11) | Update a contact's position from a message ★ | P1 | M | In progress | VALIDATION-1 |
 | [MESSAGING-12](#messaging-12) | Archive of every node heard, beyond the 100 contacts ★ | P1 | XL | In progress | VALIDATION-11 |
-| [MESSAGING-13](#messaging-13) | Mention people in messages ★ | P1 | M | Backlog | · |
+| [MESSAGING-13](#messaging-13) | Mention people in messages ★ | P1 | M | In progress | · |
 | [MESSAGING-14](#messaging-14) | Search contacts, in memory and on the SD card ★ | P1 | M | Backlog | MESSAGING-12 |
 | [MESSAGING-9](#messaging-9) | From a message to the sender's profile ★ | P1 | M | Done | VALIDATION-1 |
 | [MESSAGING-10](#messaging-10) | Keep the route of each message ★ | P1 | M | Done | · |
@@ -436,9 +438,9 @@ Requested by the project owner on 2026-11-07, redesigned on 2026-11-10 after the
 
 #### MESSAGING-13
 
-**Mention people in messages** ★ · P1 · M · Backlog
+**Mention people in messages** ★ · P1 · M · In progress
 
-Requested by the project owner on 2026-11-08: tag people in a message, mainly on channels. Format, given by the project owner: "@[contact name]", as the MeshCore phone app writes it. (1) Typing @ in the compose line proposes the contacts at once, then narrows the list letter by letter (contacts and the recent senders of the conversation, favourites first); Enter inserts @[name]. (2) In the bubbles, a mention is drawn as the name on a small highlight, not as the raw text with its brackets. (3) A received message mentioning my name is highlighted and notified like a direct message, even on a busy channel. Names may contain spaces and accents: the closing bracket ends the name. Shares the contact search of MESSAGING-14.
+Requested by the project owner on 2026-11-08; built 2026-11-18, awaiting a test on the device with another node. Format, given by the project owner: "@[contact name]", as the MeshCore phone app writes it; the closing bracket ends the name (spaces and accents allowed). (1) Typing @ at the start or after a space opens a list above the compose line: favourites, then the recent senders of the conversation, then the other people in the contacts; each letter narrows it (names starting with the letters first, then names with a word starting with them; case and accents ignored). Fn+; / Fn+. choose, Enter or Tab inserts "@[name] ", Fn+` closes the list. (2) Bubbles, the conversation list, the home screen and banners show "@name" on a highlight, not the brackets; a mention of me is orange and outlines the bubble. (3) A channel message mentioning my name is a MENTION event, notified like a direct message (banner "@ you, <channel>", the direct-message sound). Portable: core/drivers/Mentions (MentionText, MentionPicker), unit tests and the scenario mentions.txt. MESSAGING-14's contact search can reuse MentionPicker's matching.
 
 #### MESSAGING-14
 
@@ -616,6 +618,7 @@ A calibrated discharge curve for the 1500 mAh cell, charging state and an estima
 | [UX-4](#ux-4) | Larger text option | P3 | M | Backlog | · |
 | [UX-5](#ux-5) | More interface languages | P3 | M | Backlog | · |
 | [UX-6](#ux-6) | Automatic daylight saving time | P2 | S | Backlog | · |
+| [UX-8](#ux-8) | Silent mode: messages without lighting the screen ★ | P1 | S | In progress | · |
 | [UX-7](#ux-7) | English and French interface | P1 | M | Done | · |
 
 #### UX-1
@@ -653,6 +656,12 @@ tr(en, fr) is fine for two languages. A third (German, Spanish) calls for a tabl
 **Automatic daylight saving time** · P2 · S · Backlog
 
 The time zone is a fixed offset (UTC+1 / +2 by hand). Add EU and US DST rules selected from the time-zone setting, so message times are right all year.
+
+#### UX-8
+
+**Silent mode: messages without lighting the screen** ★ · P1 · S · In progress
+
+Requested by the project owner on 2026-11-18: every message received lit the screen up. Settings > Silent mode: off (as before), "for me only" (only direct messages and mentions of me - MESSAGING-13 - wake the screen and sound), on (nothing wakes it or sounds; messages are stored and counted). Banners still show while the screen is on; a bell in the status bar shows the mode (crossed out when on). One rule for banners, sounds and waking: core/drivers/NotifyPolicy, unit-tested; the simulator's 'screen off' / 'expect-woke' check it end to end (scenario mentions.txt). New setting at the end of the settings file (older files load with the mode off). Built 2026-11-18, awaiting a test on the device.
 
 #### UX-7
 

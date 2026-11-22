@@ -14,6 +14,8 @@
 #include "../../core/drivers/FloodOptions.h"
 #include "../../core/drivers/GpsLink.h"
 #include "../../core/drivers/MapProjection.h"
+#include "../../core/drivers/Mentions.h"
+#include "../../core/drivers/NotifyPolicy.h"
 #include "../../core/drivers/NodeArchive.h"
 #include "../../core/drivers/NodeBook.h"
 #include "../../core/drivers/NodeMatchCache.h"
@@ -2676,6 +2678,138 @@ TEST(node_match_cache_answers_until_it_is_stale) {
   CHECK(c.get(newest, 2, false, 7000, out, 1, count));
   c.clear();
   CHECK(!c.get(newest, 2, false, 7000, out, 1, count));
+}
+
+// ============================================================ Mentions (MESSAGING-13)
+
+TEST(mentions_are_found_with_spaces_and_accents) {
+  const char* t = "hi @[Élodie B] and @[Bob], not @Bob nor @[open or @[] or a@[x]";
+  MentionSpan s[8];
+  const int n = MentionText::find(t, s, 8);
+  CHECK_EQ(n, 3);                       // "a@[x]" counts too: the format, not the context, makes a mention
+  CHECK_EQ(s[0].start, 3);
+  CHECK(strncmp(t + s[0].nameStart, "Élodie B", s[0].nameLen) == 0);
+  CHECK(strncmp(t + s[1].nameStart, "Bob", s[1].nameLen) == 0);
+  CHECK(MentionText::mentions(t, "elodie b"));   // case and accents ignored
+  CHECK(MentionText::mentions(t, "BOB"));
+  CHECK(!MentionText::mentions(t, "Bo"));
+  CHECK(!MentionText::mentions(t, ""));
+  CHECK(!MentionText::mentions("@[" "abcdefghijabcdefghijabcdefghijabc]", "abcdefghijabcdefghijabcdefghijabc"));   // too long
+}
+
+TEST(mentions_display_without_brackets) {
+  char out[64];
+  MentionSpan s[4];
+  const int n = MentionText::toDisplay("@[Ann Lee]: ok @[Bob]!", out, sizeof(out), s, 4);
+  CHECK(strcmp(out, "@Ann Lee: ok @Bob!") == 0);
+  CHECK_EQ(n, 2);
+  CHECK_EQ(s[0].start, 0);
+  CHECK_EQ(s[0].len, 8);
+  CHECK_EQ(s[1].start, 13);
+  CHECK(strncmp(out + s[1].nameStart, "Bob", s[1].nameLen) == 0);
+  CHECK_EQ(MentionText::toDisplay("plain text", out, sizeof(out), s, 4), 0);
+  CHECK(strcmp(out, "plain text") == 0);
+  char tiny[6];
+  MentionText::toDisplay("@[Alexandra]", tiny, sizeof(tiny), s, 4);   // cut, still terminated
+  CHECK_EQ(strlen(tiny), 5u);
+}
+
+TEST(mentions_fold_french_letters) {
+  char f[32];
+  MentionText::fold("ÉLÈVE Çà Ôù", f, sizeof(f));
+  CHECK(strcmp(f, "eleve ca ou") == 0);
+  CHECK(MentionText::sameName("Zoé", "ZOE"));
+  CHECK(!MentionText::sameName("Zoé", "Zo"));
+}
+
+namespace mention_test {
+struct Names : MentionSource {
+  std::vector<std::string> v;
+  int count() override { return (int)v.size(); }
+  bool name(int i, char* out, size_t n) override { snprintf(out, n, "%s", v[i].c_str()); return true; }
+};
+}
+
+TEST(mention_picker_follows_the_typing) {
+  mention_test::Names src;
+  src.v = {"Élodie", "Bob", "Uncle Bob", "bobby", "Alice", "Bob"};   // favourites first; "Bob" twice (contact + sender)
+  MentionPicker p;
+  char draft[64] = "hello";
+  p.update(draft, src);
+  CHECK(!p.open());
+  strcat(draft, " @");
+  p.update(draft, src);
+  CHECK(p.open());
+  CHECK_EQ(p.count(), MentionPicker::MAX);   // every name, in order
+  CHECK(strcmp(p.suggestion(0), "Élodie") == 0);
+  strcat(draft, "bo");
+  p.update(draft, src);
+  CHECK_EQ(p.count(), 3);                    // Bob, bobby first (start), then Uncle Bob (a word); Bob once
+  CHECK(strcmp(p.suggestion(0), "Bob") == 0);
+  CHECK(strcmp(p.suggestion(1), "bobby") == 0);
+  CHECK(strcmp(p.suggestion(2), "Uncle Bob") == 0);
+  p.move(1);
+  p.move(1);
+  CHECK(p.accept(draft, sizeof(draft)));
+  CHECK(strcmp(draft, "hello @[Uncle Bob] ") == 0);
+  CHECK(!p.open());
+  p.update(draft, src);                      // typing goes on: no reopening
+  CHECK(!p.open());
+
+  char d2[64] = "@el";                       // at the start of the text
+  p.update("@", src);
+  p.update(d2, src);
+  CHECK(p.open() && p.count() == 1);
+  d2[0] = 0;                                 // the "@" deleted
+  p.update(d2, src);
+  CHECK(!p.open());
+
+  char mail[64] = "me@";                     // inside a word: an address, not a mention
+  p.update(mail, src);
+  CHECK(!p.open());
+
+  char full[24] = "x @";
+  p.update(full, src);
+  strcat(full, "unc");
+  p.update(full, src);
+  CHECK(!p.accept(full, 12));                // "@[Uncle Bob] " does not fit: refused, draft unchanged
+  CHECK(strcmp(full, "x @unc") == 0);
+}
+
+
+TEST(notify_policy_follows_the_silent_mode) {
+  MeshEvent dm, ch, me, fail, fresh;
+  dm.type = MeshEvent::MESSAGE;
+  dm.key.kind = ConvKey::DIRECT;
+  ch.type = MeshEvent::MESSAGE;
+  ch.key.kind = ConvKey::CHANNEL;
+  me.type = MeshEvent::MENTION;
+  me.key.kind = ConvKey::CHANNEL;
+  fail.type = MeshEvent::FAILED;
+  fresh.type = MeshEvent::CONTACT_NEW;
+  // Everything (the default): as before the silent mode
+  CHECK(NotifyPolicy::decide(ch, WAKE_ALL).wake && NotifyPolicy::decide(ch, WAKE_ALL).sound);
+  CHECK(NotifyPolicy::decide(ch, WAKE_ALL).soundKind == SOUND_CHANNEL_MSG);
+  CHECK(NotifyPolicy::decide(dm, WAKE_ALL).soundKind == SOUND_DIRECT_MSG);
+  CHECK(NotifyPolicy::decide(fresh, WAKE_ALL).wake && !NotifyPolicy::decide(fresh, WAKE_ALL).sound);
+  CHECK(NotifyPolicy::decide(me, WAKE_ALL).soundKind == SOUND_DIRECT_MSG);   // a mention sounds like a DM
+  // For me only: a busy channel stays dark and quiet, a DM or a mention does not
+  CHECK(!NotifyPolicy::decide(ch, WAKE_TO_ME).wake && !NotifyPolicy::decide(ch, WAKE_TO_ME).sound);
+  CHECK(NotifyPolicy::decide(ch, WAKE_TO_ME).banner);                        // shown if the screen is on
+  CHECK(NotifyPolicy::decide(dm, WAKE_TO_ME).wake && NotifyPolicy::decide(dm, WAKE_TO_ME).sound);
+  CHECK(NotifyPolicy::decide(me, WAKE_TO_ME).wake && NotifyPolicy::decide(me, WAKE_TO_ME).sound);
+  CHECK(!NotifyPolicy::decide(fail, WAKE_TO_ME).wake);
+  // Silent: nothing wakes or sounds
+  CHECK(!NotifyPolicy::decide(dm, WAKE_NEVER).wake && !NotifyPolicy::decide(dm, WAKE_NEVER).sound);
+  CHECK(!NotifyPolicy::decide(me, WAKE_NEVER).wake);
+  CHECK(NotifyPolicy::decide(dm, WAKE_NEVER).banner);
+  CHECK(!NotifyPolicy::soundOnScreen(ch, WAKE_NEVER));
+  CHECK(!NotifyPolicy::soundOnScreen(ch, WAKE_TO_ME));
+  CHECK(NotifyPolicy::soundOnScreen(me, WAKE_TO_ME));
+  CHECK(NotifyPolicy::soundOnScreen(ch, WAKE_ALL));
+  MeshEvent ack;
+  ack.type = MeshEvent::DELIVERED;
+  CHECK(!NotifyPolicy::decide(ack, WAKE_ALL).banner && !NotifyPolicy::decide(ack, WAKE_ALL).wake);
 }
 
 int main(int argc, char** argv) {

@@ -1,4 +1,5 @@
 #include "CardputerMesh.h"
+#include "../core/drivers/Mentions.h"
 #include <CpadvLog.h>
 #if !CPADV_DEMO
 #include "../core/RadioPresets.h"
@@ -694,8 +695,9 @@ void CardputerMesh::onChannelMessageRecv(const mesh::GroupChannel& channel, mesh
   _store.append(k, ch.name, m, true);
   char preview[64];
   snprintf(preview, sizeof(preview), "%s: %s", m.sender, m.text);
-  pushEvent(MeshEvent::MESSAGE, k, ch.name, preview);
-  CPLOG_I("MESH", "channel %s msg (%u hops, snr %.1f)", ch.name, m.hops, pkt->getSNR());
+  const bool mentionsMe = MentionText::mentions(m.text, selfName());   // "@[my name]": notified like a direct message
+  pushEvent(mentionsMe ? MeshEvent::MENTION : MeshEvent::MESSAGE, k, ch.name, preview);
+  CPLOG_I("MESH", "channel %s msg (%u hops, snr %.1f)%s", ch.name, m.hops, pkt->getSNR(), mentionsMe ? ", mentions me" : "");
 }
 
 void CardputerMesh::onAdvertRecv(mesh::Packet* packet, const mesh::Identity& id, uint32_t timestamp,

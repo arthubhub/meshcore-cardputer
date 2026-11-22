@@ -18,6 +18,15 @@ il s'agit d'un seul et même nœud.
 L'interface est en anglais par défaut ; le français se choisit en un réglage
 (*Settings → Language / Langue*).
 
+**Taguer quelqu'un.** Dans une conversation, tapez **@** : la liste de vos contacts et des personnes qui ont écrit
+récemment apparaît et se réduit à chaque lettre ; **Entrée** tague le nom en surbrillance. Un message qui vous tague
+ressort en orange et vous prévient comme un message privé, même sur un canal animé. Les tags ont la même forme
+`@[nom]` que dans l'application MeshCore pour téléphone.
+
+Le **mode silencieux** (*Réglages → Mode silencieux*) garde le Cardputer allumé sans rallumer l'écran : *pour moi*
+ne le rallume que pour les messages privés et ceux qui vous taguent, *oui* ne le rallume jamais et ne sonne plus. Les
+messages arrivent quand même et sont comptés ; une cloche dans la barre du haut indique le mode.
+
 <table>
 <tr><td align="center" width="33%"><img src="docs/images/readme_fr_home.png" alt="Accueil : derniers messages et voisins" width="100%"><br><sub>Accueil : derniers messages et voisins</sub></td><td align="center" width="33%"><img src="docs/images/readme_fr_chat.png" alt="Conversation avec accusés de réception" width="100%"><br><sub>Conversation avec accusés de réception</sub></td><td align="center" width="33%"><img src="docs/images/readme_fr_gps.png" alt="État du GPS" width="100%"><br><sub>État du GPS</sub></td></tr>
 <tr><td align="center" width="33%"><img src="docs/images/readme_fr_compass.png" alt="Boussole pointant vers un contact" width="100%"><br><sub>Boussole pointant vers un contact</sub></td><td align="center" width="33%"><img src="docs/images/readme_fr_map.png" alt="Carte hors ligne avec les contacts" width="100%"><br><sub>Carte hors ligne avec les contacts</sub></td><td align="center" width="33%"><img src="docs/images/readme_fr_settings.png" alt="Réglages, avec le choix de la langue" width="100%"><br><sub>Réglages, avec le choix de la langue</sub></td></tr>

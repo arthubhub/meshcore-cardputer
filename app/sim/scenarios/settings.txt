@@ -56,6 +56,12 @@ key .
 key enter
 expect-setting sound 0
 key .
+expect-setting wake 0
+key /
+expect-setting wake 1
+key ,
+expect-setting wake 0
+key .
 key enter
 expect-setting share 1
 shot 13_settings_bottom

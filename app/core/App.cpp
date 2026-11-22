@@ -1,5 +1,7 @@
 #include "App.h"
 #include "Widgets.h"
+#include "drivers/NotifyPolicy.h"
+#include "drivers/Mentions.h"
 #include <stdio.h>
 
 using namespace theme;
@@ -36,7 +38,9 @@ void App::handleKey(const KeyEvent& raw) {
 
 void App::notify(const char* title, const char* text, uint32_t ms) {
   utf8Copy(_bannerTitle, sizeof(_bannerTitle), title ? title : "");
-  utf8Copy(_bannerText, sizeof(_bannerText), text ? text : "");
+  char shown[MSG_WRAP_BUF];
+  MentionText::toDisplay(text ? text : "", shown, sizeof(shown), nullptr, 0);   // "@[name]" -> "@name"
+  utf8Copy(_bannerText, sizeof(_bannerText), shown);
   _bannerUntil = now() + ms;
   if (!_bannerUntil) _bannerUntil = 1;
   _dirty = true;
@@ -46,26 +50,32 @@ bool App::pollEvents() {
   MeshEvent ev;
   bool any = false;
   int guard = 8;   // bounded work per loop
+  const uint8_t mode = _svc.settings->get().wakeOn;
   while (guard-- && _svc.mesh->pollEvent(ev)) {
     any = true;
     _dirty = true;
+    const Notice n = NotifyPolicy::decide(ev, mode);
+    if (n.wake) _wake = true;
     Screen* s = top();
     if (s && s->onEvent(*this, ev)) continue;
     switch (ev.type) {
       case MeshEvent::MESSAGE:
         notify(ev.title, ev.text);
-        _svc.sys->playSound(ev.key.kind == ConvKey::DIRECT ? SOUND_DIRECT_MSG : SOUND_CHANNEL_MSG);
         break;
+      case MeshEvent::MENTION: {
+        char t[64];
+        snprintf(t, sizeof(t), tr("@ you, %s", "@ toi, %s"), ev.title);
+        notify(t, ev.text, 4000);
+        break;
+      }
       case MeshEvent::FAILED: {
         char t[64];
         snprintf(t, sizeof(t), tr("Not delivered: %s", "Échec d'envoi : %s"), ev.title);
         notify(t, tr("No acknowledgement received", "Pas d'accusé de réception"), 3500);
-        _svc.sys->playSound(SOUND_FAIL);
         break;
       }
       case MeshEvent::AIRTIME:
         notify(tr("Transmit time is high", "Temps d'émission élevé"), ev.text, 5000);
-        _svc.sys->playSound(SOUND_FAIL);
         break;
       case MeshEvent::CONTACTS_NEAR_FULL:
         notify(tr("Contacts almost full", "Contacts presque pleins"), ev.text, 4000);
@@ -77,7 +87,6 @@ bool App::pollEvents() {
       case MeshEvent::CONTACTS_BLOCKED:
         notify(tr("New contact refused", "Nouveau contact refusé"),
                tr("All are favourites: remove one", "Tous favoris : en retirer un"), 5000);
-        _svc.sys->playSound(SOUND_FAIL);
         break;
       case MeshEvent::CONTACT_NEW:
         notify(tr("New contact", "Nouveau contact"), ev.title, 2000);
@@ -85,13 +94,19 @@ bool App::pollEvents() {
       default:
         break;
     }
+    if (n.sound) _svc.sys->playSound(n.soundKind);
   }
   return any;
+}
+
+void App::chime(const MeshEvent& ev, SoundKind kind) {
+  if (NotifyPolicy::soundOnScreen(ev, _svc.settings->get().wakeOn)) _svc.sys->playSound(kind);
 }
 
 bool App::loop() {
   i18n::set(_svc.settings->get().language);   // follows the setting (cheap)
   pollEvents();
+  _wake = false;                               // the screen is on: nothing to wake
   if (_bannerUntil && !bannerVisible()) { _bannerUntil = 0; _dirty = true; }
   Screen* s = top();
   if (s && s->tick(*this)) _dirty = true;
@@ -182,6 +197,23 @@ void App::drawStatusBar() {
   _g.setTextColor(st.gpsFix ? COLOR_OK : DIM);
   _g.drawString(buf, x, 1);
   x -= _g.textWidth(buf) + 6;
+
+  // Silent mode: a bell, crossed out when nothing wakes the screen, with "@" when only what is for me does
+  const uint8_t wake = _svc.settings->get().wakeOn;
+  if (wake == WAKE_NEVER || wake == WAKE_TO_ME) {
+    const int bx = x - 7, by = 2;
+    const uint16_t c = wake == WAKE_NEVER ? COLOR_WARN : DIM;
+    _g.fillRoundRect(bx + 1, by, 5, 6, 2, c);   // the bell
+    _g.drawFastHLine(bx, by + 6, 7, c);
+    _g.fillRect(bx + 3, by + 7, 1, 1, c);       // its clapper
+    if (wake == WAKE_NEVER) _g.drawLine(bx - 1, by + 8, bx + 7, by - 1, COLOR_BAD);
+    x -= 10;
+    if (wake == WAKE_TO_ME) {
+      _g.setTextColor(DIM);
+      _g.drawString("@", x, 1);
+      x -= _g.textWidth("@") + 4;
+    }
+  }
 
   int unread = _svc.mesh->unreadCount();
   if (unread > 0) {

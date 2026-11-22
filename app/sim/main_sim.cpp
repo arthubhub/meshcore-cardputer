@@ -56,7 +56,7 @@
 //   shot <name>                    write <output_dir>/<name>.png
 //   expect-screen <title>          fail (exit 1) if the current screen title differs
 //   expect-unread <n>              fail if the unread counter differs
-//   expect-setting <field> <value> name|preset|tx|tz|timeout|brightness|sound|share|lang (tz in minutes, bools 0/1)
+//   expect-setting <field> <value> name|preset|tx|tz|timeout|brightness|sound|share|lang|wake (tz in minutes, bools 0/1)
 //   expect-convs <n>               number of conversations
 //   expect-msgs <conv> <n>         number of stored messages in a conversation (by name)
 //   expect-last <conv> <state> [text...]  state of the newest message: received|pending|sent|delivered|failed|channel
@@ -64,6 +64,8 @@
 //   contacts-max <n>               most contacts kept (100 on the Cardputer)
 //   expect-has-contact <name> 0|1  whether a contact is in the list
 //   expect-sounds <n>              number of notification sounds played so far
+//   screen off|on                  the screen sleeps: events only, like the firmware (a notice may wake it)
+//   expect-woke <n>                times the screen was woken by a notice (silent mode, NotifyPolicy)
 //
 // Fake hardware (real drivers of core/drivers against the fake chips of fakes/, see HwRig.h).
 // With SIM_HW=1 in the environment the keyboard mode is on from the start ("make run" runs every
@@ -235,6 +237,8 @@ int main(int argc, char** argv) {
     printf("[SIM] fake hardware keyboard: keys go through the TCA8418 driver\n");
   }
   bool capP0 = false;
+  bool screenOff = false;      // `screen off`: the firmware's loop while the screen sleeps (events only, no drawing)
+  int woke = 0;
 
   auto runFor = [&](uint32_t ms) {
     uint32_t end = sys.virtualMillis + ms;
@@ -242,7 +246,14 @@ int main(int argc, char** argv) {
       hw.tick(sys.virtualMillis, [&](const KeyEvent& e) { app.handleKey(e); });
       if (demo) demoGps.tick();
       mesh.tick();
-      if (app.loop()) g_frames++;
+      if (screenOff) {
+        if (app.pollEvents() && app.takeWakeRequest()) {   // as app/device/main.cpp
+          screenOff = false;
+          woke++;
+        }
+      } else if (app.loop()) {
+        g_frames++;
+      }
       if (sys.virtualMillis >= end) break;
       sys.virtualMillis += LOOP_MS;
     } while (true);
@@ -535,6 +546,7 @@ int main(int argc, char** argv) {
       else if (field == "sound") got = std::to_string(s.sound);
       else if (field == "ble") got = std::to_string(s.ble);
       else if (field == "share") got = std::to_string(s.shareLocation);
+      else if (field == "wake") got = std::to_string(s.wakeOn);
       else if (field == "brightness") got = std::to_string(s.brightness);
       else if (field == "lang") got = s.language == LANG_FR ? "fr" : "en";
       else if (field == "pathbytes") got = std::to_string(s.pathHashBytes);
@@ -582,6 +594,11 @@ int main(int argc, char** argv) {
     } else if (cmd == "expect-nearby") {
       int want = 0; ls >> want;
       if (want != mesh.discovery().count()) { fprintf(stderr, "line %d: FAIL expected %d nearby repeaters, got %d\n", lineNo, want, mesh.discovery().count()); g_failures++; }
+    } else if (cmd == "screen") {
+      std::string v; ls >> v; screenOff = v == "off";
+    } else if (cmd == "expect-woke") {
+      int want = 0; ls >> want;
+      if (want != woke) { fprintf(stderr, "line %d: FAIL expected the screen woken %d times, got %d\n", lineNo, want, woke); g_failures++; }
     } else if (cmd == "expect-sounds") {
       int want = 0; ls >> want;
       if (want != sys.sounds) { fprintf(stderr, "line %d: FAIL expected %d sounds, got %d\n", lineNo, want, sys.sounds); g_failures++; }

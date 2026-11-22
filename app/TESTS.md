@@ -208,6 +208,24 @@ La liste du mode clavier garde 100 contacts. Sur un réseau chargé, elle se rem
 - [ ] La conversation d'un contact remplacé reste dans Messages.
 - [ ] Après un redémarrage, la liste reprend les mêmes 100 contacts.
 
+## Tags « @[nom] » (MESSAGING-13) et mode silencieux (UX-8)
+
+Vérifié dans le simulateur (`scenarios/mentions.txt`, en anglais et en français). À vérifier sur l'appareil, avec un
+autre nœud (le téléphone en mode companion, ou un second Cardputer) :
+
+- [ ] Dans une conversation, taper `@` (Maj + 2) : la liste des contacts apparaît au-dessus de la ligne de saisie,
+      favoris d'abord, puis les dernières personnes qui ont écrit. Chaque lettre réduit la liste.
+- [ ] `Fn+;` / `Fn+.` choisit, `Entrée` insère `@[nom] `, `Fn+`` ` ferme la liste sans quitter la conversation.
+- [ ] Le message envoyé s'affiche `@nom` sur fond surligné ; l'application téléphone le reçoit sous la forme `@[nom]`.
+- [ ] Depuis l'autre nœud, envoyer sur un canal `@[<nom du Cardputer>] test` : la bulle a un cadre orange, le nom
+      ressort en orange, la bannière dit « @ you, <canal> » et le son est celui d'un message privé.
+      Log : `channel <canal> msg (... ) , mentions me`.
+- [ ] Réglages → Mode silencieux → `pour moi` : écran éteint, un message ordinaire sur un canal ne rallume pas l'écran
+      ni ne sonne ; un message privé ou un tag le rallume.
+- [ ] Mode silencieux `oui` : rien ne rallume l'écran ni ne sonne ; les messages sont comptés (`*N` en haut).
+- [ ] La cloche s'affiche dans la barre du haut dans ces deux modes (barrée en rouge pour `oui`).
+- [ ] Après un redémarrage, le réglage est conservé (`settings loaded (78/78 bytes)` ; un ancien fichier donne `76/78` et le mode reste désactivé).
+
 ## Archive des nœuds entendus (MESSAGING-12, étapes 1 à 5)
 
 Tout nœud entendu (personnes, routeurs, salons, capteurs) est gardé sur la flash, dans `/nodes/0` à `/nodes/7`.
