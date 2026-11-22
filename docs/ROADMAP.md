@@ -4,7 +4,7 @@
 
 What the MeshCore firmware for the M5Stack Cardputer ADV + Cap LoRa-1262 could do next, feature by feature, with a priority and a size for each item. This file is generated: change [`roadmap.json`](roadmap.json), then run `python3 tools/roadmap.py`.
 
-Last updated 2026-11-18 · 69 open items · 21 done.
+Last updated 2026-11-18 · 70 open items · 21 done.
 
 ## How to read it
 
@@ -26,7 +26,7 @@ Last updated 2026-11-18 · 69 open items · 21 done.
 | GPS & map | 1 | · | 8 | 2 |
 | Connectivity | · | · | 4 | · |
 | Power | · | · | 4 | · |
-| UX | 2 | 1 | 5 | 1 |
+| UX | 3 | 1 | 5 | 1 |
 | Security | · | · | 4 | · |
 | Hardware extras | · | · | 2 | · |
 
@@ -38,6 +38,7 @@ Last updated 2026-11-18 · 69 open items · 21 done.
 - **[MESSAGING-11](#messaging-11)** Update a contact's position from a message · P1 · M
 - **[MESSAGING-13](#messaging-13)** Mention people in messages · P1 · M
 - **[RADIO-11](#radio-11)** Radio presets outside the EU, and custom values · P1 · M
+- **[UX-10](#ux-10)** Navigation menu: dashboard and sliding pages · P1 · M
 - **[VALIDATION-10](#validation-10)** Find and fix the compass bugs · P1 · M
 - **[MESSAGING-12](#messaging-12)** Archive of every node heard, beyond the 100 contacts · P1 · XL
 - **[MAP-2](#map-2)** Navigate to a contact or waypoint · P2 · S
@@ -629,6 +630,7 @@ A calibrated discharge curve for the 1500 mAh cell, charging state and an estima
 | [UX-6](#ux-6) | Automatic daylight saving time | P2 | S | Backlog | · |
 | [UX-8](#ux-8) | Silent mode: messages without lighting the screen ★ | P1 | S | In progress | · |
 | [UX-9](#ux-9) | UI themes, built-in and from the SD card ★ | P2 | M | In progress | · |
+| [UX-10](#ux-10) | Navigation menu: dashboard and sliding pages ★ | P1 | M | In progress | · |
 | [UX-7](#ux-7) | English and French interface | P1 | M | Done | · |
 
 #### UX-1
@@ -678,6 +680,12 @@ Requested by the project owner on 2026-11-18: every message received lit the scr
 **UI themes, built-in and from the SD card** ★ · P2 · M · In progress
 
 Requested by the project owner on 2026-11-18: add new and custom UI themes. Built 2026-11-18, awaiting a test on the device. The colours are a palette of 13 roles (core/drivers/Palette.h): the screens keep reading theme::BG, theme::FG... which became variables set by theme::apply(). Built-in: Dark (the original colours), Light (sunlight), High contrast, Night (red only), Amber; a developer adds one in ThemeCatalog's table, and a unit test refuses a built-in theme whose text is too close to its background (WCAG ratios: 4.5:1 text, 3:1 dim text and accents). Users add themes as text files on the SD card (/themes/*.txt, up to 8; format and examples in docs/themes): a base theme plus the colours to change; bad lines and hard-to-read pairs are logged. The setting stores the theme's name (a file removed from the card falls back to Dark). Map overlay colours (route, markers) stay fixed: they are tuned for the map tiles.
+
+#### UX-10
+
+**Navigation menu: dashboard and sliding pages** ★ · P1 · M · In progress
+
+Requested by the project owner on 2026-11-18: instead of a navigation by letters, a main dashboard, then sliding sideways or a list to reach each part, keys still working. Built 2026-11-18, awaiting a test on the device. The home screen is a carousel: page 1 the dashboard (identity and radio, latest messages, neighbours), then one page per section with its icon, title, a live summary (unread, contacts, GPS fix, map zoom, repeaters, packets, radio preset and theme) and its letter. , / slide (0.16 s, eased; core/drivers/Carousel, unit-tested), Enter opens, . opens the list (MenuScreen), the letters M C G K N P S open their section from any page. The packet log has its own page now. Sections are registered (HomeScreen::addSection): the packet tracer adds its page the same way. Icons are drawn with shapes in the theme's colours (Icons.cpp).
 
 #### UX-7
 

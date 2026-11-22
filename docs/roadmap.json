@@ -1092,6 +1092,17 @@
       "details": "Requested by the project owner on 2026-11-18: add new and custom UI themes. Built 2026-11-18, awaiting a test on the device. The colours are a palette of 13 roles (core/drivers/Palette.h): the screens keep reading theme::BG, theme::FG... which became variables set by theme::apply(). Built-in: Dark (the original colours), Light (sunlight), High contrast, Night (red only), Amber; a developer adds one in ThemeCatalog's table, and a unit test refuses a built-in theme whose text is too close to its background (WCAG ratios: 4.5:1 text, 3:1 dim text and accents). Users add themes as text files on the SD card (/themes/*.txt, up to 8; format and examples in docs/themes): a base theme plus the colours to change; bad lines and hard-to-read pairs are logged. The setting stores the theme's name (a file removed from the card falls back to Dark). Map overlay colours (route, markers) stay fixed: they are tuned for the map tiles."
     },
     {
+      "id": "UX-10",
+      "title": "Navigation menu: dashboard and sliding pages",
+      "category": "UX",
+      "priority": 1,
+      "size": "M",
+      "status": "in-progress",
+      "requested": true,
+      "depends_on": [],
+      "details": "Requested by the project owner on 2026-11-18: instead of a navigation by letters, a main dashboard, then sliding sideways or a list to reach each part, keys still working. Built 2026-11-18, awaiting a test on the device. The home screen is a carousel: page 1 the dashboard (identity and radio, latest messages, neighbours), then one page per section with its icon, title, a live summary (unread, contacts, GPS fix, map zoom, repeaters, packets, radio preset and theme) and its letter. , / slide (0.16 s, eased; core/drivers/Carousel, unit-tested), Enter opens, . opens the list (MenuScreen), the letters M C G K N P S open their section from any page. The packet log has its own page now. Sections are registered (HomeScreen::addSection): the packet tracer adds its page the same way. Icons are drawn with shapes in the theme's colours (Icons.cpp)."
+    },
+    {
       "id": "SECURITY-1",
       "title": "Encrypt the SD backup",
       "category": "Security",
