@@ -4,6 +4,7 @@
 #include "../../core/KeyMatrix.h"
 #include "../../core/Services.h"
 #include "../../core/drivers/AirtimeMeter.h"
+#include "../../core/drivers/BucketStore.h"
 #include "../../core/drivers/ContactCapacity.h"
 #include "../../core/drivers/ContactPosition.h"
 #include "../../core/drivers/PositionBook.h"
@@ -13,18 +14,24 @@
 #include "../../core/drivers/FloodOptions.h"
 #include "../../core/drivers/GpsLink.h"
 #include "../../core/drivers/MapProjection.h"
+#include "../../core/drivers/NodeArchive.h"
+#include "../../core/drivers/NodeBook.h"
+#include "../../core/drivers/NodeMatchCache.h"
 #include "../../core/drivers/NodeDiscovery.h"
 #include "../../core/drivers/PacketLog.h"
 #include "../../core/drivers/RouteResolver.h"
+#include "../../core/drivers/StoreBench.h"
 #include "../../core/drivers/Pi4ioe.h"
 #include "../../core/drivers/Tca8418.h"
 #include "../../core/drivers/TileGrid.h"
 #include "../../core/drivers/TileRasterizer.h"
 #include "../fakes/FakeGpsUart.h"
 #include "../fakes/FakeI2c.h"
+#include "../fakes/FakeStorage.h"
 
 #include <functional>
 #include <map>
+#include <memory>
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
@@ -1687,6 +1694,989 @@ TEST(contact_capacity_warns_once_per_level) {
 }
 
 // ============================================================ main
+
+// ============================================================ BucketStore (MESSAGING-12, step 1)
+
+namespace bucket_test {
+constexpr uint16_t REC = 96, MAXREC = 42;
+
+BucketStore::Layout layout(uint16_t version = 1) {
+  BucketStore::Layout l;
+  l.prefix = "/nb";
+  l.magic = 0x3142444e;   // "NDB1"
+  l.version = version;
+  l.recordSize = REC;
+  l.buckets = 128;
+  l.maxRecords = MAXREC;
+  return l;
+}
+
+// `n` records whose bytes all say `tag` and their index: two contents never look alike
+std::vector<uint8_t> records(uint8_t tag, int n) {
+  std::vector<uint8_t> v((size_t)REC * n);
+  for (int i = 0; i < n; i++) memset(v.data() + (size_t)i * REC, tag ^ (uint8_t)(i * 7), REC);
+  return v;
+}
+
+bool holds(BucketStore& st, uint16_t b, const std::vector<uint8_t>& want, BucketStore::Status* status = nullptr) {
+  std::vector<uint8_t> buf(st.bufferBytes(), 0xEE);
+  uint16_t count = 0xFFFF;
+  BucketStore::Status s = st.load(b, buf.data(), count);
+  if (status) *status = s;
+  return (size_t)count * REC == want.size() && memcmp(buf.data(), want.data(), want.size()) == 0;
+}
+}  // namespace bucket_test
+
+TEST(bucket_store_crc_is_the_zlib_one) {
+  CHECK_EQ(BucketStore::crc32(0, "123456789", 9), 0xCBF43926u);
+  CHECK_EQ(BucketStore::crc32(BucketStore::crc32(0, "1234", 4), "56789", 5), 0xCBF43926u);   // in pieces
+}
+
+TEST(bucket_store_a_full_bucket_fits_one_flash_block) {
+  FakeStorage disk;
+  BucketStore st(disk, bucket_test::layout());
+  CHECK(st.valid());
+  CHECK(st.fileBytes(bucket_test::MAXREC) <= 4096);
+  CHECK_EQ(st.bufferBytes(), 96u * 42u);
+}
+
+TEST(bucket_store_round_trip) {
+  using namespace bucket_test;
+  FakeStorage disk;
+  BucketStore st(disk, layout());
+  std::vector<uint8_t> none;
+  BucketStore::Status s;
+  CHECK(holds(st, 5, none, &s));
+  CHECK(s == BucketStore::Status::Empty);
+
+  const std::vector<uint8_t> a = records(0x11, 3), b = records(0x22, MAXREC);
+  CHECK(st.save(5, a.data(), 3));
+  CHECK(st.save(0x7f, b.data(), MAXREC));
+  CHECK(disk.exists("/nb05"));
+  CHECK(disk.exists("/nb7f"));
+  CHECK(!disk.exists("/nb05.new"));
+  CHECK_EQ(disk.files["/nb05"].size(), st.fileBytes(3));
+  CHECK(holds(st, 5, a, &s));
+  CHECK(s == BucketStore::Status::Ok);
+  CHECK(holds(st, 0x7f, b));
+
+  BucketStore again(disk, layout());   // after a restart
+  CHECK(holds(again, 5, a));
+
+  const std::vector<uint8_t> shorter = records(0x33, 1);   // a smaller file replaces a bigger one whole
+  CHECK(st.save(5, shorter.data(), 1));
+  CHECK(holds(st, 5, shorter));
+  CHECK_EQ(disk.files["/nb05"].size(), st.fileBytes(1));
+
+  CHECK(st.save(5, nullptr, 0));       // emptied: no file left
+  CHECK(!disk.exists("/nb05"));
+  CHECK(holds(st, 5, none, &s));
+  CHECK(s == BucketStore::Status::Empty);
+}
+
+TEST(bucket_store_refuses_what_cannot_fit) {
+  using namespace bucket_test;
+  FakeStorage disk;
+  BucketStore st(disk, layout());
+  const std::vector<uint8_t> big = records(1, MAXREC + 1);
+  g_coreLogCapture.clear();
+  CHECK(!st.save(3, big.data(), MAXREC + 1));
+  CHECK(!st.save(128, big.data(), 1));          // no bucket 128
+  CHECK(logHas("save of bucket 3 refused"));
+  CHECK(disk.files.empty());
+  uint16_t count = 9;
+  std::vector<uint8_t> buf(st.bufferBytes());
+  CHECK(st.load(128, buf.data(), count) == BucketStore::Status::Failed);
+  CHECK_EQ(count, 0);
+
+  BucketStore::Layout l = layout();
+  l.recordSize = 0;
+  BucketStore broken(disk, l);
+  CHECK(!broken.valid());
+  CHECK(logHas("unusable layout"));
+  CHECK(broken.load(0, buf.data(), count) == BucketStore::Status::Failed);
+  CHECK(!broken.save(0, buf.data(), 1));
+}
+
+// The power goes at every step of a save, with a write cut at several lengths: after the restart the bucket holds the
+// old content or the new one, never something else, and the next save works and leaves no temporary file.
+static void cutEverywhere(bool withOld, bool atomic = false) {
+  using namespace bucket_test;
+  const std::vector<uint8_t> oldRecs = withOld ? records(0xA0, 5) : std::vector<uint8_t>();
+  const std::vector<uint8_t> newRecs = records(0x5B, 9), later = records(0xC3, 2);
+
+  uint32_t steps;   // changes of a save that is not cut
+  {
+    FakeStorage disk;
+    disk.setAtomic(atomic);
+    BucketStore st(disk, layout());
+    if (withOld) CHECK(st.save(9, oldRecs.data(), 5));
+    const uint32_t before = disk.changes();
+    CHECK(st.save(9, newRecs.data(), 9));
+    steps = disk.changes() - before;
+  }
+  CHECK(atomic ? steps == 1 : steps >= 4);   // LittleFS: one write; otherwise ".new", header, records, remove, rename
+
+  int sawOld = 0, sawNew = 0;
+  const uint32_t keeps[] = {0, 1, 15, 16, 17, 200, 100000};
+  for (uint32_t step = 0; step < steps; step++) {
+    for (uint32_t keep : keeps) {
+      FakeStorage disk;
+      disk.setAtomic(atomic);
+      BucketStore st(disk, layout());
+      if (withOld) CHECK(st.save(9, oldRecs.data(), 5));
+      disk.cutAt(step, keep);
+      CHECK(!st.save(9, newRecs.data(), 9));
+      CHECK(disk.powerLost());
+      disk.reboot();
+
+      BucketStore afterCut(disk, layout());
+      BucketStore::Status s;
+      const bool isOld = holds(afterCut, 9, oldRecs, &s);
+      const bool isNew = !isOld && holds(afterCut, 9, newRecs, &s);
+      if (!isOld && !isNew) printf("    cut at step %u keeping %u bytes: neither old nor new\n", step, keep);
+      CHECK(isOld || isNew);
+      CHECK(s != BucketStore::Status::SetAside && s != BucketStore::Status::Failed);
+      sawOld += isOld;
+      sawNew += isNew;
+
+      CHECK(afterCut.save(9, later.data(), 2));
+      CHECK(holds(afterCut, 9, later));
+      CHECK(!disk.exists("/nb09.new"));
+      CHECK(!disk.exists("/nb09.bad"));
+    }
+  }
+  CHECK(sawOld > 0);
+  if (!atomic) CHECK(sawNew > 0);   // the cut between the remove and the rename: load() finishes the save
+}
+
+TEST(bucket_store_survives_a_power_cut_at_every_step) {
+  cutEverywhere(true);
+  cutEverywhere(false);
+  cutEverywhere(true, true);           // LittleFS: one atomic write per save
+  cutEverywhere(false, true);
+}
+
+TEST(bucket_store_on_an_atomic_file_system_makes_one_write_per_save) {
+  using namespace bucket_test;
+  FakeStorage disk;
+  disk.setAtomic(true);
+  BucketStore st(disk, layout());
+  const std::vector<uint8_t> a = records(0x10, 5), b = records(0x11, 2);
+  CHECK(st.save(1, a.data(), 5));
+  const uint32_t before = disk.changes(), reads = disk.reads;
+  CHECK(st.save(1, b.data(), 2));
+  CHECK_EQ(disk.changes() - before, 1u);   // no ".new", no remove, no rename
+  CHECK(holds(st, 1, b));
+  std::vector<uint8_t> none;
+  CHECK(holds(st, 2, none));
+  CHECK(disk.reads - reads <= 4u);        // an empty bucket: no look for a ".new"
+  CHECK(!disk.exists("/nb01.new"));
+}
+
+TEST(bucket_store_spreads_buckets_over_directories) {
+  using namespace bucket_test;
+  FakeStorage disk;
+  disk.setAtomic(true);
+  disk.setRequireDirs(true);             // like LittleFS: no file without its directory
+  BucketStore::Layout l = layout();
+  l.prefix = "/nodes";
+  l.dirs = 8;
+  BucketStore st(disk, l);
+  CHECK(st.valid());
+  const std::vector<uint8_t> a = records(0x20, 3);
+  CHECK(st.save(0, a.data(), 3));
+  CHECK(st.save(0x7f, a.data(), 3));
+  CHECK(st.save(0x10, a.data(), 3));
+  CHECK(disk.exists("/nodes/0/00"));
+  CHECK(disk.exists("/nodes/7/7f"));
+  CHECK(disk.exists("/nodes/1/10"));     // 16 buckets per directory
+  CHECK_EQ(disk.dirs.size(), 4u);        // /nodes, /nodes/0, /nodes/1, /nodes/7
+  CHECK(holds(st, 0x7f, a));
+  BucketStore again(disk, l);            // after a restart the directories exist: saving still works
+  CHECK(again.save(0x11, a.data(), 3));
+  CHECK(disk.exists("/nodes/1/11"));
+
+  FakeStorage noDirs;                    // a directory that cannot be made is reported
+  noDirs.setRequireDirs(true);
+  BucketStore broken(noDirs, l);
+  noDirs.failWrites(false);
+  noDirs.cutAt(0);                       // the power goes at the first mkdir
+  g_coreLogCapture.clear();
+  CHECK(!broken.save(3, a.data(), 3));
+  CHECK(logHas("mkdir /nodes failed"));
+}
+
+TEST(bucket_store_finishes_a_save_cut_before_its_rename) {
+  using namespace bucket_test;
+  FakeStorage disk;
+  BucketStore st(disk, layout());
+  const std::vector<uint8_t> a = records(1, 2), b = records(2, 4);
+  CHECK(st.save(1, a.data(), 2));
+  const uint32_t before = disk.changes();
+  CHECK(st.save(1, b.data(), 4));
+  const uint32_t steps = disk.changes() - before;
+
+  FakeStorage cut;
+  BucketStore st2(cut, layout());
+  CHECK(st2.save(1, a.data(), 2));
+  cut.cutAt(steps - 1);                // the rename
+  CHECK(!st2.save(1, b.data(), 4));
+  cut.reboot();
+  CHECK(!cut.exists("/nb01"));
+  CHECK(cut.exists("/nb01.new"));
+  g_coreLogCapture.clear();
+  BucketStore::Status s;
+  CHECK(holds(st2, 1, b, &s));
+  CHECK(s == BucketStore::Status::Recovered);
+  CHECK(logHas("finished a save cut by a restart (4 records)"));
+  CHECK(cut.exists("/nb01"));
+  CHECK(!cut.exists("/nb01.new"));
+  CHECK_EQ(st2.stats().recovered, 1u);
+}
+
+TEST(bucket_store_sets_a_damaged_file_aside) {
+  using namespace bucket_test;
+  FakeStorage disk;
+  BucketStore st(disk, layout());
+  const std::vector<uint8_t> a = records(0x40, 4), b = records(0x41, 2);
+  CHECK(st.save(2, a.data(), 4));
+  CHECK(st.save(3, b.data(), 2));
+  disk.files["/nb02"][BucketStore::HEADER_BYTES + 100] ^= 0x01;   // one bit flipped in a record
+
+  g_coreLogCapture.clear();
+  std::vector<uint8_t> none;
+  BucketStore::Status s;
+  CHECK(holds(st, 2, none, &s));
+  CHECK(s == BucketStore::Status::SetAside);
+  CHECK(logHas("/nb02: CRC"));
+  CHECK(logHas("kept as .bad, bucket 2 starts empty"));
+  CHECK(!disk.exists("/nb02"));
+  CHECK(disk.exists("/nb02.bad"));
+  CHECK_EQ(disk.files["/nb02.bad"].size(), st.fileBytes(4));   // the evidence, untouched
+  CHECK(holds(st, 3, b));              // the other buckets are not affected
+  CHECK_EQ(st.stats().setAside, 1u);
+
+  CHECK(st.save(2, b.data(), 2));      // the bucket works again
+  CHECK(holds(st, 2, b));
+}
+
+TEST(bucket_store_sets_aside_what_it_cannot_read) {
+  using namespace bucket_test;
+  const std::vector<uint8_t> a = records(0x50, 3);
+  std::vector<uint8_t> none;
+  BucketStore::Status s;
+  {   // another version of the record format: never read as this one
+    FakeStorage disk;
+    BucketStore v1(disk, layout(1));
+    CHECK(v1.save(4, a.data(), 3));
+    BucketStore v2(disk, layout(2));
+    g_coreLogCapture.clear();
+    CHECK(holds(v2, 4, none, &s));
+    CHECK(s == BucketStore::Status::SetAside);
+    CHECK(logHas("format version 1 with 96-byte records, this firmware reads version 2"));
+    CHECK(disk.exists("/nb04.bad"));
+  }
+  {   // a file copied under another bucket's name
+    FakeStorage disk;
+    BucketStore st(disk, layout());
+    CHECK(st.save(4, a.data(), 3));
+    disk.files["/nb06"] = disk.files["/nb04"];
+    g_coreLogCapture.clear();
+    CHECK(holds(st, 6, none, &s));
+    CHECK(s == BucketStore::Status::SetAside);
+    CHECK(logHas("header says bucket 4 with 3 records (bucket 6"));
+  }
+  {   // shorter than its header, or than its records
+    FakeStorage disk;
+    BucketStore st(disk, layout());
+    disk.files["/nb07"] = std::vector<uint8_t>(10, 0);
+    g_coreLogCapture.clear();
+    CHECK(holds(st, 7, none, &s));
+    CHECK(s == BucketStore::Status::SetAside);
+    CHECK(logHas("shorter than its header"));
+    CHECK(st.save(8, a.data(), 3));
+    disk.files["/nb08"].resize(st.fileBytes(2));
+    CHECK(holds(st, 8, none, &s));
+    CHECK(s == BucketStore::Status::SetAside);
+    CHECK(logHas("cut short: 3 records announced"));
+  }
+  {   // not a bucket at all
+    FakeStorage disk;
+    BucketStore st(disk, layout());
+    disk.files["/nb09"] = std::vector<uint8_t>(64, 0x5A);
+    g_coreLogCapture.clear();
+    CHECK(holds(st, 9, none, &s));
+    CHECK(s == BucketStore::Status::SetAside);
+    CHECK(logHas("magic 5a5a5a5a, expected 3142444e"));
+  }
+}
+
+TEST(bucket_store_keeps_the_old_content_when_writes_fail) {
+  using namespace bucket_test;
+  FakeStorage disk;
+  BucketStore st(disk, layout());
+  const std::vector<uint8_t> a = records(0x60, 3), b = records(0x61, 5);
+  CHECK(st.save(10, a.data(), 3));
+  disk.failWrites(true);               // the partition is full
+  g_coreLogCapture.clear();
+  CHECK(!st.save(10, b.data(), 5));
+  CHECK(logHas("write /nb0a.new failed (offset 0, 496 bytes)"));
+  CHECK_EQ(st.stats().failures, 1u);
+  disk.failWrites(false);
+  CHECK(holds(st, 10, a));
+}
+
+TEST(bucket_store_ignores_an_unfinished_save_beside_a_good_file) {
+  using namespace bucket_test;
+  FakeStorage disk;
+  BucketStore st(disk, layout());
+  const std::vector<uint8_t> a = records(0x70, 2), b = records(0x71, 1);
+  CHECK(st.save(11, a.data(), 2));
+  disk.files["/nb0b.new"] = std::vector<uint8_t>(5000, 0x99);   // longer than any bucket
+  BucketStore::Status s;
+  CHECK(holds(st, 11, a, &s));
+  CHECK(s == BucketStore::Status::Ok);
+  CHECK(st.save(11, b.data(), 1));
+  CHECK(holds(st, 11, b));
+  CHECK(!disk.exists("/nb0b.new"));
+  CHECK_EQ(disk.files["/nb0b"].size(), st.fileBytes(1));     // nothing of the long leftover
+}
+
+TEST(bucket_store_removes_a_save_cut_before_its_records) {
+  using namespace bucket_test;
+  FakeStorage disk;
+  BucketStore st(disk, layout());
+  const std::vector<uint8_t> a = records(0x80, 6);
+  disk.cutAt(1, 200);                  // the header is written, the records never
+  CHECK(!st.save(12, a.data(), 6));
+  disk.reboot();
+  CHECK(disk.exists("/nb0c.new"));
+  g_coreLogCapture.clear();
+  std::vector<uint8_t> none;
+  BucketStore::Status s;
+  CHECK(holds(st, 12, none, &s));
+  CHECK(s == BucketStore::Status::Empty);
+  CHECK(logHas("/nb0c.new: removed an unfinished save (cut short: 6 records announced)"));
+  CHECK(!disk.exists("/nb0c.new"));
+  CHECK_EQ(st.stats().discarded, 1u);
+}
+
+// ============================================================ NodeRecord, NodeArchive (MESSAGING-12, step 2)
+
+namespace node_test {
+// A key whose first byte picks the bucket (key[0] >> 1) and whose second byte tells the nodes of a test apart
+NodeRecord node(uint8_t first, uint8_t second, const char* name, uint8_t type, uint32_t heard) {
+  NodeRecord r;
+  for (int i = 0; i < 32; i++) r.pubKey[i] = (uint8_t)(i * 13 + 1);
+  r.pubKey[0] = first;
+  r.pubKey[1] = second;
+  snprintf(r.name, sizeof(r.name), "%s", name);
+  r.type = type;
+  r.lastHeard = heard;
+  r.hops = 2;
+  return r;
+}
+NodeRecord withPos(NodeRecord r, int32_t lat, int32_t lon, uint32_t when, PositionSource src) {
+  r.flags |= NodeRecord::HasPos;
+  r.latE6 = lat;
+  r.lonE6 = lon;
+  r.posTime = when;
+  r.posSource = (uint8_t)src;
+  return r;
+}
+constexpr uint32_t T0 = 1780000000;   // 2026
+}  // namespace node_test
+
+TEST(node_record_has_a_fixed_little_endian_layout) {
+  NodeRecord r = node_test::node(0xA1, 0xB2, "Relais Montmartre", CONTACT_REPEATER, 0x11223344);
+  r.flags = NodeRecord::Favourite | NodeRecord::HasPos;
+  r.hops = 3;
+  r.snrX4 = -22;
+  r.rssi = NodeRecord::clampRssi(-140);
+  r.posSource = 1;
+  r.latE6 = 48886700;
+  r.lonE6 = -2343000;
+  r.posTime = 0x01020304;
+  r.firstHeard = 0x0A0B0C0D;
+  r.lastAdvertTs = 0xCAFEBABE;
+  uint8_t b[NodeRecordCodec::BYTES];
+  memset(b, 0x77, sizeof(b));
+  NodeRecordCodec::encode(r, b);
+  CHECK_EQ(b[0], 0xA1);
+  CHECK_EQ(b[1], 0xB2);
+  CHECK(memcmp(b + 32, "Relais Montmartre", 17) == 0);
+  CHECK_EQ(b[32 + 17], 0);              // padded with zeros, not with what was in the buffer
+  CHECK_EQ(b[63], 0);
+  CHECK_EQ(b[64], CONTACT_REPEATER);
+  CHECK_EQ(b[65], NodeRecord::Favourite | NodeRecord::HasPos);
+  CHECK_EQ(b[66], 3);
+  CHECK_EQ((int8_t)b[67], -22);
+  CHECK_EQ((int8_t)b[68], -128);        // clamped
+  CHECK_EQ(b[70] | b[71], 0);           // reserved
+  CHECK_EQ(b[72] | b[73] << 8 | b[74] << 16 | (uint32_t)b[75] << 24, 48886700u);
+  CHECK_EQ((int32_t)(b[76] | b[77] << 8 | b[78] << 16 | (uint32_t)b[79] << 24), -2343000);
+  CHECK_EQ(b[80], 0x04);
+  CHECK_EQ(b[83], 0x01);
+  CHECK_EQ(b[84], 0x0D);
+  CHECK_EQ(b[88], 0x44);
+  CHECK_EQ(b[91], 0x11);
+  CHECK_EQ(b[92], 0xBE);
+  CHECK_EQ(b[95], 0xCA);
+
+  NodeRecord d;
+  NodeRecordCodec::decode(b, d);
+  uint8_t again[NodeRecordCodec::BYTES];
+  NodeRecordCodec::encode(d, again);
+  CHECK(memcmp(b, again, sizeof(b)) == 0);
+  CHECK(strcmp(d.name, "Relais Montmartre") == 0);
+  CHECK_EQ(d.lonE6, -2343000);
+  CHECK_EQ(d.lastAdvertTs, 0xCAFEBABEu);
+
+  memset(b + 32, 'x', 32);              // a name filling the field: still terminated
+  NodeRecordCodec::decode(b, d);
+  CHECK_EQ(strlen(d.name), 31u);
+}
+
+TEST(node_archive_adds_finds_and_keeps_across_restarts) {
+  using namespace node_test;
+  FakeStorage disk;
+  {
+    NodeArchive a(disk);
+    CHECK(a.upsert(node(0x10, 1, "Alice", CONTACT_CHAT, T0)) == NodeArchive::Result::Added);
+    CHECK(a.upsert(node(0x10, 2, "Relay", CONTACT_REPEATER, T0)) == NodeArchive::Result::Added);
+    CHECK(a.upsert(node(0xF0, 1, "Far", CONTACT_ROOM, T0)) == NodeArchive::Result::Added);
+  }
+  CHECK(disk.exists("/nb08"));          // 0x10 >> 1
+  CHECK(disk.exists("/nb78"));
+  NodeArchive a(disk);
+  NodeRecord r;
+  CHECK(a.get(node(0x10, 1, "", 0, 0).pubKey, r));
+  CHECK(strcmp(r.name, "Alice") == 0);
+  CHECK_EQ(r.firstHeard, T0);           // first heard = when added
+  CHECK(!a.get(node(0x10, 3, "", 0, 0).pubKey, r));
+  CHECK_EQ(a.knownCount(), -1);         // not every bucket read yet
+}
+
+TEST(node_archive_merges_what_is_heard_again) {
+  using namespace node_test;
+  FakeStorage disk;
+  NodeArchive a(disk);
+  const NodeRecord base = node(0x20, 1, "Bob", CONTACT_CHAT, T0);
+  CHECK(a.upsert(withPos(base, 48800000, 2300000, T0 - 10, PositionSource::Message)) == NodeArchive::Result::Added);
+
+  // An older advert arriving later: its position is older than the message's, it does not move Bob
+  NodeRecord advert = withPos(node(0x20, 1, "Bob", CONTACT_CHAT, T0 + 2 * NodeArchive::REFRESH_S), 1, 1, T0 - 100,
+                              PositionSource::Advert);
+  advert.hops = 5;
+  advert.snrX4 = -8;
+  CHECK(a.upsert(advert) == NodeArchive::Result::Updated);   // updated: more than an hour later
+  NodeRecord r;
+  CHECK(a.get(base.pubKey, r));
+  CHECK_EQ(r.latE6, 48800000);
+  CHECK_EQ(r.posSource, (int)PositionSource::Message);
+  CHECK_EQ(r.lastHeard, T0 + 2 * NodeArchive::REFRESH_S);
+  CHECK_EQ(r.firstHeard, T0);           // kept
+  CHECK_EQ(r.hops, 5);                  // the signal of the newest hearing
+  CHECK_EQ(r.snrX4, -8);
+
+  // A late packet, heard before the last one: its signal is not taken, the time does not go back
+  NodeRecord late = node(0x20, 1, "Bob", CONTACT_CHAT, T0 + 10);
+  late.hops = 1;
+  late.name[0] = 0;                     // no name: the stored one stays
+  CHECK(a.upsert(late) == NodeArchive::Result::Unchanged);
+  CHECK(a.get(base.pubKey, r));
+  CHECK_EQ(r.hops, 5);
+  CHECK(strcmp(r.name, "Bob") == 0);
+
+  // A new name and a newer position are written at once
+  CHECK(a.upsert(node(0x20, 1, "Bob 2", CONTACT_CHAT, T0 + 2 * NodeArchive::REFRESH_S + 1)) ==
+        NodeArchive::Result::Updated);
+  CHECK(a.upsert(withPos(node(0x20, 1, "Bob 2", CONTACT_CHAT, T0 + 2 * NodeArchive::REFRESH_S + 2), 48900000,
+                         2400000, T0 + 50, PositionSource::Advert)) == NodeArchive::Result::Updated);
+  CHECK(a.get(base.pubKey, r));
+  CHECK(strcmp(r.name, "Bob 2") == 0);
+  CHECK_EQ(r.latE6, 48900000);
+  CHECK_EQ(r.posTime, T0 + 50);
+}
+
+TEST(node_archive_does_not_write_a_node_heard_again_within_the_hour) {
+  using namespace node_test;
+  FakeStorage disk;
+  NodeArchive a(disk);
+  NodeRecord n = node(0x30, 1, "Repeater", CONTACT_REPEATER, T0);
+  CHECK(a.upsert(n) == NodeArchive::Result::Added);
+  const uint32_t writes = disk.writes;
+  for (int i = 1; i <= 20; i++) {       // an advert every 3 minutes for an hour, through other paths
+    n.lastHeard = T0 + 179 * (uint32_t)i;
+    n.lastAdvertTs = n.lastHeard;
+    n.hops = (uint8_t)(i % 4);
+    CHECK(a.upsert(n) == NodeArchive::Result::Unchanged);
+  }
+  CHECK_EQ(disk.writes, writes);        // not one flash write
+  n.lastHeard = T0 + NodeArchive::REFRESH_S;
+  n.lastAdvertTs = n.lastHeard;
+  CHECK(a.upsert(n) == NodeArchive::Result::Updated);
+  CHECK(disk.writes > writes);
+  NodeRecord r;
+  CHECK(a.get(n.pubKey, r));
+  CHECK_EQ(r.lastHeard, T0 + NodeArchive::REFRESH_S);
+  CHECK_EQ(r.lastAdvertTs, T0 + NodeArchive::REFRESH_S);
+}
+
+TEST(node_archive_finds_nodes_from_the_id_of_a_hop) {
+  using namespace node_test;
+  FakeStorage disk;
+  NodeArchive a(disk);
+  // 0x40 and 0x41 share bucket 0x20; 0x40 0x07 twice (a 2-byte ID collision), then a third byte tells them apart
+  NodeRecord r1 = node(0x40, 0x07, "R1", CONTACT_REPEATER, T0), r2 = node(0x40, 0x07, "R2", CONTACT_REPEATER, T0);
+  r2.pubKey[2] = 0x99;
+  CHECK(a.upsert(r1) == NodeArchive::Result::Added);
+  CHECK(a.upsert(r2) == NodeArchive::Result::Added);
+  CHECK(a.upsert(node(0x40, 0x08, "Alice", CONTACT_CHAT, T0)) == NodeArchive::Result::Added);
+  CHECK(a.upsert(node(0x41, 0x07, "Other", CONTACT_REPEATER, T0)) == NodeArchive::Result::Added);
+
+  const uint8_t one[] = {0x40}, two[] = {0x40, 0x07}, three[] = {0x40, 0x07, 0x99};
+  NodeRecord out[4];
+  CHECK_EQ(a.findByHash(one, 1, NodeArchive::ALL_TYPES, out, 4), 3);   // not the 0x41 one
+  const uint8_t relays = NodeArchive::typeBit(CONTACT_REPEATER) | NodeArchive::typeBit(CONTACT_ROOM);
+  CHECK_EQ(a.findByHash(one, 1, relays, out, 4), 2);                     // Alice does not relay
+  CHECK_EQ(a.findByHash(two, 2, relays, out, 1), 2);                     // more than max: the count says so
+  CHECK(strcmp(out[0].name, "R1") == 0);
+  CHECK_EQ(a.findByHash(three, 3, relays, out, 4), 1);
+  CHECK(strcmp(out[0].name, "R2") == 0);
+  CHECK_EQ(a.findByHash(one, 0, relays, out, 4), 0);
+  const uint8_t none[] = {0x42};
+  CHECK_EQ(a.findByHash(none, 1, relays, out, 4), 0);
+}
+
+TEST(node_archive_drops_the_weakest_node_of_a_full_bucket) {
+  using namespace node_test;
+  FakeStorage disk;
+  NodeArchive a(disk);
+  // Bucket 0x05 (first bytes 0x0a, 0x0b) filled with 42 nodes heard at T0 + i; n2 and n3 tie on time, n3 is farther
+  for (int i = 0; i < NodeArchive::PER_BUCKET; i++) {
+    NodeRecord n = node((uint8_t)(0x0a + (i & 1)), (uint8_t)i, "n", CONTACT_REPEATER, T0 + (uint32_t)(i == 3 ? 2 : i));
+    snprintf(n.name, sizeof(n.name), "n%d", i);
+    if (i == 3) n.hops = 6;
+    CHECK(a.upsert(n) == NodeArchive::Result::Added);
+  }
+  // The two oldest are protected: a favourite and a contact
+  CHECK(a.setFlags(node(0x0a, 0, "", 0, 0).pubKey, NodeRecord::Favourite, 0));
+  CHECK(a.setFlags(node(0x0b, 1, "", 0, 0).pubKey, NodeRecord::InContacts, 0));
+  const NodeRecord n3 = node(0x0b, 3, "", 0, 0);
+
+  g_coreLogCapture.clear();
+  NodeRecord dropped;
+  CHECK(a.upsert(node(0x0a, 100, "newcomer", CONTACT_REPEATER, T0 + 1000), &dropped) == NodeArchive::Result::Replaced);
+  CHECK(strcmp(dropped.name, "n3") == 0);   // n0, n1 protected; n2 and n3 tie on time, n3 has more hops
+  CHECK(logHas("bucket 05 full: 'n3'"));
+  CHECK(logHas("leaves for 'newcomer'"));
+  NodeRecord r;
+  CHECK(!a.get(n3.pubKey, r));
+  CHECK(a.get(node(0x0a, 100, "", 0, 0).pubKey, r));
+  CHECK(a.get(node(0x0a, 0, "", 0, 0).pubKey, r));        // the favourite stays
+
+  CHECK(a.upsert(node(0x0a, 101, "next", CONTACT_REPEATER, T0 + 1001), &dropped) == NodeArchive::Result::Replaced);
+  CHECK(strcmp(dropped.name, "n2") == 0);
+
+  // An import is weaker than every node heard: refused
+  NodeRecord imp = node(0x0b, 102, "imported", CONTACT_REPEATER, 0);
+  imp.flags = NodeRecord::Imported;
+  g_coreLogCapture.clear();
+  CHECK(a.upsert(imp) == NodeArchive::Result::Refused);
+  CHECK(logHas("is not newer than any node in it"));
+}
+
+TEST(node_archive_drops_imported_nodes_first_and_never_protected_ones) {
+  using namespace node_test;
+  FakeStorage disk;
+  NodeArchive a(disk);
+  for (int i = 0; i < NodeArchive::PER_BUCKET; i++) {
+    NodeRecord n = node(0x60, (uint8_t)i, "n", CONTACT_REPEATER, T0 + 100 + (uint32_t)i);
+    if (i == 20) {
+      n.flags = NodeRecord::Imported;
+      n.lastHeard = 0;
+      snprintf(n.name, sizeof(n.name), "imported");
+    }
+    CHECK(a.upsert(n) != NodeArchive::Result::Failed);
+  }
+  NodeRecord dropped;
+  CHECK(a.upsert(node(0x60, 200, "heard", CONTACT_REPEATER, T0), &dropped) == NodeArchive::Result::Replaced);
+  CHECK(strcmp(dropped.name, "imported") == 0);   // before older nodes that were heard
+
+  for (int i = 0; i < 256; i++) a.setFlags(node(0x60, (uint8_t)i, "", 0, 0).pubKey, NodeRecord::Keep, 0);
+  g_coreLogCapture.clear();
+  CHECK(a.upsert(node(0x60, 201, "late", CONTACT_REPEATER, T0 + 5000)) == NodeArchive::Result::Refused);
+  CHECK(logHas("bucket 30 full of protected nodes: 'late'"));
+
+  // A node imported then heard loses its mark
+  NodeRecord imp = node(0x70, 1, "Hill", CONTACT_REPEATER, 0);
+  imp.flags = NodeRecord::Imported;
+  CHECK(a.upsert(imp) == NodeArchive::Result::Added);
+  CHECK(a.upsert(node(0x70, 1, "Hill", CONTACT_REPEATER, T0)) == NodeArchive::Result::Updated);
+  NodeRecord r;
+  CHECK(a.get(imp.pubKey, r));
+  CHECK(!r.has(NodeRecord::Imported));
+  CHECK_EQ(r.firstHeard, T0);
+}
+
+TEST(node_archive_scans_in_slices_and_removes) {
+  using namespace node_test;
+  FakeStorage disk;
+  NodeArchive a(disk);
+  for (int i = 0; i < 300; i++) {       // spread over every bucket
+    NodeRecord n = node((uint8_t)(i * 37), (uint8_t)(i >> 3), "x", CONTACT_CHAT, T0);
+    n.pubKey[2] = (uint8_t)i;
+    CHECK(a.upsert(n) == NodeArchive::Result::Added);
+  }
+  struct Counter : NodeVisitor {
+    int n = 0;
+    bool visit(const NodeRecord&) override { n++; return true; }
+  } c;
+  int next = 0, slices = 0;
+  while (next >= 0) {
+    next = a.scan(next, 16, c);
+    slices++;
+  }
+  CHECK_EQ(c.n, 300);
+  CHECK_EQ(slices, 8);                  // 128 buckets, 16 at a time
+  CHECK_EQ(a.knownCount(), 300);
+
+  struct StopAt : NodeVisitor {
+    int n = 0;
+    bool visit(const NodeRecord&) override { return ++n < 5; }
+  } stop;
+  CHECK_EQ(a.scan(0, NodeArchive::BUCKETS, stop), -1);
+  CHECK_EQ(stop.n, 5);
+
+  NodeRecord first = node(0, 0, "", 0, 0);
+  first.pubKey[2] = 0;
+  CHECK(a.remove(first.pubKey));
+  CHECK(!a.remove(first.pubKey));
+  CHECK_EQ(a.knownCount(), 299);
+}
+
+TEST(node_archive_survives_a_power_cut_during_an_update) {
+  using namespace node_test;
+  const NodeRecord before = node(0x50, 1, "Before", CONTACT_CHAT, T0);
+  NodeRecord after = node(0x50, 1, "After", CONTACT_CHAT, T0 + 10);
+  for (uint32_t step = 0; step < 5; step++) {
+    FakeStorage disk;
+    {
+      NodeArchive a(disk);
+      CHECK(a.upsert(before) == NodeArchive::Result::Added);
+      CHECK(a.upsert(node(0x51, 2, "Neighbour", CONTACT_CHAT, T0)) == NodeArchive::Result::Added);
+      disk.cutAt(step, 40);
+      CHECK(a.upsert(after) == NodeArchive::Result::Failed);
+    }
+    disk.reboot();
+    NodeArchive a(disk);
+    NodeRecord r;
+    CHECK(a.get(before.pubKey, r));
+    CHECK(strcmp(r.name, "Before") == 0 || strcmp(r.name, "After") == 0);
+    CHECK(a.get(node(0x51, 2, "", 0, 0).pubKey, r));   // the other node of the bucket is still there
+    CHECK(a.upsert(node(0x50, 1, "Later", CONTACT_CHAT, T0 + 20)) == NodeArchive::Result::Updated);
+    CHECK(a.get(before.pubKey, r));
+    CHECK(strcmp(r.name, "Later") == 0);
+  }
+}
+
+TEST(node_archive_reads_a_damaged_bucket_as_empty) {
+  using namespace node_test;
+  FakeStorage disk;
+  {
+    NodeArchive a(disk);
+    CHECK(a.upsert(node(0x90, 1, "Lost", CONTACT_CHAT, T0)) == NodeArchive::Result::Added);
+  }
+  disk.files["/nb48"][40] ^= 0xFF;
+  NodeArchive a(disk);
+  NodeRecord r;
+  g_coreLogCapture.clear();
+  CHECK(!a.get(node(0x90, 1, "", 0, 0).pubKey, r));
+  CHECK(logHas("/nb48: CRC"));
+  CHECK(a.upsert(node(0x90, 2, "New", CONTACT_CHAT, T0)) == NodeArchive::Result::Added);
+  CHECK(a.get(node(0x90, 2, "", 0, 0).pubKey, r));
+}
+
+// ============================================================ StoreBench (MESSAGING-12, step 3)
+
+TEST(timing_stats_percentiles) {
+  TimingStats t;
+  for (uint32_t i = 1; i <= 100; i++) t.add(i * 1000);
+  CHECK_EQ(t.count(), 100);
+  CHECK_EQ(t.min(), 1000u);
+  CHECK_EQ(t.max(), 100000u);
+  CHECK_EQ(t.avg(), 50500u);
+  CHECK_EQ(t.percentile(95), 95000u);
+  CHECK_EQ(t.percentile(50), 50000u);
+  char line[96];
+  t.format(line, sizeof(line));
+  CHECK(strstr(line, "p95 95.0") != nullptr);
+}
+
+TEST(store_bench_runs_every_phase_and_leaves_nothing) {
+  struct Host : StoreBenchHost {
+    FakeStorage* disk = nullptr;
+    uint32_t t = 0;
+    std::vector<std::string> lines;
+    uint32_t micros() override { return t += 250; }
+    int64_t fsUsedBytes() override {   // like LittleFS: a block per file
+      int64_t n = 0;
+      for (auto& f : disk->files) n += (int64_t)((f.second.size() + 4095) / 4096) * 4096;
+      return n;
+    }
+    void log(bool, const char* line) override { lines.push_back(line); }
+  } host;
+  FakeStorage disk;
+  host.disk = &disk;
+  disk.files["/contacts.cp"] = std::vector<uint8_t>(100, 1);   // the user's files are not touched
+  StoreBench::Options o;
+  o.lookups = 40;
+  std::unique_ptr<StoreBench> bench(new StoreBench(disk, host, o));
+  int steps = 0;
+  while (bench->step()) steps++;
+  const StoreBench::Result& r = bench->result();
+  CHECK(r.ok);
+  CHECK(bench->phase() == StoreBench::Phase::Done);
+  CHECK_EQ(r.smallSave.count(), 128);
+  CHECK_EQ(r.fullSave.count(), 128);
+  CHECK_EQ(r.read.count(), 128);
+  CHECK_EQ(r.rewrite.count(), 128);
+  CHECK_EQ(r.lookup.count(), 40);
+  CHECK_EQ(r.remove.count(), 128);
+  CHECK_EQ(steps + 1, 1 + 128 * 5 + 40);   // one storage operation per step (the last one returns false)
+  CHECK_EQ(r.usedFull - r.usedBefore, 128 * 4096);
+  CHECK_EQ(r.usedAfter, r.usedBefore);
+  CHECK_EQ(disk.files.size(), 1u);
+  CHECK(disk.exists("/contacts.cp"));
+  bench->report();
+  bool sawResult = false;
+  for (auto& l : host.lines) sawResult |= l == "RESULT ok";
+  CHECK(sawResult);
+}
+
+TEST(store_bench_reports_a_storage_failure) {
+  struct Host : StoreBenchHost {
+    uint32_t t = 0;
+    std::string all;
+    uint32_t micros() override { return t += 100; }
+    int64_t fsUsedBytes() override { return -1; }
+    void log(bool, const char* line) override { all += line; all += "\n"; }
+  } host;
+  FakeStorage disk;
+  StoreBench bench(disk, host, StoreBench::Options());
+  for (int i = 0; i < 20; i++) bench.step();
+  disk.failWrites(true);
+  while (bench.step()) {}
+  CHECK(!bench.result().ok);
+  CHECK(bench.phase() == StoreBench::Phase::Failed);
+  bench.report();
+  CHECK(host.all.find("RESULT FAILED at small buckets: save failed, bucket 19") != std::string::npos);
+}
+
+// ============================================================ NodeBook (MESSAGING-12, step 4)
+
+TEST(node_book_waits_then_writes_a_bucket_at_a_time) {
+  using namespace node_test;
+  FakeStorage disk;
+  NodeArchive archive(disk);
+  NodeBook book(archive);
+  uint32_t now = 1000;
+  // A burst: 10 adverts of 4 nodes, two of them in the same bucket (0x20, 0x21)
+  for (int round = 0; round < 10; round++) {
+    CHECK(book.heard(node(0x20, 1, "A", CONTACT_CHAT, T0 + round), now));
+    CHECK(book.heard(node(0x21, 1, "B", CONTACT_REPEATER, T0 + round), now));
+    CHECK(book.heard(node(0x80, 1, "C", CONTACT_REPEATER, T0 + round), now));
+    CHECK(book.heard(node(0xC0, 1, "D", CONTACT_ROOM, T0 + round), now));
+    now += 500;
+  }
+  CHECK_EQ(disk.writes, 0u);            // nothing on flash yet
+  CHECK_EQ(book.pending(), 4);
+  CHECK_EQ(book.stats().merged, 36u);
+  NodeRecord r;
+  CHECK(book.get(node(0x20, 1, "", 0, 0).pubKey, r));   // but the lookups see them
+  CHECK_EQ(r.lastHeard, T0 + 9);
+  CHECK_EQ(r.firstHeard, T0);
+  const uint8_t id[] = {0x80};
+  CHECK_EQ(book.findByHash(id, 1, NodeArchive::ALL_TYPES, &r, 1), 1);
+  CHECK(strcmp(r.name, "C") == 0);
+
+  CHECK(!book.flushOne(now));           // under a minute old and few: nothing yet
+  now = 1000 + NodeBook::Policy().maxAgeMs;
+  CHECK(book.flushOne(now));            // the oldest bucket: A and B in one write
+  CHECK_EQ(book.pending(), 2);
+  CHECK_EQ(book.stats().writes, 1u);
+  CHECK(!book.flushOne(now + 100));     // the gap between writes
+  CHECK(book.flushOne(now + NodeBook::Policy().minGapMs));
+  CHECK(book.flushOne(now + 2 * NodeBook::Policy().minGapMs));
+  CHECK_EQ(book.pending(), 0);
+  CHECK(!book.flushOne(now + 10 * NodeBook::Policy().minGapMs));
+  CHECK_EQ(book.stats().writes, 3u);    // 40 adverts, 3 bucket writes
+
+  NodeArchive after(disk);              // all on flash
+  CHECK(after.get(node(0x21, 1, "", 0, 0).pubKey, r));
+  CHECK(strcmp(r.name, "B") == 0);
+  CHECK_EQ(r.lastHeard, T0 + 9);
+  CHECK_EQ(r.firstHeard, T0);
+}
+
+TEST(node_book_full_queue_drops_and_writes_without_waiting) {
+  using namespace node_test;
+  FakeStorage disk;
+  NodeArchive archive(disk);
+  NodeBook book(archive);
+  for (int i = 0; i < NodeBook::QUEUE; i++) CHECK(book.heard(node((uint8_t)(i * 10), 1, "n", CONTACT_CHAT, T0), 0));
+  CHECK(!book.heard(node(0xFF, 1, "one more", CONTACT_CHAT, T0), 0));   // full: refused, counted, nothing written
+  CHECK_EQ(book.stats().dropped, 1u);
+  CHECK_EQ(disk.writes, 0u);
+  CHECK(book.flushOne(1));              // crowded: no waiting for maxAge or the gap
+  CHECK(book.flushOne(2));
+  CHECK_EQ(book.stats().writes, 2u);
+  CHECK_EQ(book.flushAll(), NodeBook::QUEUE - 2);
+  CHECK_EQ(book.pending(), 0);
+}
+
+TEST(node_book_keeps_changes_the_flash_refused) {
+  using namespace node_test;
+  FakeStorage disk;
+  NodeArchive archive(disk);
+  NodeBook book(archive);
+  book.heard(node(0x33, 1, "Kept", CONTACT_CHAT, T0), 0);
+  disk.failWrites(true);
+  CHECK_EQ(book.flushAll(), 1);
+  CHECK_EQ(book.pending(), 1);          // still waiting, not lost
+  CHECK_EQ(book.stats().failed, 1u);
+  disk.failWrites(false);
+  CHECK_EQ(book.flushAll(), 1);
+  CHECK_EQ(book.pending(), 0);
+  NodeRecord r;
+  CHECK(archive.get(node(0x33, 1, "", 0, 0).pubKey, r));
+}
+
+TEST(node_book_flags_and_removals_wait_like_hearings) {
+  using namespace node_test;
+  FakeStorage disk;
+  NodeArchive archive(disk);
+  NodeBook book(archive);
+  const NodeRecord a = node(0x44, 1, "Friend", CONTACT_CHAT, T0);
+  book.heard(a, 0);
+  book.markFlags(a.pubKey, NodeRecord::Keep | NodeRecord::InContacts, 0, 0);   // with the hearing: one write
+  NodeRecord r;
+  CHECK(book.get(a.pubKey, r));
+  CHECK(r.has(NodeRecord::Keep));
+  CHECK_EQ(disk.writes, 0u);            // RAM only
+  CHECK_EQ(book.flushAll(), 1);
+  CHECK(archive.get(a.pubKey, r));
+  CHECK(r.has(NodeRecord::Keep) && r.has(NodeRecord::InContacts));
+
+  book.markFlags(a.pubKey, 0, NodeRecord::InContacts, 0);   // a flag change alone
+  CHECK(book.get(a.pubKey, r));
+  CHECK(!r.has(NodeRecord::InContacts));
+  CHECK_EQ(book.flushAll(), 1);
+  CHECK(archive.get(a.pubKey, r));
+  CHECK(!r.has(NodeRecord::InContacts) && r.has(NodeRecord::Keep));
+
+  book.forget(a.pubKey, 0);
+  CHECK(!book.get(a.pubKey, r));        // forgotten at once for the lookups
+  const uint8_t id[] = {0x44};
+  CHECK_EQ(book.findByHash(id, 1, NodeArchive::ALL_TYPES, nullptr, 0), 0);
+  CHECK(archive.get(a.pubKey, r));      // still on flash until the write
+  CHECK_EQ(book.flushAll(), 1);
+  CHECK(!archive.get(a.pubKey, r));
+
+  book.markFlags(node(0x45, 9, "", 0, 0).pubKey, NodeRecord::Favourite, 0, 0);   // flags for an unknown node
+  CHECK_EQ(book.flushAll(), 1);
+  CHECK_EQ(book.stats().refused, 1u);
+  CHECK_EQ(book.pending(), 0);
+}
+
+TEST(node_book_lookups_count_waiting_and_stored_nodes_once) {
+  using namespace node_test;
+  FakeStorage disk;
+  NodeArchive archive(disk);
+  NodeBook book(archive);
+  book.heard(node(0x46, 1, "Stored", CONTACT_REPEATER, T0), 0);
+  book.flushAll();
+  book.heard(node(0x46, 1, "Stored renamed", CONTACT_REPEATER, T0 + 5000), 0);
+  book.heard(node(0x46, 2, "New", CONTACT_REPEATER, T0), 0);
+  book.heard(node(0x47, 2, "Other ID", CONTACT_REPEATER, T0), 0);
+  const uint8_t id[] = {0x46};
+  NodeRecord out[4];
+  CHECK_EQ(book.findByHash(id, 1, NodeArchive::ALL_TYPES, out, 4), 2);
+  bool renamed = false, fresh = false;
+  for (int i = 0; i < 2; i++) {
+    renamed |= strcmp(out[i].name, "Stored renamed") == 0;
+    fresh |= strcmp(out[i].name, "New") == 0;
+  }
+  CHECK(renamed && fresh);
+  CHECK_EQ(book.findByHash(id, 1, NodeArchive::typeBit(CONTACT_CHAT), out, 4), 0);
+
+  book.flushAll();                      // three stored with that ID; the middle one forgotten
+  book.heard(node(0x46, 3, "Third", CONTACT_REPEATER, T0), 0);
+  book.flushAll();
+  book.forget(node(0x46, 2, "", 0, 0).pubKey, 0);
+  CHECK_EQ(book.findByHash(id, 1, NodeArchive::ALL_TYPES, out, 4), 2);
+  CHECK(strcmp(out[0].name, "New") != 0 && strcmp(out[1].name, "New") != 0);
+  CHECK(strcmp(out[0].name, "Third") == 0 || strcmp(out[1].name, "Third") == 0);
+}
+
+TEST(node_book_a_change_during_a_write_is_not_lost) {
+  // The storage task copies a batch, then writes it without the queue's lock; loop() may change the same node
+  // meanwhile. Here the "meanwhile" is a FakeStorage write failure retried later, and a hearing merged between.
+  using namespace node_test;
+  FakeStorage disk;
+  NodeArchive archive(disk);
+  struct HearDuringWrite : Lock {   // the archive's lock: runs a hearing while the write is under way
+    NodeBook* book = nullptr;
+    bool armed = false;
+    void lock() override {
+      if (armed && book) {
+        armed = false;
+        book->heard(node_test::node(0x55, 1, "Renamed meanwhile", CONTACT_CHAT, node_test::T0 + 9000), 0);
+      }
+    }
+    void unlock() override {}
+  } archiveLock;
+  NodeBook book(archive, nullptr, &archiveLock);
+  archiveLock.book = &book;
+  book.heard(node(0x55, 1, "First", CONTACT_CHAT, T0), 0);
+  archiveLock.armed = true;             // the next write sees a hearing arrive
+  CHECK_EQ(book.flushAll(), 2);         // the first write, then the change that came during it
+  NodeRecord r;
+  CHECK(archive.get(node(0x55, 1, "", 0, 0).pubKey, r));
+  CHECK(strcmp(r.name, "Renamed meanwhile") == 0);
+  CHECK_EQ(book.pending(), 0);
+}
+
+TEST(node_match_cache_answers_until_it_is_stale) {
+  NodeMatchCache c;
+  NodeMatch m[6];
+  for (int i = 0; i < 6; i++) snprintf(m[i].name, sizeof(m[i].name), "R%d", i);
+  const uint8_t a[] = {0xA1}, b[] = {0xA1, 0x02};
+  NodeMatch out[6];
+  int count = -1;
+  CHECK(!c.get(a, 1, true, 0, out, 4, count));
+  c.put(a, 1, true, 1000, m, 2);
+  CHECK(c.get(a, 1, true, 2000, out, 4, count));
+  CHECK_EQ(count, 2);
+  CHECK(strcmp(out[1].name, "R1") == 0);
+  CHECK(!c.get(a, 1, false, 2000, out, 4, count));   // relays only and every node: two questions
+  CHECK(!c.get(b, 2, true, 2000, out, 4, count));    // a longer ID: another question
+  CHECK(!c.get(a, 1, true, 1000 + NodeMatchCache::TTL_MS, out, 4, count));   // stale
+  c.put(a, 1, true, 5000, m, 6);                     // more than it keeps
+  CHECK(c.get(a, 1, true, 5001, out, 1, count));     // enough for a caller that wants one
+  CHECK_EQ(count, 6);
+  CHECK(!c.get(a, 1, true, 5001, out, 6, count));    // not for one that wants them all
+  for (int i = 0; i < NodeMatchCache::SIZE + 3; i++) {   // the oldest answers make room
+    const uint8_t h[] = {(uint8_t)i, 7};
+    c.put(h, 2, false, 6000 + (uint32_t)i, m, 1);
+  }
+  const uint8_t newest[] = {(uint8_t)(NodeMatchCache::SIZE + 2), 7};
+  CHECK(c.get(newest, 2, false, 7000, out, 1, count));
+  c.clear();
+  CHECK(!c.get(newest, 2, false, 7000, out, 1, count));
+}
 
 int main(int argc, char** argv) {
   const char* only = argc > 1 ? argv[1] : nullptr;

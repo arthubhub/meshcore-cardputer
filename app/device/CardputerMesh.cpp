@@ -49,7 +49,7 @@ uint32_t nowUnix() { return rtc_clock.getCurrentTime(); }
 
 CardputerMesh::CardputerMesh(mesh::Radio& radio, mesh::RNG& rng, mesh::RTCClock& rtc, SimpleMeshTables& tables,
                              DeviceSettings& settings)
-    : BaseChatMesh(radio, g_millis, rng, rtc, g_packets, tables), _settings(settings) {}
+    : ArchivingChatMesh(radio, g_millis, rng, rtc, g_packets, tables), _settings(settings) {}
 
 // ================================================================ startup / persistence
 
@@ -66,6 +66,8 @@ void CardputerMesh::begin() {
     if (getChannel(i, ch) && ch.name[0]) _store.ensure(channelKey(ch.channel), ch.name);
   }
   _store.flush();
+  attachArchive(&_nodes.book());
+  _nodes.begin();
   _started = true;
   syncFloods();
   CPLOG_I("MESH", "mesh ready: %d contacts, %d conversations, %d unread", getNumContacts(), _store.count(),
@@ -181,6 +183,26 @@ ContactInfo* CardputerMesh::contactFor(const ConvKey& key) {
   return lookupContactByPubKey(key.id, sizeof(key.id));
 }
 
+ContactInfo* CardputerMesh::contactOrArchived(const ConvKey& key) {
+  if (ContactInfo* c = contactFor(key)) return c;
+  if (key.kind != ConvKey::DIRECT) return nullptr;
+  ContactInfo* c = bringBack(key.id, sizeof(key.id));
+  if (!c) CPLOG_W("MESH", "conversation %02x%02x%02x: no contact, and not in the archive", key.id[0], key.id[1], key.id[2]);
+  return c;
+}
+
+int CardputerMesh::lastRssi() const { return (int)radio_driver.getLastRSSI(); }
+
+int CardputerMesh::archiveCandidates() const { return getCpuFrequencyMhz() >= 160 ? 8 : 4; }
+
+void CardputerMesh::onBroughtBack(const ContactInfo& c) {
+  _orderDirty = true;
+  _matchCache.clear();
+  markContactsDirty();
+  _store.rename(directKey(c.id.pub_key), c.name);
+  CPLOG_I("MESH", "%s back from the archive into the contacts (%d/%d)", c.name, getNumContacts(), MAX_CONTACTS);
+}
+
 int CardputerMesh::channelIndexFor(const ConvKey& key) {
   for (int i = 0; i < MAX_GROUP_CHANNELS; i++) {
     ChannelDetails ch;
@@ -243,16 +265,80 @@ bool CardputerMesh::contactAt(int i, ContactView& out) {
 }
 
 bool CardputerMesh::findContact(const ConvKey& key, ContactView& out) {
-  ContactInfo* c = contactFor(key);
-  if (!c) return false;
-  toView(*c, out);
+  if (ContactInfo* c = contactFor(key)) {
+    toView(*c, out);
+    return true;
+  }
+  // Not in the table: the archive still knows its name and position (a conversation whose contact left, a repeater)
+  if (key.kind != ConvKey::DIRECT || !archive()) return false;
+  NodeRecord r;
+  if (archive()->findByHash(key.id, sizeof(key.id), NodeArchive::ALL_TYPES, &r, 1) != 1) return false;
+  out = ContactView{};
+  out.key = key;
+  memcpy(out.pubKey, r.pubKey, sizeof(out.pubKey));
+  memcpy(out.name, r.name, sizeof(out.name));
+  out.name[sizeof(out.name) - 1] = 0;
+  out.type = r.type;
+  out.favourite = r.has(NodeRecord::Favourite);
+  out.hops = -1;
+  out.lastHeard = r.lastHeard;
+  out.hasPos = r.hasPos();
+  out.latE6 = r.latE6;
+  out.lonE6 = r.lonE6;
+  out.posTime = r.posTime;
+  out.posSource = r.posSource;
   return true;
+}
+
+int CardputerMesh::findNodes(const uint8_t* hash, int bytes, bool relaysOnly, NodeMatch* out, int max) {
+  if (!archive() || bytes < 1) return -1;
+  const uint32_t now = millis();
+  int count = 0;
+  if (_matchCache.get(hash, bytes, relaysOnly, now, out, max, count)) return count;
+  static constexpr int MAXN = NodeMatchCache::PER;
+  NodeMatch found[MAXN];
+  int n = 0;
+  auto add = [&](const ConvKey& k, const char* name, uint8_t type, bool hasPos, int32_t lat, int32_t lon) {
+    for (int i = 0; i < n && i < MAXN; i++) {
+      if (found[i].key == k) return;   // in the table and in the archive: once
+    }
+    if (n < MAXN) {
+      NodeMatch& m = found[n];
+      m.key = k;
+      utf8Copy(m.name, sizeof(m.name), name);
+      m.type = type;
+      m.hasPos = hasPos;
+      m.latE6 = lat;
+      m.lonE6 = lon;
+    }
+    n++;
+  };
+  // The table first (its positions are the newest: MESSAGING-11), then the archive
+  ContactInfo c;
+  for (int idx = MAX_ANON_CONTACTS; idx < getTotalContactSlots(); idx++) {
+    if (!getContactByIdx(idx, c) || c.type == 0 || memcmp(c.id.pub_key, hash, (size_t)bytes) != 0) continue;
+    if (relaysOnly && c.type != ADV_TYPE_REPEATER && c.type != ADV_TYPE_ROOM) continue;
+    add(directKey(c.id.pub_key), c.name, c.type, c.gps_lat || c.gps_lon, c.gps_lat, c.gps_lon);
+  }
+  const uint8_t mask = relaysOnly ? (uint8_t)(NodeArchive::typeBit(ADV_TYPE_REPEATER) | NodeArchive::typeBit(ADV_TYPE_ROOM))
+                                  : NodeArchive::ALL_TYPES;
+  NodeRecord recs[MAXN];
+  const int total = archive()->findByHash(hash, bytes, mask, recs, MAXN);
+  int beyond = total > MAXN ? total - MAXN : 0;   // archive matches not copied: counted, assumed not in the table
+  for (int i = 0; i < total && i < MAXN; i++) {
+    add(directKey(recs[i].pubKey), recs[i].name, recs[i].type, recs[i].hasPos(), recs[i].latE6, recs[i].lonE6);
+  }
+  const int matches = n + beyond;
+  _matchCache.put(hash, bytes, relaysOnly, now, found, matches);
+  for (int i = 0; out && i < n && i < MAXN && i < max; i++) out[i] = found[i];
+  return matches;
 }
 
 bool CardputerMesh::setFavourite(const ConvKey& key, bool fav) {
   ContactInfo* c = contactFor(key);
   if (!c) return false;
   if (fav) c->flags |= 0x01; else c->flags &= ~0x01;
+  if (archive()) archive()->markFlags(c->id.pub_key, fav ? NodeRecord::Favourite : 0, fav ? 0 : NodeRecord::Favourite, millis());
   _orderDirty = true;
   saveContacts();   // explicit user action: save now
   return true;
@@ -262,6 +348,8 @@ bool CardputerMesh::removeContact(const ConvKey& key) {
   ContactInfo* c = contactFor(key);
   if (!c) return false;
   _positions.book().remove(c->id.pub_key);
+  if (archive()) archive()->forget(c->id.pub_key, millis());   // the user removed it: forgotten until heard again
+  _matchCache.clear();
   bool ok = BaseChatMesh::removeContact(*c);
   _orderDirty = true;
   saveContacts();
@@ -454,7 +542,7 @@ bool CardputerMesh::sendText(const ConvKey& to, const char* text) {
     return _store.append(to, ch.name, m, false) >= 0;
   }
 
-  ContactInfo* c = contactFor(to);
+  ContactInfo* c = contactOrArchived(to);   // its contact may have left the table: the archive brings it back
   if (!c) return false;
   Pending* p = nullptr;
   for (auto& e : _pending) if (!e.used) { p = &e; break; }
@@ -478,7 +566,7 @@ void CardputerMesh::checkPending() {
   for (auto& p : _pending) {
     if (!p.used || (int32_t)(now - p.deadline) < 0) continue;
     StoredMsg m;
-    ContactInfo* c = contactFor(p.key);
+    ContactInfo* c = contactOrArchived(p.key);
     if (!c || !_store.read(p.key, p.seq, m)) { p.used = false; continue; }
     if (p.attempts < MAX_ATTEMPTS) {
       if (p.attempts == MAX_ATTEMPTS - 1) resetPathTo(*c);   // last try: flood, the path may be stale
@@ -625,7 +713,7 @@ void CardputerMesh::onAdvertRecv(mesh::Packet* packet, const mesh::Identity& id,
   // MeshCore writes the advert's position over the contact's. A position from a later message must win: keep what was
   // there, then offer the advert's position with its own time (MESSAGING-11).
   const ContactPositions::Before before = ContactPositions::before(lookupContactByPubKey(id.pub_key, PUB_KEY_SIZE));
-  BaseChatMesh::onAdvertRecv(packet, id, timestamp, app_data, app_data_len);
+  ArchivingChatMesh::onAdvertRecv(packet, id, timestamp, app_data, app_data_len);   // and to the archive
   ContactInfo* c = lookupContactByPubKey(id.pub_key, PUB_KEY_SIZE);
   if (_positions.afterAdvert(before, c, timestamp, app_data, app_data_len)) markContactsDirty();
 }
@@ -644,8 +732,11 @@ void CardputerMesh::onDiscoveredContact(ContactInfo& contact, bool is_new, uint8
 void CardputerMesh::onContactOverwrite(const uint8_t* pub_key) {
   // Called just before the slot is reused: the contact is still there. Its conversation stays.
   if (ContactInfo* c = lookupContactByPubKey(pub_key, PUB_KEY_SIZE)) {
-    CPLOG_I("MESH", "contact list full: %s (oldest, not a favourite) replaced by a new contact", c->name);
+    CPLOG_I("MESH", "contact list full: %s (oldest, not a favourite) moves to the archive for a new contact", c->name);
   }
+  // It stays findable: a conversation with it keeps it in the archive whatever comes (Keep)
+  archiveLeaving(pub_key, _store.find(directKey(pub_key)) != nullptr);
+  _matchCache.clear();
   _positions.book().remove(pub_key);
   markContactsDirty();
 }
@@ -696,8 +787,72 @@ bool CardputerMesh::pollEvent(MeshEvent& out) {
   return true;
 }
 
+void CardputerMesh::archiveCommand(const char* a) {
+  char line[128];
+  if (!strncmp(a, "fill", 4)) {
+    // "fill <count> [<per second>]"
+    int count = 200, rate = 20;
+    sscanf(a + 4, "%d %d", &count, &rate);
+    _testFill = count > 0 ? count : 200;
+    _testPeriodMs = rate > 0 ? 1000 / rate : 50;
+    _testSeed = millis() | 1;
+    _testLastMs = millis();
+    _testMaxGapMs = 0;
+    _testDropped = archive()->stats().dropped;
+    CPLOG_I("NODES", "test: %d made-up hearings, %lu per second, names 'test ...'", _testFill,
+            (unsigned long)(1000 / _testPeriodMs));
+    return;
+  }
+  if (!strncmp(a, "count", 5)) {
+    struct Count : NodeVisitor {
+      int n = 0, test = 0;
+      bool visit(const NodeRecord& r) override { n++; test += strncmp(r.name, "test ", 5) == 0; return true; }
+    } c;
+    _nodes.flushAll();
+    const uint32_t t0 = millis();
+    for (int next = 0; next >= 0;) next = _nodes.scanSlice(next, 16, c);
+    CPLOG_I("NODES", "count: %d nodes (%d made-up) in %lu ms at %u MHz", c.n, c.test, (unsigned long)(millis() - t0),
+            (unsigned)getCpuFrequencyMhz());
+  } else if (!strncmp(a, "wipe", 4)) {
+    _testFill = 0;
+    _nodes.flushAll();
+    const int removed = _nodes.wipe();
+    _matchCache.clear();
+    CPLOG_W("NODES", "archive wiped: %d bucket files removed (heard again, nodes come back)", removed);
+  }
+  _nodes.summary(line, sizeof(line));
+  CPLOG_I("NODES", "%s | contacts %d/%d", line, getNumContacts(), MAX_CONTACTS);
+}
+
+void CardputerMesh::archiveTestLoop() {
+  if (_testFill <= 0 || !archive()) return;
+  const uint32_t now = millis();
+  if (now - _testLastMs > _testMaxGapMs) _testMaxGapMs = now - _testLastMs;
+  _testLastMs = now;
+  if (now - _testQueuedMs < _testPeriodMs) return;   // 20 per second by default: denser than a real mesh
+  _testQueuedMs = now;
+  NodeRecord r;
+  for (int i = 0; i < 32; i++) {
+    _testSeed ^= _testSeed << 13;
+    _testSeed ^= _testSeed >> 17;
+    _testSeed ^= _testSeed << 5;
+    r.pubKey[i] = (uint8_t)_testSeed;
+  }
+  snprintf(r.name, sizeof(r.name), "test %08lx", (unsigned long)_testSeed);
+  r.type = ADV_TYPE_REPEATER;
+  r.lastHeard = nowUnix();
+  r.hops = (uint8_t)(_testSeed % 6);
+  archive()->heard(r, now);
+  if (--_testFill == 0) {
+    const uint32_t dropped = archive()->stats().dropped - _testDropped;
+    CPLOG_I("NODES", "test: queued, longest pause of loop() meanwhile %lu ms, %lu dropped (queue full)",
+            (unsigned long)_testMaxGapMs, (unsigned long)dropped);
+  }
+}
+
 void CardputerMesh::loop() {
   if (!_started) return;
+  archiveTestLoop();
   BaseChatMesh::loop();
   checkPending();
   uint32_t now = millis();

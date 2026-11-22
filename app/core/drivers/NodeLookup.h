@@ -3,14 +3,6 @@
 // several repeaters share one, so a lookup returns every candidate, never a guess.
 #include "../Services.h"
 
-struct NodeMatch {
-  ConvKey key;
-  char name[16] = {};
-  uint8_t type = 0;
-  bool hasPos = false;
-  int32_t latE6 = 0, lonE6 = 0;
-};
-
 class NodeLookup {
 public:
   explicit NodeLookup(NodeDirectory& nodes) : _nodes(nodes) {}

@@ -1,6 +1,6 @@
 {
   "title": "Cardputer Mesh Roadmap",
-  "updated": "2026-11-09",
+  "updated": "2026-11-18",
   "categories": [
     {
       "prefix": "VALIDATION",
@@ -221,6 +221,19 @@
       "details": "Seen on 2026-11-08 during the SQLite trial: after loop() was blocked for minutes, the clock was set from the GPS with a drift of -1,183 s, then +1,244 s a minute later. NMEA sentences left in the UART buffer during the pause were taken as the current time (DeviceGps). Only a blocked loop triggers it, but a firmware update or a long SD operation could. Fix: drop the buffered bytes after a long gap, or only set the clock from a sentence read within a second of its arrival; a unit test with GpsLink and the fake GPS UART reproduces it."
     },
     {
+      "id": "VALIDATION-13",
+      "title": "A busy mesh pushes friends out of a full contact list",
+      "category": "Validation & bugs",
+      "priority": 0,
+      "size": "L",
+      "status": "in-progress",
+      "requested": true,
+      "depends_on": [
+        "VALIDATION-11"
+      ],
+      "details": "Reported by the project owner on 2026-11-18: with the 100 contacts reached, communication stops. Reproduced with MeshCore's real code (app/sim/wire, a_busy_mesh_pushed_a_friend_out_of_the_table): since VALIDATION-11 a full list replaces the oldest non-favourite, and on a busy mesh repeater adverts arrive all the time, so a friend who has not advertised for a while is replaced; from then on their messages cannot be decrypted and ours cannot be sent. Fixed by MESSAGING-12 steps 1 to 5 (built 2026-11-18): repeaters no longer take contact places, every node heard stays in the archive, and a node outside the table is decrypted and brought back when it writes, or when we write to it. Awaiting a test on a real mesh (app/TESTS.md, 'Archive des nœuds entendus')."
+    },
+    {
       "id": "RELEASE-2",
       "title": "Contribute the Cardputer ADV variant to MeshCore",
       "category": "Release & CI",
@@ -421,6 +434,19 @@
         "VALIDATION-8"
       ],
       "details": "When a card is present, write the configuration backup automatically just before restarting into the other mode, so that a storage problem can never cost the identity or the contacts again."
+    },
+    {
+      "id": "SYNC-9",
+      "title": "Import a list of nodes from the SD card",
+      "category": "Companion sync",
+      "priority": 3,
+      "size": "M",
+      "status": "backlog",
+      "requested": false,
+      "depends_on": [
+        "MESSAGING-12"
+      ],
+      "details": "A repeater floods its advert every 47 hours by default, so listening takes about two days to fill the archive of a region. A file on the SD card (key, name, type, position), made on a PC by a script in tools/ from the phone app's export or a public node map, fills it at once. Imported nodes are marked as never heard and rank below heard ones; a node heard later replaces its imported record. The formats and the licences of the sources must be checked first. Design: docs/storage/NODES.md."
     },
     {
       "id": "RADIO-1",
@@ -683,18 +709,16 @@
     },
     {
       "id": "MESSAGING-12",
-      "title": "Keep contacts on the SD card when the list is full",
+      "title": "Archive of every node heard, beyond the 100 contacts",
       "category": "Messaging",
       "priority": 1,
-      "size": "L",
-      "status": "backlog",
+      "size": "XL",
+      "status": "in-progress",
       "requested": true,
       "depends_on": [
-        "VALIDATION-1",
-        "SYNC-1",
         "VALIDATION-11"
       ],
-      "details": "Requested by the project owner on 2026-11-07: contacts are also saved on the SD card, and when there is no room left, 100 places are freed and those contacts move to the card. To settle first: the keyboard firmware holds 100 contacts today (MAX_CONTACTS), so freeing 100 places would empty the whole list. Either raise that limit, which costs RAM on a device without PSRAM, or free fewer. Choose which contacts leave: the oldest heard, never favourites. A contact on the card must come back by itself when it is heard again or when a message arrives from it, since a message from a contact that is not in RAM cannot be decrypted, and conversations and routes must still find its name. Without a card, nothing may be lost silently: warn, and keep the current behaviour. The file holds public keys and names only, but it tells who you know, so include it in SECURITY-1's thinking. After SYNC-1: both change how contacts are stored, and the contacts file now has a version and a crash-safe save (ContactFile, MESSAGING-11) to build on. VALIDATION-11 first stops a full list from blocking new contacts; this item then keeps the contacts that leave."
+      "details": "Requested by the project owner on 2026-11-07, redesigned on 2026-11-10 after the SQLite trials (docs/storage/NODES.md). Steps 1 to 5 built 2026-11-18, awaiting a test on a real mesh. MeshCore's contact table stays in RAM with 100 places for the people we talk to and favourites; the archive keeps every node heard - people, repeaters, rooms, sensors - with key, name, type, position, first and last heard, hops and signal, in 128 bucket files of 42 records (/nodes/0 .. /nodes/7, up to 5,376 nodes, about 770 KB when full). Measured on the device (bench store/fsops/ecdh): a bucket read takes 20 ms at 240 MHz and 54 ms at 80, a rewrite 58 to 120 ms; written from a task on core 0, loop() pauses under 175 ms. LittleFsStorage now uses POSIX calls (10 times faster reads: contacts load in 0.6 s instead of 3.2 s). Only people enter the table by themselves: repeaters stay in the archive, where routes and the packet log still find their names. A message from a node outside the table is decrypted (ArchivingChatMesh: archive candidates tried only after the table's, at most 8 at 240 MHz and 4 at 80, 32 key exchanges per minute), acknowledged, and its sender comes back into the table; writing to a conversation whose contact left brings it back too. Console: nodes, nodes count, nodes fill, nodes wipe. Left: step 6 (screens: the list of nodes heard with search - MESSAGING-14 -, a node's sheet, add to contacts). The archive tells who is around: include it in SECURITY-1's thinking. SYNC-1 later merges the phone mode's contacts into it by key."
     },
     {
       "id": "MESSAGING-13",
@@ -833,6 +857,33 @@
         "RADIO-6"
       ],
       "details": "Requested by the project owner on 2026-11-08: see the route each time, not only for messages (already done by MESSAGING-10 and MAP-7): adverts, discovery answers and the other packets of the packet log. Each flood carries its whole path, but the packet log keeps only the last hop today: keep the path (PathView, MsgRoute) in PacketRecord, within the RAM budget (48 records), then open RouteScreen and the map from a packet's details. An advert also gives the position of its sender, so its route has both ends."
+    },
+    {
+      "id": "MAP-10",
+      "title": "Trace routes from the links seen between repeaters",
+      "category": "GPS & map",
+      "priority": 1,
+      "size": "L",
+      "status": "backlog",
+      "requested": true,
+      "depends_on": [
+        "MESSAGING-12",
+        "MAP-7"
+      ],
+      "details": "Requested by the project owner on 2026-11-10: from the nodes a message took, trace its path. A route only holds 1 to 3 bytes of each repeater's key, and with 1-byte IDs (most nodes) a bigger list makes hops more ambiguous: another repeater shares the ID of a hop 54 % of the time with 200 repeaters known, 86 % with 500 (0.8 % with 2-byte IDs). LinkBook keeps the links seen between IDs, learnt from the whole route of every flood heard (an advert from R through x then y gives R-x, x-y and y-me), with a count and a date, in 2 KB of RAM and one file. RouteResolver then chooses the hops of the whole route at once (best-path search: distance, links never seen, old records, no pair beyond the radio range, ends anchored at the sender and at a node we hear) instead of one hop at a time. Measured first on a simulated mesh of 500 repeaters with 1-byte IDs: hops placed right by the current resolver, the best-path search, and with LinkBook. Each hop keeps its state (certain, chosen among N, unknown). Design: docs/storage/NODES.md."
+    },
+    {
+      "id": "MAP-11",
+      "title": "Repeaters of the archive on the map",
+      "category": "GPS & map",
+      "priority": 2,
+      "size": "M",
+      "status": "backlog",
+      "requested": false,
+      "depends_on": [
+        "MESSAGING-12"
+      ],
+      "details": "Since MESSAGING-12 repeaters stay in the node archive instead of the contact list, and the map draws contacts only: the repeaters that advertise a position no longer show. Draw the archive's nodes with a position in the visible area, read in the background a few buckets at a time (a full read takes 3 to 9 s) and kept as a small list of points; MAP-8 decides which layers a route view keeps."
     },
     {
       "id": "CONNECTIVITY-1",

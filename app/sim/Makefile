@@ -93,14 +93,15 @@ LIBDEPS     ?= ../../.pio/libdeps/cardputer_adv_standalone
 CRYPTO_DIR  ?= $(LIBDEPS)/Crypto
 WIRE_FLAGS  := -std=c++17 -O1 -g -w -DRP2040_PLATFORM -DARDUINO=100 -DMAX_CONTACTS=32 -DMAX_GROUP_CHANNELS=4 -Iwire/stubs -I$(MESHCORE)/src -I$(MESHCORE)/lib/ed25519 -I$(CRYPTO_DIR) -I$(LIBDEPS)/base64/src
 WIRE_SRC    := Dispatcher.cpp Identity.cpp Mesh.cpp Packet.cpp Utils.cpp AdvertDataHelpers.cpp BaseChatMesh.cpp RegionMap.cpp \
-               StaticPoolPacketManager.cpp TransportKeyStore.cpp TxtDataHelpers.cpp test_wire.cpp ContactFile.cpp ContactPositions.cpp GeoText.cpp FloodPolicy.cpp FloodOptions.cpp MessageRoute.cpp PacketLog.cpp PathView.cpp PositionBook.cpp ContactPosition.cpp
+               StaticPoolPacketManager.cpp TransportKeyStore.cpp TxtDataHelpers.cpp test_wire.cpp ContactFile.cpp ContactPositions.cpp GeoText.cpp FloodPolicy.cpp FloodOptions.cpp MessageRoute.cpp PacketLog.cpp PathView.cpp PositionBook.cpp ContactPosition.cpp \
+               ArchivingChatMesh.cpp NodeBook.cpp NodeArchive.cpp NodeRecord.cpp BucketStore.cpp FakeStorage.cpp SimLog.cpp
 WIRE_CRYPTO := AES128.cpp AESCommon.cpp BlockCipher.cpp ChaCha.cpp Cipher.cpp Crypto.cpp Curve25519.cpp BigNumberUtil.cpp Ed25519.cpp Hash.cpp SHA256.cpp SHA512.cpp RNG.cpp
 WIRE_C      := $(wildcard $(MESHCORE)/lib/ed25519/*.c)
 WIRE_DIR    := $(BUILD)/wire
 WIRE_OBJ    := $(patsubst %.cpp,$(WIRE_DIR)/%.o,$(WIRE_SRC)) $(patsubst %.cpp,$(WIRE_DIR)/crypto_%.o,$(WIRE_CRYPTO)) \
                $(patsubst %.c,$(WIRE_DIR)/ed_%.o,$(notdir $(WIRE_C)))
 
-vpath %.cpp $(MESHCORE)/src $(MESHCORE)/src/helpers wire ../device ../core/drivers
+vpath %.cpp $(MESHCORE)/src $(MESHCORE)/src/helpers wire ../device ../core/drivers fakes .
 
 # No platform here: the library then uses its plain C++ code, not a chip's
 $(WIRE_DIR)/crypto_%.o: $(CRYPTO_DIR)/%.cpp
@@ -111,7 +112,7 @@ $(WIRE_DIR)/ed_%.o: $(MESHCORE)/lib/ed25519/%.c
 	@mkdir -p $(WIRE_DIR)
 	$(CC) -O1 -w -c $< -o $@
 
-$(WIRE_DIR)/%.o: %.cpp $(HDRS) wire/stubs/Arduino.h ../device/FloodPolicy.h
+$(WIRE_DIR)/%.o: %.cpp $(HDRS) wire/stubs/Arduino.h ../device/FloodPolicy.h ../device/ArchivingChatMesh.h
 	@mkdir -p $(WIRE_DIR)
 	$(CXX) $(WIRE_FLAGS) -c $< -o $@
 

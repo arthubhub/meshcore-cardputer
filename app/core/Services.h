@@ -77,12 +77,28 @@ struct MeshEvent {
   char text[64] = {};         // message preview (AIRTIME: "8.1 % / 10 %", CONTACTS_*: "92/100")
 };
 
+// A node found from the start of its key (a hop of a route, the sender of a packet)
+struct NodeMatch {
+  ConvKey key;
+  char name[16] = {};
+  uint8_t type = 0;
+  bool hasPos = false;
+  int32_t latE6 = 0, lonE6 = 0;
+};
+
 // The known nodes, favourites first, then most recently heard. What looking a node up needs from the mesh.
 class NodeDirectory {
 public:
   virtual ~NodeDirectory() {}
   virtual int contactCount() = 0;
   virtual bool contactAt(int i, ContactView& out) = 0;
+  // Every node heard, beyond the contacts (MESSAGING-12's archive): the nodes whose key starts with `hash`, relays
+  // only (repeaters, rooms) if asked. Fills up to `max` and returns how many match. -1: no archive here, NodeLookup
+  // then searches the contacts.
+  virtual int findNodes(const uint8_t* hash, int bytes, bool relaysOnly, NodeMatch* out, int max) {
+    (void)hash; (void)bytes; (void)relaysOnly; (void)out; (void)max;
+    return -1;
+  }
 };
 
 class MeshService : public NodeDirectory {

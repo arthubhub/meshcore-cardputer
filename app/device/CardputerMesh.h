@@ -4,7 +4,7 @@
 // phone app normally does: message history, delivery tracking with retries, contacts and
 // channels persistence, and exposes it all to the UI through MeshService.
 #include <Arduino.h>
-#include <helpers/BaseChatMesh.h>
+#include "ArchivingChatMesh.h"
 #include <helpers/SimpleMeshTables.h>
 #include "../core/Services.h"
 #include "DeviceServices.h"
@@ -12,8 +12,13 @@
 #include "FloodPolicy.h"
 #include "LittleFsStorage.h"
 #include "PacketSdLogger.h"
+#include "DeviceNodeArchive.h"
+#include "../core/drivers/NodeMatchCache.h"
 
-class CardputerMesh : public BaseChatMesh, public MeshService {
+// Since MESSAGING-12 the contact table is backed by the node archive (ArchivingChatMesh, DeviceNodeArchive): every node
+// heard is kept on flash, only people enter the table by themselves, and a node outside the table is brought back when
+// it writes to us or when we write to it.
+class CardputerMesh : public ArchivingChatMesh, public MeshService {
 public:
   CardputerMesh(mesh::Radio& radio, mesh::RNG& rng, mesh::RTCClock& rtc, SimpleMeshTables& tables,
                 DeviceSettings& settings);
@@ -21,7 +26,12 @@ public:
   void begin();   // identity, contacts, channels, message index (cpadv::dataFs() must be mounted)
   void loop();    // mesh + retries + deferred saves; call as often as possible
   bool started() const { return _started; }
-  void flush() { if (_started) { saveContacts(); _store.flush(); } }   // before a backup
+  // Before a backup, a restart or a mode switch: everything on flash, the archive's queue included
+  void flush() { if (_started) { saveContacts(); _store.flush(); _nodes.flushAll(); } }
+  void archiveSummary(char* out, size_t n) { _nodes.summary(out, n); }
+  // Console `nodes`: test hearings (fill), a full count (count), removal of every bucket file (wipe)
+  void archiveCommand(const char* args);
+  void archiveTestLoop();             // `nodes fill`: one made-up hearing per pass of loop()
   void setGps(GpsService* gps) { _gps = gps; }
 
   // ---- MeshService ----
@@ -33,6 +43,7 @@ public:
   int contactCapacity() override { return MAX_CONTACTS; }
   bool contactAt(int i, ContactView& out) override;
   bool findContact(const ConvKey& key, ContactView& out) override;
+  int findNodes(const uint8_t* hash, int bytes, bool relaysOnly, NodeMatch* out, int max) override;
   bool setFavourite(const ConvKey& key, bool fav) override;
   bool removeContact(const ConvKey& key) override;
   bool resetPath(const ConvKey& key) override;
@@ -51,6 +62,12 @@ public:
   const FloodPolicy& floods() { syncFloods(); return _floods; }
 
 protected:
+  // ---- ArchivingChatMesh ----
+  uint32_t nowMs() const override { return millis(); }
+  int lastRssi() const override;
+  int archiveCandidates() const override;   // ECDH takes 14 ms at 240 MHz, 43 ms at 80 (bench ecdh)
+  void onBroughtBack(const ContactInfo& c) override;
+
   // ---- BaseChatMesh / Mesh ----
   float getAirtimeBudgetFactor() const override { return 1.0f; }
   int calcRxDelay(float score, uint32_t air_time) const override { return 0; }
@@ -103,6 +120,7 @@ private:
   static ConvKey directKey(const uint8_t* pubKey);
   static ConvKey channelKey(const mesh::GroupChannel& ch);
   ContactInfo* contactFor(const ConvKey& key);
+  ContactInfo* contactOrArchived(const ConvKey& key);   // brings an archived node back into the table to write to it
   int channelIndexFor(const ConvKey& key);
   void toView(const ContactInfo& c, ContactView& out);
   void storeIncoming(const ContactInfo& from, mesh::Packet* pkt, uint32_t senderTs, const char* text);
@@ -127,6 +145,8 @@ private:
   DeviceSettings& _settings;
   GpsService* _gps = nullptr;
   LittleFsStorage _storage;
+  DeviceNodeArchive _nodes;
+  NodeMatchCache _matchCache;
   NodeDiscovery _discovery;
   ContactPositions _positions;
   FloodPolicy _floods;
@@ -152,4 +172,6 @@ private:
   bool _contactsDirty = false;
   uint32_t _contactsDirtySince = 0;
   uint32_t _lastFlush = 0;
+  int _testFill = 0;                  // made-up hearings still to queue (console `nodes fill`)
+  uint32_t _testSeed = 0, _testLastMs = 0, _testQueuedMs = 0, _testPeriodMs = 50, _testMaxGapMs = 0, _testDropped = 0;
 };

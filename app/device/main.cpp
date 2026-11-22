@@ -20,6 +20,7 @@
 #include "../core/screens/PacketsScreen.h"
 #include "../core/screens/RouteScreen.h"
 #include "DebugConsole.h"
+#include "DeviceBench.h"
 #include <CpadvBoot.h>
 #include "DeviceBackup.h"
 #include "DeviceServices.h"
@@ -108,6 +109,7 @@ static uint32_t lastBatteryCheck = 0;
 static bool lowBatteryWarned = false;
 static uint32_t bootAdvertAt = 0;
 static uint8_t appliedBrightness = 0;
+static DeviceBench bench;   // `bench`: storage and ECDH measures (MESSAGING-12); holds the CPU speed it set
 
 static uint8_t brightnessLevel() {
   static const uint8_t LEVELS[] = {40, 110, 200};
@@ -126,7 +128,7 @@ static void meshLoop() {
 
 static void wakeScreen() {
   if (!screenAsleep) return;
-  setCpuFrequencyMhz(240);   // full speed for drawing
+  if (!bench.running()) setCpuFrequencyMhz(240);   // full speed for drawing
   M5.Display.wakeup();
   M5.Display.setBrightness(brightnessLevel());
   screenAsleep = false;
@@ -139,7 +141,7 @@ static void sleepScreen() {
   M5.Display.setBrightness(0);
   M5.Display.sleep();
   screenAsleep = true;
-  setCpuFrequencyMhz(80);    // radio, GPS and keyboard only: 80 MHz is plenty and saves battery
+  if (!bench.running()) setCpuFrequencyMhz(80);   // radio, GPS and keyboard only: 80 MHz is plenty and saves battery
   CPLOG_I("MAIN", "screen off, CPU 80 MHz (radio and GPS keep running)");
 }
 
@@ -393,8 +395,17 @@ static void setupConsole() {
     else CPLOG_I("BOOT", "dual image %s, running %s", cpadv::dualBootImage() ? "yes" : "no",
                  cpadv::runningSlot() == cpadv::Slot::Standalone ? "standalone" : "companion");
   });
+  console.add("bench", "store [dir=root|sub] [task=0|1] [mhz=80|240] | ecdh [n=16] | clean: device measures",
+              [](const char* a) { bench.command(a); });
+#if !CPADV_DEMO
+  console.add("nodes", "the node archive | fill [n]: test hearings | count | wipe",
+              [](const char* a) { meshNode.archiveCommand(a); });
+#endif
   console.add("reboot", "restart the Cardputer", [](const char*) {
     CPLOG_I("MAIN", "restart requested from the console");
+#if !CPADV_DEMO
+    meshNode.flush();   // contacts, messages and the archive's queue
+#endif
     delay(100);
     ESP.restart();
   });
@@ -434,6 +445,7 @@ void setup() {
     bootAdvertAt = millis() + 3000;   // let the radio settle, then announce ourselves
   }
   meshNode.setGps(&gpsDev);
+  bench.setRng(&fastRng);
   gpsDev.begin();   // the GPS UART is ours: EnvironmentSensorManager is not started
   backup.setFlushHook([] { meshNode.flush(); });
 #endif
@@ -491,6 +503,7 @@ void loop() {
   meshLoop();
   board.loop();     // boot log replay + heartbeat
   console.loop();
+  bench.loop();     // a running bench: one storage operation per pass
 
   KeyEvent e;
   while (keyboard.poll(e)) {
