@@ -14,6 +14,7 @@
 #include "PacketSdLogger.h"
 #include "DeviceNodeArchive.h"
 #include "../core/drivers/NodeMatchCache.h"
+#include "../core/drivers/TrafficTracer.h"
 
 // Since MESSAGING-12 the contact table is backed by the node archive (ArchivingChatMesh, DeviceNodeArchive): every node
 // heard is kept on flash, only people enter the table by themselves, and a node outside the table is brought back when
@@ -56,6 +57,7 @@ public:
   bool startDiscovery() override;
   const NodeDiscovery& discovery() const override { return _discovery; }
   const PacketLog& packetLog() const override { return _packets; }
+  TrafficTracer& tracer() override { return _tracer; }
   void clearPacketLog() override { _packets.clear(); }
   bool setPacketCapture(bool on) override;
   bool packetCapture() const override { return _capture.active(); }
@@ -151,6 +153,7 @@ private:
   ContactPositions _positions;
   FloodPolicy _floods;
   PacketLog _packets;
+  TrafficTracer _tracer;               // fed by _packets (its observer): the live packet tracer
   PacketSdLogger _capture;
   AirtimeMeter _airtime;
   ContactCapacity _capacity;

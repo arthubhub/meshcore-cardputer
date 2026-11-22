@@ -19,6 +19,7 @@
 #include "../core/screens/NearbyScreen.h"
 #include "../core/screens/PacketsScreen.h"
 #include "../core/screens/RouteScreen.h"
+#include "../core/screens/TracerScreen.h"
 #include "DebugConsole.h"
 #include "DeviceBench.h"
 #include <CpadvBoot.h>
@@ -95,6 +96,7 @@ static GpsScreen gpsScreen(compassScreen);
 static SystemScreen systemScreen;
 static PacketDetailScreen packetDetail;
 static PacketsScreen packetsScreen(packetDetail);
+static TracerScreen tracerScreen;   // live packet tracer
 static SettingsScreen settingsScreen(textInput, systemScreen, packetsScreen);
 static NearbyScreen nearbyScreen(contactDetail);
 #if CPADV_MAP
@@ -480,6 +482,8 @@ void setup() {
   // The packet log has its own page in the menu (it stays reachable from Settings too)
   home.addSection(NavSection("Packet log", "Journal radio", 'p', NavIcon::PACKETS, &packetsScreen,
                              HomeScreen::defaultSummary(NavIcon::PACKETS)));
+  home.addSection(NavSection("Packet tracer", "Traceur radio", 't', NavIcon::TRACER, &tracerScreen,
+                             HomeScreen::defaultSummary(NavIcon::TRACER)));
   app.begin(&home);
 #if CPADV_DEMO
   app.notify(tr("Demo mode", "Mode démo"), tr("No radio: simulated contacts and GPS", "Pas de radio : contacts et GPS simulés"), 5000);

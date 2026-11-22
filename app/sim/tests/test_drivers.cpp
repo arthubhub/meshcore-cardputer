@@ -29,6 +29,7 @@
 #include "../../core/drivers/Pi4ioe.h"
 #include "../../core/drivers/Tca8418.h"
 #include "../../core/drivers/TileGrid.h"
+#include "../../core/drivers/TrafficTracer.h"
 #include "../../core/drivers/TileRasterizer.h"
 #include "../fakes/FakeGpsUart.h"
 #include "../fakes/FakeI2c.h"
@@ -2970,6 +2971,117 @@ TEST(carousel_slides_and_wraps) {
   c.slide(1, 5000);
   CHECK_EQ(c.page(), 0);
   CHECK(!c.sliding(5000));
+}
+
+// ============================================================ Live packet tracer
+
+namespace tracer_test {
+// A flood heard: an advert from `sender` (2 bytes of key) through `path` (1-byte IDs)
+void flood(TrafficTracer& t, uint32_t ms, uint8_t s0, uint8_t s1, std::vector<uint8_t> path, bool tx = false) {
+  uint8_t body[40] = {};
+  body[0] = s0;
+  body[1] = s1;
+  PacketLogFrame f;
+  f.header = wire::header(wire::ROUTE_FLOOD, wire::PL_ADVERT);
+  f.pathLen = (uint8_t)path.size();
+  f.path = path.data();
+  f.payload = body;
+  f.payloadLen = sizeof(body);
+  f.ms = ms;
+  f.tx = tx;
+  PacketLog log;                   // the real decoding of the log, as on the device
+  log.setObserver(&t);
+  log.add(f);
+}
+int find(const TrafficTracer& t, uint8_t id0) {
+  for (int i = 0; i < TrafficTracer::MAX_NODES; i++) {
+    if (t.node(i).used && t.node(i).kind != TrafficTracer::Kind::Me && t.node(i).id[0] == id0) return i;
+  }
+  return -1;
+}
+}  // namespace tracer_test
+
+TEST(tracer_starts_blank_and_traces_a_route) {
+  using namespace tracer_test;
+  TrafficTracer t;
+  CHECK_EQ(t.nodes(), 0);           // T0: nothing shown
+  CHECK_EQ(t.me(), -1);
+  flood(t, 1000, 0x5A, 0x01, {0xA1, 0xB2});
+  CHECK_EQ(t.nodes(), 4);           // the sender, two repeaters, me
+  CHECK_EQ(t.links(), 3);
+  const int sender = find(t, 0x5A), a = find(t, 0xA1), b = find(t, 0xB2);
+  CHECK(t.node(sender).kind == TrafficTracer::Kind::Client);
+  CHECK(t.node(a).kind == TrafficTracer::Kind::Router);
+  CHECK_EQ(t.node(b).hopsFromMe, 1);  // the last repeater is next to me
+  CHECK_EQ(t.node(a).hopsFromMe, 2);
+  CHECK_EQ(t.node(sender).hopsFromMe, 3);
+  CHECK_EQ(t.usage(a), 1);
+  // T1: a first message, its nodes green
+  CHECK(TrafficTracer::heatColor(t.usage(a)) >> 11 <= 2);    // almost no red
+  CHECK_EQ((TrafficTracer::heatColor(t.usage(a)) >> 5) & 0x3F, 63);
+  flood(t, 2000, 0x5A, 0x01, {0xA1, 0xB2}, true);           // our own packets are not traced
+  CHECK_EQ(t.usage(a), 1);
+}
+
+TEST(tracer_heats_busy_repeaters_and_forgets_after_20_minutes) {
+  using namespace tracer_test;
+  TrafficTracer t;
+  uint32_t ms = 0;
+  for (int i = 0; i < TrafficTracer::BUSY; i++) {
+    flood(t, ms, (uint8_t)(0x10 + i % 5), 0x00, {0xA1});      // A1 relays everything
+    ms += 20000;                                               // 3 per minute
+  }
+  const int a = find(t, 0xA1);
+  CHECK_EQ(t.usage(a), TrafficTracer::BUSY);
+  CHECK_EQ(TrafficTracer::heatColor(t.usage(a)), 0xF800);    // Tn: full red
+  CHECK_EQ(TrafficTracer::heatColor(0) , 0x07E0);            // pure green at the start of the scale
+  const uint16_t half = TrafficTracer::heatColor(TrafficTracer::BUSY / 2);
+  CHECK((half >> 11) > 25 && ((half >> 5) & 0x3F) > 55);      // yellow in the middle, not a dull olive
+  CHECK_EQ(t.nodes(), 1 + 5 + 1);
+  // Quiet: after 20 minutes without packets, everything leaves
+  t.advance(ms + 10 * 60000);
+  CHECK(t.nodes() > 0);
+  CHECK(t.usage(a) < TrafficTracer::BUSY);                   // the oldest minutes left the window
+  t.advance(ms + 21 * 60000);
+  CHECK_EQ(t.nodes(), 0);
+  CHECK_EQ(t.links(), 0);
+  CHECK_EQ(t.me(), -1);
+}
+
+TEST(tracer_merges_short_and_long_ids_and_keeps_its_budget) {
+  using namespace tracer_test;
+  TrafficTracer t;
+  flood(t, 0, 0x01, 0x00, {0xA1});
+  // The same repeater in a packet with 2-byte IDs
+  uint8_t path2[2] = {0xA1, 0x77};
+  uint8_t body[40] = {0x02, 0x00};
+  PacketLogFrame f;
+  f.header = wire::header(wire::ROUTE_FLOOD, wire::PL_ADVERT);
+  f.pathLen = (1 << 6) | 1;
+  f.path = path2;
+  f.payload = body;
+  f.payloadLen = sizeof(body);
+  PacketLog log;
+  log.setObserver(&t);
+  log.add(f);
+  const int a = find(t, 0xA1);
+  CHECK_EQ(t.node(a).idBytes, 2);   // learnt a second byte
+  CHECK_EQ(t.usage(a), 2);
+  CHECK_EQ(t.nodes(), 4);           // two senders, A1, me
+  // Many senders: the table stays within its size, the least used leave
+  for (int i = 0; i < 100; i++) flood(t, 1000 + i, (uint8_t)i, 0x55, {0xA1});
+  CHECK(t.nodes() <= TrafficTracer::MAX_NODES);
+  CHECK(t.node(find(t, 0xA1)).used);                         // the busy repeater stays
+  NodeMatch m[2];
+  snprintf(m[0].name, sizeof(m[0].name), "Colomiers");
+  m[0].hasPos = true;
+  m[0].latE6 = 43611600;
+  t.resolve(find(t, 0xA1), m, 1);
+  CHECK(t.node(find(t, 0xA1)).lookup == TrafficTracer::Lookup::Known && t.node(find(t, 0xA1)).hasPos);
+  t.resolve(find(t, 0xA1), m, 2);                            // two nodes share the ID: not placed
+  CHECK(t.node(find(t, 0xA1)).lookup == TrafficTracer::Lookup::Ambiguous && !t.node(find(t, 0xA1)).hasPos);
+  t.clear();
+  CHECK_EQ(t.nodes(), 0);
 }
 
 int main(int argc, char** argv) {

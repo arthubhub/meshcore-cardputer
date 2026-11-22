@@ -4,7 +4,7 @@
 
 What the MeshCore firmware for the M5Stack Cardputer ADV + Cap LoRa-1262 could do next, feature by feature, with a priority and a size for each item. This file is generated: change [`roadmap.json`](roadmap.json), then run `python3 tools/roadmap.py`.
 
-Last updated 2026-11-18 · 70 open items · 21 done.
+Last updated 2026-11-18 · 71 open items · 21 done.
 
 ## How to read it
 
@@ -21,7 +21,7 @@ Last updated 2026-11-18 · 70 open items · 21 done.
 | Validation & bugs | 4 | · | 3 | 6 |
 | Release & CI | · | · | 5 | 4 |
 | Companion sync | · | 2 | 6 | 1 |
-| Radio tools | 1 | · | 5 | 5 |
+| Radio tools | 2 | · | 5 | 5 |
 | Messaging | 3 | · | 9 | 2 |
 | GPS & map | 1 | · | 8 | 2 |
 | Connectivity | · | · | 4 | · |
@@ -40,6 +40,7 @@ Last updated 2026-11-18 · 70 open items · 21 done.
 - **[RADIO-11](#radio-11)** Radio presets outside the EU, and custom values · P1 · M
 - **[UX-10](#ux-10)** Navigation menu: dashboard and sliding pages · P1 · M
 - **[VALIDATION-10](#validation-10)** Find and fix the compass bugs · P1 · M
+- **[RADIO-12](#radio-12)** Live packet tracer: repeaters, senders and paths · P1 · L
 - **[MESSAGING-12](#messaging-12)** Archive of every node heard, beyond the 100 contacts · P1 · XL
 - **[MAP-2](#map-2)** Navigate to a contact or waypoint · P2 · S
 - **[VALIDATION-4](#validation-4)** Large-font glyphs on the compass · P2 · S
@@ -295,6 +296,7 @@ Settings › Phone mode, back with esc ×3; shared radio identity.
 | [RADIO-5](#radio-5) | Noise floor and channel scanner | P2 | M | Backlog | · |
 | [RADIO-7](#radio-7) | Temporary repeater mode | P3 | M | Backlog | RADIO-4 |
 | [RADIO-11](#radio-11) | Radio presets outside the EU, and custom values ★ | P1 | M | In progress | · |
+| [RADIO-12](#radio-12) | Live packet tracer: repeaters, senders and paths ★ | P1 | L | In progress | MESSAGING-12 |
 | [RADIO-4](#radio-4) | Airtime and duty-cycle meter | P2 | S | Done | · |
 | [RADIO-6](#radio-6) | Packet sniffer log | P2 | M | Done | · |
 | [RADIO-8](#radio-8) | Nearby repeater search ★ | P1 | M | Done | VALIDATION-1 |
@@ -336,6 +338,12 @@ Forward packets while enabled (for an event or a hike), with a clear status-bar 
 **Radio presets outside the EU, and custom values** ★ · P1 · M · In progress
 
 Requested by the project owner on 2026-11-18: merge the fully customisable radio of the phone app with the presets; "custom" is one entry of the list. Built 2026-11-18, awaiting a test on the device. The presets are MeshCore's own app presets (https://api.meshcore.nz/api/v1/config, meshcore/docs/radio_presets.md): 24 within the Cap LoRa-1262's 868-923 MHz band (USA, Canada, Australia x5, New Zealand x2, Brazil, Costa Rica, Thailand, Vietnam x2, EU/UK and 7 European countries); the 433 MHz ones and Southern California (927.875 MHz) are left out (Custom reaches them, with a warning). Settings store the preset's index: the table is append-only, the first three entries are unchanged (EU/UK Narrow keeps CR 5, MeshCore's firmware default). A preset that defines its network's path ID size sets it (RADIO-9) and says so. Enter on Radio preset opens the list; Custom edits frequency (typed, decimal comma accepted, 150-960 MHz), bandwidth, SF and CR. core/drivers/RadioConfig is the one place that turns settings into radio parameters (radio, System, demo); tools/radio_presets.py --check compares the table with the app's API. UX-1 (first-boot setup) can now offer these presets.
+
+#### RADIO-12
+
+**Live packet tracer: repeaters, senders and paths** ★ · P1 · L · In progress · after MESSAGING-12
+
+Requested by the project owner on 2026-11-18: a packet-tracer view with repeater use, clients and paths; T0 a blank map, T1 the nodes of the first message in green (0,255,0), Tn each node's colour following its use over the last 20 minutes, progressively red (255,0,0). Built 2026-11-18, awaiting a test on a busy mesh. core/drivers/TrafficTracer (unit-tested) observes the packet log: every flood received adds its whole path (sender -> repeaters -> me), counting packets per node and per link in twenty one-minute buckets; unused for 20 minutes a node leaves (blank again). Colour: green -> yellow -> red at 30 packets in the window (a straight green-red mix is a dull olive midway). IDs of 1 and 2 bytes for the same repeater merge; at most 48 nodes and 96 links (about 4 KB), the least used leave. TracerScreen: a blank map (positions from the archive or contacts, me by GPS; nodes without a position next to their neighbours) or a flow graph (columns by hops, me on the right); names looked up two nodes per frame through NodeLookup (the archive), an ID shared by several repeaters shown hollow and not placed. A page of the navigation menu (T). Left for later: the map tiles under the map view, and MAP-10's best-path choice for ambiguous IDs.
 
 #### RADIO-4
 

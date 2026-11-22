@@ -79,6 +79,8 @@ struct MeshEvent {
 };
 
 // A node found from the start of its key (a hop of a route, the sender of a packet)
+class TrafficTracer;
+
 struct NodeMatch {
   ConvKey key;
   char name[16] = {};
@@ -141,6 +143,8 @@ public:
   // Last packets heard and sent (RADIO-6); always recording. With the capture on, they also go to a CSV file on the
   // SD card. setPacketCapture(true) is false when that file cannot be opened.
   virtual const PacketLog& packetLog() const = 0;
+  // Live packet tracer: the repeaters and senders of the packets heard in the last 20 minutes (fed by the packet log)
+  virtual TrafficTracer& tracer() = 0;
   virtual void clearPacketLog() = 0;
   virtual bool setPacketCapture(bool on) = 0;
   virtual bool packetCapture() const = 0;

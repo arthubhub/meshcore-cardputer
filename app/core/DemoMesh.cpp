@@ -37,7 +37,9 @@ static ConvKey keyFromName(uint8_t kind, const std::string& name) {
 }
 
 DemoMesh::DemoMesh(SystemService& sys, SettingsService& settings, Storage& storage)
-    : _sys(sys), _settings(settings), _storage(storage) {}
+    : _sys(sys), _settings(settings), _storage(storage) {
+  _packets.setObserver(&_tracer);
+}
 
 void DemoMesh::begin() {
   _store.begin(&_storage);

@@ -19,6 +19,11 @@ The interface is in English by default; French is one setting away (*Settings â†
 GPS, map, nearby repeaters, packet log, settings): **,** and **/** slide from page to page, **Enter** opens, and **.**
 lists them all. The letters shown on each page (M, C, G, K, N, P, S) open their part directly, as before.
 
+**Packet tracer** (page *Packet tracer*, or **T**). Every route heard is drawn live: the repeaters and senders of the
+last 20 minutes, linked hop by hop, from green (little used) to red (busy). It starts blank and empties again on a quiet
+mesh. **V** switches between a map (nodes at their position, when known) and a flow from the senders on the left to you
+on the right; **,** **/** select a node to see how much it relayed.
+
 **Tagging people.** In a conversation, type **@**: a list of your contacts and of the people who wrote recently
 appears and narrows as you type; press **Enter** to tag the highlighted name. A message that tags you stands out in
 orange and notifies you like a private message, even on a busy channel. Tags use the same `@[name]` form as the

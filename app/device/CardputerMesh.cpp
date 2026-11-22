@@ -51,7 +51,9 @@ uint32_t nowUnix() { return rtc_clock.getCurrentTime(); }
 
 CardputerMesh::CardputerMesh(mesh::Radio& radio, mesh::RNG& rng, mesh::RTCClock& rtc, SimpleMeshTables& tables,
                              DeviceSettings& settings)
-    : ArchivingChatMesh(radio, g_millis, rng, rtc, g_packets, tables), _settings(settings) {}
+    : ArchivingChatMesh(radio, g_millis, rng, rtc, g_packets, tables), _settings(settings) {
+  _packets.setObserver(&_tracer);
+}
 
 // ================================================================ startup / persistence
 

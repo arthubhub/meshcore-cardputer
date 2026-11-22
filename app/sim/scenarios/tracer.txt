@@ -1,0 +1,92 @@
+# Live packet tracer: T0 a blank map; T1 the first route in green; Tn a repeater that relays everything turns red;
+# the graph view; selecting a node; 20 quiet minutes empty it again. The demo mesh routes packets through repeaters
+# whose keys start with a1, be, db (in that order).
+name Raphael
+time 1793541600
+pos 43.6000 1.4400
+contact Colomiers 0 repeater pos 43.6116 1.3346 key a1
+contact Blagnac 0 repeater pos 43.6400 1.3900 key be
+contact Capitole 0 repeater pos 43.6045 1.4440 key db
+contact Bob 2 pos 43.5800 1.3000
+
+# --- T0
+key t
+expect-screen Packet tracer
+expect-tracer 0 0
+shot x0_blank
+
+# --- T1: a first advert from Bob through Colomiers then Blagnac
+pkt ADV Bob 2 6.0
+wait 300
+expect-tracer 4 3
+shot x1_first_route
+
+# --- Tn: Colomiers relays everything (packets of many senders, one hop), Capitole joins on longer routes
+pkt ADV Alice 1 5.0
+pkt TXT Zoe 1 4.0
+pkt ADV Marc 3 3.0
+wait 300
+shot x2_more
+pkt ADV Lea 1 5.0
+pkt ADV Lea 1 5.0
+pkt ADV Lea 1 5.0
+pkt ADV Lea 1 5.0
+pkt ADV Lea 1 5.0
+pkt ADV Lea 1 5.0
+pkt ADV Lea 1 5.0
+pkt ADV Lea 1 5.0
+pkt ADV Lea 1 5.0
+pkt ADV Lea 1 5.0
+pkt ADV Lea 1 5.0
+pkt ADV Lea 1 5.0
+pkt ADV Lea 1 5.0
+pkt ADV Lea 1 5.0
+pkt ADV Lea 1 5.0
+pkt ADV Lea 1 5.0
+pkt ADV Lea 1 5.0
+pkt ADV Lea 1 5.0
+pkt ADV Lea 1 5.0
+pkt ADV Lea 1 5.0
+pkt ADV Lea 1 5.0
+pkt ADV Lea 1 5.0
+pkt ADV Lea 1 5.0
+pkt ADV Lea 1 5.0
+pkt ADV Lea 1 5.0
+wait 300
+shot x3_busy_red
+
+# --- Select the busiest node, then the next; the graph view
+key /
+shot x4_selected
+key /
+key v
+wait 1800
+shot x5_graph
+key v
+
+# --- French
+lang fr
+shot x6_fr
+lang en
+
+# --- From the menu page
+key `
+expect-screen Home
+key ,
+key ,
+wait 300
+shot x7_menu_page
+
+# --- With a GPS fix, I am placed by my position
+gps fix 9
+key t
+wait 300
+shot x9_me_by_gps
+key `
+
+# --- 21 quiet minutes: blank again
+wait 1260000
+key t
+wait 200
+expect-tracer 0 0
+shot x8_blank_again

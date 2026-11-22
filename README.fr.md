@@ -23,6 +23,11 @@ contacts, GPS, carte, routeurs proches, journal radio, réglages) : **,** et **/
 **Entrée** ouvre, et **.** les liste toutes. La lettre affichée sur chaque page (M, C, G, K, N, P, S) ouvre sa partie
 directement, comme avant.
 
+**Traceur radio** (page *Traceur radio*, ou **T**). Chaque trajet entendu est dessiné en direct : les routeurs et
+émetteurs des 20 dernières minutes, reliés saut par saut, du vert (peu utilisé) au rouge (chargé). Il commence vide et
+se vide à nouveau quand le réseau se tait. **V** passe d'une carte (les nœuds à leur position, si elle est connue) à un
+flux des émetteurs, à gauche, jusqu'à vous, à droite ; **,** **/** choisissent un nœud pour voir combien il a relayé.
+
 **Taguer quelqu'un.** Dans une conversation, tapez **@** : la liste de vos contacts et des personnes qui ont écrit
 récemment apparaît et se réduit à chaque lettre ; **Entrée** tague le nom en surbrillance. Un message qui vous tague
 ressort en orange et vous prévient comme un message privé, même sur un canal animé. Les tags ont la même forme
