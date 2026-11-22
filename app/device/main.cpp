@@ -526,7 +526,7 @@ void loop() {
 
   if (screenAsleep) {
     // Screen off: no drawing at all, but events still notify (sound) and wake the screen
-    if (app.pollEvents() && app.bannerVisible()) {
+    if (app.pollEvents() && app.takeWakeRequest()) {   // silent mode: NotifyPolicy decides what wakes it
       lastActivity = millis();
       wakeScreen();
     }

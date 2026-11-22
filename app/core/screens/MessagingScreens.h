@@ -1,5 +1,6 @@
 #pragma once
 #include "../App.h"
+#include "../drivers/Mentions.h"
 #include "../Widgets.h"
 #include "SettingsScreens.h"
 #include "../drivers/RouteResolver.h"
@@ -34,8 +35,9 @@ public:
 
   const char* title() const override { return _title; }
   const char* help() const override {
+    if (_picker.open()) return tr("Enter:tag Fn+;.:choose Fn+`:close", "Entrée:taguer Fn+;.:choisir Fn+`:fermer");
     return _selecting ? tr("Enter:details Fn+;.:move Fn+`:back", "Entrée:détail Fn+;.:bouger Fn+`:retour")
-                      : tr("Enter:send Fn+;:select Fn+`:back", "Entrée:envoi Fn+;:choisir Fn+`:retour");
+                      : tr("Enter:send @:tag Fn+;:select Fn+`:back", "Entrée:envoi @:tag Fn+;:sél Fn+`:retour");
   }
   bool wantsText() const override { return true; }
   void onEnter(App& app) override;
@@ -56,6 +58,9 @@ private:
   void layout(lgfx::LovyanGFX& g);
   void drawBubble(App& app, lgfx::LovyanGFX& g, const StoredMsg& m, const Layout& l, int y);
   void drawCompose(App& app, lgfx::LovyanGFX& g);
+  void drawPicker(lgfx::LovyanGFX& g);
+  void drawLine(lgfx::LovyanGFX& g, int msg, const TextLine& line, int x, int y);
+  void draftChanged(App& app);        // the "@" suggestions follow the draft
 
   MessageDetailScreen* _detail = nullptr;
   bool _selecting = false;    // the lowest bubble (the newest of those shown) is selected
@@ -71,6 +76,14 @@ private:
   int _maxLen = MSG_TEXT_MAX;
   bool _cursorOn = true;
   uint32_t _lastBlink = 0;
+  // Mentions (MESSAGING-13): the bubbles show "@name" highlighted instead of "@[name]"
+  static constexpr int MAX_SPANS = 4;
+  char _disp[WINDOW][MSG_TEXT_MAX + 1] = {};
+  MentionSpan _spans[WINDOW][MAX_SPANS];
+  uint8_t _nSpans[WINDOW] = {};
+  uint8_t _meSpans[WINDOW] = {};      // bit per span: it mentions me
+  MentionPicker _picker;
+  char _selfName[32] = {};
 };
 
 class ContactDetailScreen;

@@ -1,4 +1,5 @@
 #include "DemoMesh.h"
+#include "drivers/Mentions.h"
 #include "I18n.h"
 #include "RadioPresets.h"
 #include "drivers/GeoText.h"
@@ -220,7 +221,7 @@ void DemoMesh::receiveChannel(const std::string& channel, const std::string& sen
   _store.append(k, channel.c_str(), m, true);
   _rx++;
   recordRx(wire::PL_GRP_TXT, k, m.hops, m.snrX4 / 4.0f);
-  push(MeshEvent::MESSAGE, k, channel, sender + ": " + text);
+  push(MentionText::mentions(m.text, selfName()) ? MeshEvent::MENTION : MeshEvent::MESSAGE, k, channel, sender + ": " + text);
   logf("rx #%s <%s>: %s", channel.c_str(), sender.c_str(), text.c_str());
 }
 

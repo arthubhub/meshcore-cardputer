@@ -726,10 +726,10 @@
       "category": "Messaging",
       "priority": 1,
       "size": "M",
-      "status": "backlog",
+      "status": "in-progress",
       "requested": true,
       "depends_on": [],
-      "details": "Requested by the project owner on 2026-11-08: tag people in a message, mainly on channels. Format, given by the project owner: \"@[contact name]\", as the MeshCore phone app writes it. (1) Typing @ in the compose line proposes the contacts at once, then narrows the list letter by letter (contacts and the recent senders of the conversation, favourites first); Enter inserts @[name]. (2) In the bubbles, a mention is drawn as the name on a small highlight, not as the raw text with its brackets. (3) A received message mentioning my name is highlighted and notified like a direct message, even on a busy channel. Names may contain spaces and accents: the closing bracket ends the name. Shares the contact search of MESSAGING-14."
+      "details": "Requested by the project owner on 2026-11-08; built 2026-11-18, awaiting a test on the device with another node. Format, given by the project owner: \"@[contact name]\", as the MeshCore phone app writes it; the closing bracket ends the name (spaces and accents allowed). (1) Typing @ at the start or after a space opens a list above the compose line: favourites, then the recent senders of the conversation, then the other people in the contacts; each letter narrows it (names starting with the letters first, then names with a word starting with them; case and accents ignored). Fn+; / Fn+. choose, Enter or Tab inserts \"@[name] \", Fn+` closes the list. (2) Bubbles, the conversation list, the home screen and banners show \"@name\" on a highlight, not the brackets; a mention of me is orange and outlines the bubble. (3) A channel message mentioning my name is a MENTION event, notified like a direct message (banner \"@ you, <channel>\", the direct-message sound). Portable: core/drivers/Mentions (MentionText, MentionPicker), unit tests and the scenario mentions.txt. MESSAGING-14's contact search can reuse MentionPicker's matching."
     },
     {
       "id": "MESSAGING-14",
@@ -1057,6 +1057,17 @@
       "requested": false,
       "depends_on": [],
       "details": "English by default, French in Settings › Language / Langue."
+    },
+    {
+      "id": "UX-8",
+      "title": "Silent mode: messages without lighting the screen",
+      "category": "UX",
+      "priority": 1,
+      "size": "S",
+      "status": "in-progress",
+      "requested": true,
+      "depends_on": [],
+      "details": "Requested by the project owner on 2026-11-18: every message received lit the screen up. Settings > Silent mode: off (as before), \"for me only\" (only direct messages and mentions of me - MESSAGING-13 - wake the screen and sound), on (nothing wakes it or sounds; messages are stored and counted). Banners still show while the screen is on; a bell in the status bar shows the mode (crossed out when on). One rule for banners, sounds and waking: core/drivers/NotifyPolicy, unit-tested; the simulator's 'screen off' / 'expect-woke' check it end to end (scenario mentions.txt). New setting at the end of the settings file (older files load with the mode off). Built 2026-11-18, awaiting a test on the device."
     },
     {
       "id": "SECURITY-1",

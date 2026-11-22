@@ -70,6 +70,7 @@ struct MeshEvent {
     CONTACTS_NEAR_FULL,   // text "92/100"
     CONTACTS_REPLACING,   // the list is full: new contacts now replace the oldest non-favourites
     CONTACTS_BLOCKED,     // full of favourites: a new contact was refused
+    MENTION,              // a channel message mentioning my name, "@[name]" (MESSAGING-13): notified like a direct one
   };
   Type type = NONE;
   ConvKey key;
@@ -184,6 +185,7 @@ struct UiSettings {
   uint8_t reserved0 = 0;
   uint8_t pathHashBytes = 1;        // bytes of each repeater ID in a flood's path (floodopt, RADIO-9)
   char region[31] = "";             // flood scope, "" = none (floodopt, RADIO-10)
+  uint8_t wakeOn = 0;               // silent mode: WakeMode (core/drivers/NotifyPolicy.h), 0 = every notice wakes
 };
 
 class SettingsService {

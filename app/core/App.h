@@ -56,6 +56,10 @@ public:
   bool bannerVisible() { return _bannerUntil && (int32_t)(now() - _bannerUntil) < 0; }
   // Mesh events only, no drawing (used while the screen is off). Returns true if any.
   bool pollEvents();
+  // An event since the last call deserved waking the screen (NotifyPolicy and the silent mode); clears the request
+  bool takeWakeRequest() { bool w = _wake; _wake = false; return w; }
+  // The sound of an event shown by a screen itself (a message in the open conversation), if the silent mode allows it
+  void chime(const MeshEvent& ev, SoundKind kind);
 
 private:
   void drawStatusBar();
@@ -69,6 +73,7 @@ private:
   bool _dirty = true;
   uint32_t _lastStatusDraw = 0;
   uint32_t _bannerUntil = 0;
+  bool _wake = false;
   char _bannerTitle[32] = {};
   char _bannerText[64] = {};
 };
