@@ -1,4 +1,5 @@
 #include "DemoMesh.h"
+#include "drivers/RadioConfig.h"
 #include "drivers/Mentions.h"
 #include "I18n.h"
 #include "RadioPresets.h"
@@ -518,7 +519,7 @@ int DemoMesh::neighbours(NeighbourInfo* out, int max) {
 
 RadioStats DemoMesh::radioStats() {
   const UiSettings& s = _settings.get();
-  const RadioPreset& p = RADIO_PRESETS[s.radioPreset < RADIO_PRESET_COUNT ? s.radioPreset : 0];
+  const RadioParams p = RadioConfig::of(s);
   RadioStats r;
   r.rxPackets = _rx;
   r.txPackets = sentPackets;

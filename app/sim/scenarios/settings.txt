@@ -32,8 +32,9 @@ expect-setting preset 1
 shot 12_settings_radio
 key ,
 expect-setting preset 0
+# before the first preset: Custom (the end of the list)
 key ,
-expect-setting preset 2
+expect-setting preset 255
 key /
 expect-setting preset 0
 

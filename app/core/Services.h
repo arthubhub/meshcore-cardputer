@@ -171,7 +171,7 @@ public:
 // User settings edited on the device. Persisted by the platform (LittleFS on the Cardputer).
 struct UiSettings {
   char nodeName[32] = "Cardputer";
-  uint8_t radioPreset = 0;          // index in RADIO_PRESETS (core/RadioPresets.h)
+  uint8_t radioPreset = 0;          // index in RADIO_PRESETS (core/RadioPresets.h), RADIO_PRESET_CUSTOM: the custom* values
   int8_t txPowerDbm = 22;
   int16_t utcOffsetMinutes = 60;    // France: +60 in winter, +120 in summer
   uint16_t screenTimeoutSecs = 60;  // 0 = never
@@ -186,6 +186,10 @@ struct UiSettings {
   uint8_t pathHashBytes = 1;        // bytes of each repeater ID in a flood's path (floodopt, RADIO-9)
   char region[31] = "";             // flood scope, "" = none (floodopt, RADIO-10)
   uint8_t wakeOn = 0;               // silent mode: WakeMode (core/drivers/NotifyPolicy.h), 0 = every notice wakes
+  // Custom radio values (radioPreset == RADIO_PRESET_CUSTOM), read through core/drivers/RadioConfig
+  uint8_t customSf = 8, customCr = 5;
+  uint16_t customBwX100 = 6250;     // kHz x 100
+  uint32_t customFreqKHz = 869618;
 };
 
 class SettingsService {

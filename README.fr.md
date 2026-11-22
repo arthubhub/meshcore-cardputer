@@ -23,6 +23,13 @@ récemment apparaît et se réduit à chaque lettre ; **Entrée** tague le nom e
 ressort en orange et vous prévient comme un message privé, même sur un canal animé. Les tags ont la même forme
 `@[nom]` que dans l'application MeshCore pour téléphone.
 
+**Réglages radio hors d'Europe.** *Réglages → Réglage radio*, puis **Entrée**, liste les réglages de l'application
+MeshCore pour les États-Unis, le Canada, l'Australie, la Nouvelle-Zélande, le Brésil, la Thaïlande, le Vietnam et
+plusieurs pays européens. Votre Cardputer ne parle qu'aux nœuds qui ont le même réglage : demandez à votre réseau
+local lequel il utilise. *Perso…*, en fin de liste, permet de choisir à la main la fréquence, la bande passante, le
+facteur d'étalement et le taux de codage. Le Cap LoRa-1262 est fait pour 868–923 MHz ; l'écran prévient quand une
+fréquence personnalisée en sort (la portée sera faible).
+
 Le **mode silencieux** (*Réglages → Mode silencieux*) garde le Cardputer allumé sans rallumer l'écran : *pour moi*
 ne le rallume que pour les messages privés et ceux qui vous taguent, *oui* ne le rallume jamais et ne sonne plus. Les
 messages arrivent quand même et sont comptés ; une cloche dans la barre du haut indique le mode.

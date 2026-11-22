@@ -4,7 +4,7 @@
 
 What the MeshCore firmware for the M5Stack Cardputer ADV + Cap LoRa-1262 could do next, feature by feature, with a priority and a size for each item. This file is generated: change [`roadmap.json`](roadmap.json), then run `python3 tools/roadmap.py`.
 
-Last updated 2026-11-18 · 67 open items · 21 done.
+Last updated 2026-11-18 · 68 open items · 21 done.
 
 ## How to read it
 
@@ -21,7 +21,7 @@ Last updated 2026-11-18 · 67 open items · 21 done.
 | Validation & bugs | 4 | · | 3 | 6 |
 | Release & CI | · | · | 5 | 4 |
 | Companion sync | · | 2 | 6 | 1 |
-| Radio tools | · | · | 5 | 5 |
+| Radio tools | 1 | · | 5 | 5 |
 | Messaging | 3 | · | 9 | 2 |
 | GPS & map | 1 | · | 8 | 2 |
 | Connectivity | · | · | 4 | · |
@@ -37,6 +37,7 @@ Last updated 2026-11-18 · 67 open items · 21 done.
 - **[UX-8](#ux-8)** Silent mode: messages without lighting the screen · P1 · S
 - **[MESSAGING-11](#messaging-11)** Update a contact's position from a message · P1 · M
 - **[MESSAGING-13](#messaging-13)** Mention people in messages · P1 · M
+- **[RADIO-11](#radio-11)** Radio presets outside the EU, and custom values · P1 · M
 - **[VALIDATION-10](#validation-10)** Find and fix the compass bugs · P1 · M
 - **[MESSAGING-12](#messaging-12)** Archive of every node heard, beyond the 100 contacts · P1 · XL
 - **[MAP-2](#map-2)** Navigate to a contact or waypoint · P2 · S
@@ -291,6 +292,7 @@ Settings › Phone mode, back with esc ×3; shared radio identity.
 | [RADIO-3](#radio-3) | Range test mode with GPS logging | P1 | M | Backlog | VALIDATION-1, MAP-6, MAP-1 |
 | [RADIO-5](#radio-5) | Noise floor and channel scanner | P2 | M | Backlog | · |
 | [RADIO-7](#radio-7) | Temporary repeater mode | P3 | M | Backlog | RADIO-4 |
+| [RADIO-11](#radio-11) | Radio presets outside the EU, and custom values ★ | P1 | M | In progress | · |
 | [RADIO-4](#radio-4) | Airtime and duty-cycle meter | P2 | S | Done | · |
 | [RADIO-6](#radio-6) | Packet sniffer log | P2 | M | Done | · |
 | [RADIO-8](#radio-8) | Nearby repeater search ★ | P1 | M | Done | VALIDATION-1 |
@@ -326,6 +328,12 @@ Sweep the band with the SX1262's instantaneous RSSI and draw a waterfall. Shows 
 **Temporary repeater mode** · P3 · M · Backlog · after RADIO-4
 
 Forward packets while enabled (for an event or a hike), with a clear status-bar marker and the duty-cycle meter. Needs care: repeating rules and airtime.
+
+#### RADIO-11
+
+**Radio presets outside the EU, and custom values** ★ · P1 · M · In progress
+
+Requested by the project owner on 2026-11-18: merge the fully customisable radio of the phone app with the presets; "custom" is one entry of the list. Built 2026-11-18, awaiting a test on the device. The presets are MeshCore's own app presets (https://api.meshcore.nz/api/v1/config, meshcore/docs/radio_presets.md): 24 within the Cap LoRa-1262's 868-923 MHz band (USA, Canada, Australia x5, New Zealand x2, Brazil, Costa Rica, Thailand, Vietnam x2, EU/UK and 7 European countries); the 433 MHz ones and Southern California (927.875 MHz) are left out (Custom reaches them, with a warning). Settings store the preset's index: the table is append-only, the first three entries are unchanged (EU/UK Narrow keeps CR 5, MeshCore's firmware default). A preset that defines its network's path ID size sets it (RADIO-9) and says so. Enter on Radio preset opens the list; Custom edits frequency (typed, decimal comma accepted, 150-960 MHz), bandwidth, SF and CR. core/drivers/RadioConfig is the one place that turns settings into radio parameters (radio, System, demo); tools/radio_presets.py --check compares the table with the app's API. UX-1 (first-boot setup) can now offer these presets.
 
 #### RADIO-4
 

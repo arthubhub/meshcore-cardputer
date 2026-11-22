@@ -208,6 +208,19 @@ La liste du mode clavier garde 100 contacts. Sur un réseau chargé, elle se rem
 - [ ] La conversation d'un contact remplacé reste dans Messages.
 - [ ] Après un redémarrage, la liste reprend les mêmes 100 contacts.
 
+## Réglages radio hors d'Europe (RADIO-11)
+
+Vérifié dans le simulateur (`scenarios/radio_presets.txt`) et par `python3 tools/radio_presets.py --check`
+(comparaison avec l'API de l'application MeshCore). À vérifier sur l'appareil :
+
+- [ ] Réglages → Réglage radio → Entrée : la liste des 24 réglages et « Perso... » à la fin ; le réglage en cours a une `*`.
+- [ ] Choisir « Canada » : bannière « Taille ID chemin : 3 octets », et le log `radio set: Canada (preset), 910.525 MHz BW 62.50 SF 7 CR 5`.
+      Si un nœud du réseau visé est à portée : les annonces et messages passent.
+- [ ] « Perso... » : l'écran Radio perso part des valeurs en cours ; Entrée sur Fréquence, taper `869,618` : le log `radio set: Custom (custom values), 869.618 ...`.
+- [ ] Une fréquence hors 868-923 MHz (par exemple 433,375) : bannière « Hors 868-923 MHz », ligne orange, et le log se termine par `OUTSIDE the Cap's 868-923 MHz band`.
+- [ ] Une valeur impossible (`2400`) : « Fréquence invalide », rien ne change.
+- [ ] Après un redémarrage, le réglage (et les valeurs perso) sont conservés. Remettre « EU/UK Narrow » à la fin.
+
 ## Tags « @[nom] » (MESSAGING-13) et mode silencieux (UX-8)
 
 Vérifié dans le simulateur (`scenarios/mentions.txt`, en anglais et en français). À vérifier sur l'appareil, avec un
@@ -224,7 +237,7 @@ autre nœud (le téléphone en mode companion, ou un second Cardputer) :
       ni ne sonne ; un message privé ou un tag le rallume.
 - [ ] Mode silencieux `oui` : rien ne rallume l'écran ni ne sonne ; les messages sont comptés (`*N` en haut).
 - [ ] La cloche s'affiche dans la barre du haut dans ces deux modes (barrée en rouge pour `oui`).
-- [ ] Après un redémarrage, le réglage est conservé (`settings loaded (78/78 bytes)` ; un ancien fichier donne `76/78` et le mode reste désactivé).
+- [ ] Après un redémarrage, le réglage est conservé (`settings loaded (88/88 bytes)` ; un ancien fichier donne `76/88` et le mode reste désactivé).
 
 ## Archive des nœuds entendus (MESSAGING-12, étapes 1 à 5)
 

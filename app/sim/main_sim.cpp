@@ -56,7 +56,7 @@
 //   shot <name>                    write <output_dir>/<name>.png
 //   expect-screen <title>          fail (exit 1) if the current screen title differs
 //   expect-unread <n>              fail if the unread counter differs
-//   expect-setting <field> <value> name|preset|tx|tz|timeout|brightness|sound|share|lang|wake (tz in minutes, bools 0/1)
+//   expect-setting <field> <value> name|preset|tx|tz|timeout|brightness|sound|share|lang|wake|pathid (tz in minutes, bools 0/1)
 //   expect-convs <n>               number of conversations
 //   expect-msgs <conv> <n>         number of stored messages in a conversation (by name)
 //   expect-last <conv> <state> [text...]  state of the newest message: received|pending|sent|delivered|failed|channel
@@ -64,6 +64,7 @@
 //   contacts-max <n>               most contacts kept (100 on the Cardputer)
 //   expect-has-contact <name> 0|1  whether a contact is in the list
 //   expect-sounds <n>              number of notification sounds played so far
+//   expect-radio <MHz> BW<kHz> SF<n> CR<n>   the radio parameters in use, e.g. "910.525 BW62.5 SF7 CR5"
 //   screen off|on                  the screen sleeps: events only, like the firmware (a notice may wake it)
 //   expect-woke <n>                times the screen was woken by a notice (silent mode, NotifyPolicy)
 //
@@ -77,6 +78,7 @@
 //   expect-hw <what> <value>       keyboard 0/1 | kb-reinits n | gps-baud n | gps-present 0/1 | cap-p0 0/1
 //                                  | clock-sets n
 #include "../core/App.h"
+#include "../core/drivers/RadioConfig.h"
 #include "../core/screens/HomeScreen.h"
 #include "../core/screens/SettingsScreens.h"
 #include "../core/screens/MessagingScreens.h"
@@ -547,6 +549,7 @@ int main(int argc, char** argv) {
       else if (field == "ble") got = std::to_string(s.ble);
       else if (field == "share") got = std::to_string(s.shareLocation);
       else if (field == "wake") got = std::to_string(s.wakeOn);
+      else if (field == "pathid") got = std::to_string(s.pathHashBytes);
       else if (field == "brightness") got = std::to_string(s.brightness);
       else if (field == "lang") got = s.language == LANG_FR ? "fr" : "en";
       else if (field == "pathbytes") got = std::to_string(s.pathHashBytes);
@@ -594,6 +597,12 @@ int main(int argc, char** argv) {
     } else if (cmd == "expect-nearby") {
       int want = 0; ls >> want;
       if (want != mesh.discovery().count()) { fprintf(stderr, "line %d: FAIL expected %d nearby repeaters, got %d\n", lineNo, want, mesh.discovery().count()); g_failures++; }
+    } else if (cmd == "expect-radio") {
+      std::string want, got;
+      std::getline(ls >> std::ws, want);
+      char d[48];
+      RadioConfig::describe(RadioConfig::of(settings.get()), d, sizeof(d));
+      if (want != d) { fprintf(stderr, "line %d: FAIL radio expected '%s', got '%s'\n", lineNo, want.c_str(), d); g_failures++; }
     } else if (cmd == "screen") {
       std::string v; ls >> v; screenOff = v == "off";
     } else if (cmd == "expect-woke") {

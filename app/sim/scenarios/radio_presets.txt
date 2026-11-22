@@ -1,0 +1,74 @@
+# Radio presets outside the EU: the list of every preset (Enter on "Radio preset"), a preset that also sets the
+# network's path ID size, then custom values with a frequency outside the Cap's band.
+name Raphael
+time 1793541600
+expect-radio 869.618 BW62.5 SF8 CR5
+key s
+expect-screen Settings
+key .*2
+key enter
+expect-screen Radio preset
+shot r1_preset_list
+key .*11
+shot r2_canada
+key enter
+expect-screen Settings
+expect-setting preset 4
+expect-setting pathid 3
+expect-radio 910.525 BW62.5 SF7 CR5
+shot r3_canada_set
+
+# Left / right still cycle: from Canada to Costa Rica (next in the list), then back
+key /
+expect-setting preset 13
+expect-radio 910.525 BW125 SF11 CR5
+key ,
+expect-setting preset 4
+
+# Custom values: the last entry of the list; they start from the preset in use
+key enter
+key ;*12
+shot r4_custom_entry
+key enter
+expect-screen Custom radio
+expect-setting preset 255
+expect-radio 910.525 BW62.5 SF7 CR5
+shot r5_custom
+key enter
+expect-screen Frequency (MHz)
+key bksp*10
+type 433,375
+key enter
+expect-radio 433.375 BW62.5 SF7 CR5
+shot r6_custom_433_warning
+key .
+key /
+expect-radio 433.375 BW125 SF7 CR5
+key .
+key ,
+key ,
+expect-radio 433.375 BW125 SF5 CR5
+key .
+key /*3
+expect-radio 433.375 BW125 SF5 CR8
+key ;*3
+key enter
+key bksp*10
+type 2400
+key enter
+expect-radio 433.375 BW125 SF5 CR8
+shot r7_bad_frequency
+key `
+expect-screen Settings
+shot r8_settings_custom
+
+# French: the longest labels (the list opens on the preset in use: Custom)
+lang fr
+key enter
+expect-screen Réglage radio
+shot r9_fr_list
+key enter
+expect-screen Radio perso
+shot r10_fr_custom
+key `
+expect-screen Réglages

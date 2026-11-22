@@ -1,4 +1,5 @@
 #include "CardputerMesh.h"
+#include "../core/drivers/RadioConfig.h"
 #include "../core/drivers/Mentions.h"
 #include <CpadvLog.h>
 #if !CPADV_DEMO
@@ -893,7 +894,7 @@ int CardputerMesh::neighbours(NeighbourInfo* out, int max) {
 RadioStats CardputerMesh::radioStats() {
   RadioStats r;
   const UiSettings& s = _settings.get();
-  const RadioPreset& p = RADIO_PRESETS[s.radioPreset < RADIO_PRESET_COUNT ? s.radioPreset : 0];
+  const RadioParams p = RadioConfig::of(s);
   r.freqMHz = p.freqMHz;
   r.bandwidthKHz = p.bwKHz;
   r.spreadingFactor = p.sf;
