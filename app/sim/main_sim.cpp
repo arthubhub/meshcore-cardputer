@@ -234,6 +234,8 @@ int main(int argc, char** argv) {
   SettingsScreen settingsScreen(textInput, systemScreen, packets);
   NearbyScreen nearby(contactDetail);
   HomeScreen home(&conversations, &contacts, &gps, &map, &nearby, &settingsScreen);
+  home.addSection(NavSection("Packet log", "Journal radio", 'p', NavIcon::PACKETS, &packets,
+                             HomeScreen::defaultSummary(NavIcon::PACKETS)));   // as app/device/main.cpp
   app.begin(&home);
 
   HwRig hw(sys);

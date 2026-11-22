@@ -4,6 +4,7 @@
 #include "../../core/KeyMatrix.h"
 #include "../../core/Services.h"
 #include "../../core/drivers/AirtimeMeter.h"
+#include "../../core/drivers/Carousel.h"
 #include "../../core/drivers/BucketStore.h"
 #include "../../core/drivers/ContactCapacity.h"
 #include "../../core/drivers/ContactPosition.h"
@@ -2940,6 +2941,35 @@ TEST(theme_files_override_a_base) {
   CHECK(ThemeCatalog::parseColor("#FF0000", v) && v == 0xF800);
   CHECK(!ThemeCatalog::parseColor("#FF00", v));
   CHECK(!ThemeCatalog::parseColor("#GG0000", v));
+}
+
+// ============================================================ Navigation menu
+
+TEST(carousel_slides_and_wraps) {
+  Carousel c;
+  c.setCount(4);
+  CHECK_EQ(c.page(), 0);
+  CHECK(!c.sliding(0));
+  c.slide(-1, 1000);                  // left of the first: the last
+  CHECK_EQ(c.page(), 3);
+  CHECK_EQ(c.leaving(1000), 0);
+  CHECK(c.sliding(1000));
+  CHECK_EQ(c.shift(1000, 240), -240); // arrives from the left
+  CHECK(c.shift(1080, 240) > -240 && c.shift(1080, 240) < 0);
+  CHECK_EQ(c.shift(1000 + Carousel::SLIDE_MS, 240), 0);
+  CHECK_EQ(c.leaving(1000 + Carousel::SLIDE_MS), -1);
+  c.slide(+1, 2000);
+  CHECK_EQ(c.page(), 0);              // right of the last: the first
+  CHECK_EQ(c.shift(2000, 240), 240);
+  c.go(2, 3000);
+  CHECK_EQ(c.page(), 2);
+  CHECK(c.shift(3000, 100) == 100);   // forward: from the right
+  c.go(9, 4000);                      // not a page: nothing happens
+  CHECK_EQ(c.page(), 2);
+  c.setCount(1);                      // one page: no slide
+  c.slide(1, 5000);
+  CHECK_EQ(c.page(), 0);
+  CHECK(!c.sliding(5000));
 }
 
 int main(int argc, char** argv) {

@@ -208,6 +208,18 @@ La liste du mode clavier garde 100 contacts. Sur un réseau chargé, elle se rem
 - [ ] La conversation d'un contact remplacé reste dans Messages.
 - [ ] Après un redémarrage, la liste reprend les mêmes 100 contacts.
 
+## Menu de navigation (UX-10)
+
+Vérifié dans le simulateur (`scenarios/navigation.txt`, anglais et français, un autre thème) ; toutes les anciennes
+séquences de lettres passent toujours. À vérifier sur l'appareil :
+
+- [ ] L'accueil montre le tableau de bord et des points en bas (un par page).
+- [ ] `/` et `,` font glisser les pages (animation fluide ? environ 0,16 s) ; chaque page : icône, titre, 2 ou 3 lignes à jour, sa lettre.
+- [ ] `Entrée` ouvre la partie de la page ; `` ` `` revient à la même page.
+- [ ] `.` ouvre la liste « Menu » ; `;` `.` choisir, `Entrée` ouvrir, les lettres marchent aussi.
+- [ ] Les lettres M, C, G, K, N, P, S marchent depuis n'importe quelle page de l'accueil.
+- [ ] Firmware sans carte : la page Carte est grisée, « Absent de ce firmware ».
+
 ## Thèmes (UX-9)
 
 Vérifié dans le simulateur (`scenarios/themes.txt` : les cinq thèmes intégrés et deux fichiers de `docs/themes`, sur

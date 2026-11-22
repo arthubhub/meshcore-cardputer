@@ -18,6 +18,11 @@ il s'agit d'un seul et même nœud.
 L'interface est en anglais par défaut ; le français se choisit en un réglage
 (*Settings → Language / Langue*).
 
+**Se déplacer.** L'écran d'accueil est un tableau de bord suivi d'une page par partie du Cardputer (messages,
+contacts, GPS, carte, routeurs proches, journal radio, réglages) : **,** et **/** passent d'une page à l'autre,
+**Entrée** ouvre, et **.** les liste toutes. La lettre affichée sur chaque page (M, C, G, K, N, P, S) ouvre sa partie
+directement, comme avant.
+
 **Taguer quelqu'un.** Dans une conversation, tapez **@** : la liste de vos contacts et des personnes qui ont écrit
 récemment apparaît et se réduit à chaque lettre ; **Entrée** tague le nom en surbrillance. Un message qui vous tague
 ressort en orange et vous prévient comme un message privé, même sur un canal animé. Les tags ont la même forme

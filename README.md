@@ -15,6 +15,10 @@ back. Both modes share the same radio identity, so the rest of the mesh sees a s
 
 The interface is in English by default; French is one setting away (*Settings → Language / Langue*).
 
+**Getting around.** The home screen is a dashboard followed by one page per part of the Cardputer (messages, contacts,
+GPS, map, nearby repeaters, packet log, settings): **,** and **/** slide from page to page, **Enter** opens, and **.**
+lists them all. The letters shown on each page (M, C, G, K, N, P, S) open their part directly, as before.
+
 **Tagging people.** In a conversation, type **@**: a list of your contacts and of the people who wrote recently
 appears and narrows as you type; press **Enter** to tag the highlighted name. A message that tags you stands out in
 orange and notifies you like a private message, even on a busy channel. Tags use the same `@[name]` form as the

@@ -32,7 +32,7 @@ key `
 
 # --- Each theme on the home, a chat with a mention, the conversation list
 theme Light
-key enter
+wait 4000
 shot t10_light_home
 key m
 key enter

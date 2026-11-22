@@ -477,6 +477,9 @@ void setup() {
   }
 
   sys.setYieldHook(meshLoop);   // long renders (map) keep the radio served
+  // The packet log has its own page in the menu (it stays reachable from Settings too)
+  home.addSection(NavSection("Packet log", "Journal radio", 'p', NavIcon::PACKETS, &packetsScreen,
+                             HomeScreen::defaultSummary(NavIcon::PACKETS)));
   app.begin(&home);
 #if CPADV_DEMO
   app.notify(tr("Demo mode", "Mode démo"), tr("No radio: simulated contacts and GPS", "Pas de radio : contacts et GPS simulés"), 5000);

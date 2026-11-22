@@ -1,0 +1,92 @@
+# Navigation menu: the home screen is a dashboard followed by one page per section; left / right slide, Enter opens,
+# Down shows the sections as a list; the letters still work.
+name Raphael
+time 1793541600
+gps fix 9
+contact Bob 1 fav
+contact Relais-Colomiers 0 repeater
+rx Bob Hi! Are you around tonight?
+pkt ADV Relais-Colomiers 0 7.2
+wait 4000
+expect-screen Home
+shot n00_dashboard
+
+# --- Slide to the sections
+key /
+wait 60
+shot n01_sliding
+wait 300
+shot n02_messages
+key enter
+expect-screen Messages
+key `
+expect-screen Home
+key /
+wait 300
+shot n03_contacts
+key /
+wait 300
+shot n04_gps
+key /
+wait 300
+shot n05_map
+key /
+wait 300
+shot n06_nearby
+key /
+wait 300
+shot n07_packets
+key enter
+expect-screen Packets 3
+key `
+key /
+wait 300
+shot n08_settings
+key enter
+expect-screen Settings
+key `
+key /
+wait 300
+shot n09_back_to_dashboard
+
+# --- Left from the dashboard: Settings, the last page
+key ,
+wait 300
+expect-screen Home
+key enter
+expect-screen Settings
+key `
+
+# --- The list (Down), its letters, and the letters of the home screen
+key .
+expect-screen Menu
+shot n10_menu
+key .*3
+shot n11_menu_map
+key enter
+expect-screen Map
+key `
+expect-screen Home
+key .
+key c
+expect-screen Contacts (2)
+key `
+key g
+expect-screen GPS
+key `
+key p
+expect-screen Packets 3
+key `
+
+# --- French, and another theme
+lang fr
+key ,
+wait 300
+shot n12_fr_packets_card
+key .
+shot n13_fr_menu
+key `
+theme Light
+key /
+wait 300
+shot n14_light_settings_card
